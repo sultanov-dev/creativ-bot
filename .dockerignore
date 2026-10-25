@@ -8,3 +8,5 @@ __pycache__
 *.session
 *.session-journal
 CLAUDE.md
+*.db-wal
+*.db-shm

@@ -8,7 +8,9 @@ DB_PATH = os.path.join(DATA_DIR, "bot.db")
 
 
 async def init_db() -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(DB_PATH, timeout=30) as db:
+        # WAL: o'qish yozishni bloklamaydi; rejim faylda saqlanadi
+        await db.execute("PRAGMA journal_mode=WAL")
         await db.executescript("""
             CREATE TABLE IF NOT EXISTS applications (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,7 +43,7 @@ async def init_db() -> None:
 async def create_application(
     user_id: int, group_id: int, full_name: str, anketa: str
 ) -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(DB_PATH, timeout=30) as db:
         cur = await db.execute(
             "INSERT INTO applications (user_id, group_id, full_name, anketa) VALUES (?, ?, ?, ?)",
             (user_id, group_id, full_name, anketa),
@@ -51,7 +53,7 @@ async def create_application(
 
 
 async def get_application(app_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(DB_PATH, timeout=30) as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute("SELECT * FROM applications WHERE id = ?", (app_id,))
         row = await cur.fetchone()
@@ -60,7 +62,7 @@ async def get_application(app_id: int) -> dict | None:
 
 async def get_active_application(user_id: int, group_id: int) -> dict | None:
     """Shu guruh uchun hali ko'rib chiqilayotgan (pending/voting) ariza."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(DB_PATH, timeout=30) as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute(
             "SELECT * FROM applications WHERE user_id = ? AND group_id = ? "
@@ -72,7 +74,7 @@ async def get_active_application(user_id: int, group_id: int) -> dict | None:
 
 
 async def change_status(app_id: int, old: str, new: str) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(DB_PATH, timeout=30) as db:
         cur = await db.execute(
             "UPDATE applications SET status = ? WHERE id = ? AND status = ?",
             (new, app_id, old),
@@ -82,7 +84,7 @@ async def change_status(app_id: int, old: str, new: str) -> bool:
 
 
 async def set_vote_message(app_id: int, message_id: int) -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(DB_PATH, timeout=30) as db:
         await db.execute(
             "UPDATE applications SET vote_message_id = ? WHERE id = ?",
             (message_id, app_id),
@@ -91,7 +93,7 @@ async def set_vote_message(app_id: int, message_id: int) -> None:
 
 
 async def add_vote(app_id: int, voter_id: int, vote: str) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(DB_PATH, timeout=30) as db:
         cur = await db.execute(
             "INSERT OR IGNORE INTO votes (application_id, voter_id, vote) VALUES (?, ?, ?)",
             (app_id, voter_id, vote),
@@ -102,7 +104,7 @@ async def add_vote(app_id: int, voter_id: int, vote: str) -> bool:
 
 async def get_pending_reason(voter_id: int) -> dict | None:
     """Oxirgi 24 soat ichidagi, sababi hali yozilmagan 'yo'q' ovozi."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(DB_PATH, timeout=30) as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute(
             """
@@ -119,7 +121,7 @@ async def get_pending_reason(voter_id: int) -> dict | None:
 
 
 async def set_vote_reason(app_id: int, voter_id: int, reason: str) -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(DB_PATH, timeout=30) as db:
         await db.execute(
             "UPDATE votes SET reason = ? WHERE application_id = ? AND voter_id = ?",
             (reason, app_id, voter_id),
@@ -128,7 +130,7 @@ async def set_vote_reason(app_id: int, voter_id: int, reason: str) -> None:
 
 
 async def count_votes(app_id: int) -> tuple[int, int]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(DB_PATH, timeout=30) as db:
         cur = await db.execute(
             "SELECT SUM(vote = 'yes'), SUM(vote = 'no') FROM votes WHERE application_id = ?",
             (app_id,),

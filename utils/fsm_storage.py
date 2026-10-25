@@ -19,13 +19,13 @@ class SQLiteStorage(BaseStorage):
         self.key_builder = DefaultKeyBuilder(with_destiny=True)
 
     async def _get(self, key: str) -> str | None:
-        async with aiosqlite.connect(self.db_path) as db:
+        async with aiosqlite.connect(self.db_path, timeout=30) as db:
             cur = await db.execute("SELECT value FROM fsm WHERE key = ?", (key,))
             row = await cur.fetchone()
             return row[0] if row else None
 
     async def _set(self, key: str, value: str | None) -> None:
-        async with aiosqlite.connect(self.db_path) as db:
+        async with aiosqlite.connect(self.db_path, timeout=30) as db:
             if value is None:
                 await db.execute("DELETE FROM fsm WHERE key = ?", (key,))
             else:
