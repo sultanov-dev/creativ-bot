@@ -6,10 +6,11 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
-from database import create_application
+from database import create_application, get_active_application
 from keyboards.action import action_inline
 from states import Form
 from texts import (
+    ALREADY_APPLIED,
     ASK_ABOUT,
     ASK_JOB,
     ASK_REASON,
@@ -79,6 +80,10 @@ async def capture_join_group(message: Message, bot: Bot, state: FSMContext):
     except (TelegramBadRequest, TelegramForbiddenError):
         logger.exception("Adminlar ro'yxatini olib bo'lmadi, group_id=%s", group_id)
         await message.answer(ERROR_GENERIC)
+        return
+
+    if await get_active_application(user_id, group_id):
+        await message.answer(ALREADY_APPLIED)
         return
 
     await message.answer(anketa)

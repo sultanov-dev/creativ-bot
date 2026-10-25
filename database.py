@@ -54,6 +54,19 @@ async def get_application(app_id: int) -> dict | None:
         return dict(row) if row else None
 
 
+async def get_active_application(user_id: int, group_id: int) -> dict | None:
+    """Shu guruh uchun hali ko'rib chiqilayotgan (pending/voting) ariza."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT * FROM applications WHERE user_id = ? AND group_id = ? "
+            "AND status IN ('pending', 'voting') ORDER BY id DESC LIMIT 1",
+            (user_id, group_id),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+
 async def change_status(app_id: int, old: str, new: str) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
