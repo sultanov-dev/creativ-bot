@@ -10,14 +10,14 @@ async def get_user_status(bot: Bot, chat_id: int, user_id: int):
     try:
         members = await bot.get_chat_member(chat_id, user_id)
         return members.status
-    except TelegramBadRequest:
+    except (TelegramBadRequest, TelegramForbiddenError):
         return None
 
 
 async def is_group_admin(bot: Bot, chat_id: int, user_id: int) -> bool:
-    members = await bot.get_chat_member(chat_id=chat_id, user_id=user_id)
+    status = await get_user_status(bot, chat_id, user_id)
 
-    return members.status in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR)
+    return status in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR)
 
 
 async def safe_send(bot: Bot, chat_id: int, text: str, **kwargs) -> bool:
@@ -35,6 +35,10 @@ async def mark_done(
 
     if isinstance(call.message, Message):
         who = escape(call.from_user.full_name)
-        await call.message.edit_text(
-            f"{call.message.html_text}\n\n{result} — {who} - {status}"
-        )
+        role = status.value if status else "noma'lum"
+        try:
+            await call.message.edit_text(
+                f"{call.message.html_text}\n\n{result} — {who} ({role})"
+            )
+        except TelegramBadRequest:
+            pass

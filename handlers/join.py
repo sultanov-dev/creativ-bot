@@ -13,6 +13,16 @@ router = Router()
 
 @router.chat_join_request()
 async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
+    private_state = get_private_state(
+        storage=state.storage, bot=bot, user_id=request.from_user.id
+    )
+
+    # holat javob kelishidan oldin o'rnatilishi kerak
+    await private_state.set_state(Form.age)
+    await private_state.update_data(
+        group_id=request.chat.id, user_id=request.user_chat_id
+    )
+
     await bot.send_message(
         chat_id=request.user_chat_id, text=welcome_text(request.from_user.full_name)
     )
@@ -21,13 +31,4 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
         chat_id=request.user_chat_id,
         text=ASK_AGE,
         delay=3.0,
-    )
-
-    private_state = get_private_state(
-        storage=state.storage, bot=bot, user_id=request.from_user.id
-    )
-
-    await private_state.set_state(Form.age)
-    await private_state.update_data(
-        group_id=request.chat.id, user_id=request.user_chat_id
     )

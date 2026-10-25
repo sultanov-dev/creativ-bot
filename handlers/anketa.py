@@ -1,13 +1,23 @@
 import logging
 
 from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
-from keyboards.admin import action_inline
+from database import create_application
+from keyboards.action import action_inline
 from states import Form
-from texts import ASK_ABOUT, ASK_JOB, ASK_REASON, ONLY_TEXT, THANKS, WRONG_AGE
+from texts import (
+    ASK_ABOUT,
+    ASK_JOB,
+    ASK_REASON,
+    ERROR_GENERIC,
+    ONLY_TEXT,
+    THANKS,
+    WRONG_AGE,
+)
 from utils.admin import safe_send
 from utils.form_anketa import format_anketa
 from utils.num_matcher import extract_number
@@ -22,7 +32,7 @@ logger = logging.getLogger(__name__)
 async def capture_age(message: Message, bot: Bot, state: FSMContext):
     age = extract_number(message.text)
 
-    if not age or not (1 <= age <= 100):
+    if not age or not (10 <= age <= 100):
         await message.reply(WRONG_AGE)
         return
 
@@ -59,15 +69,25 @@ async def capture_join_group(message: Message, bot: Bot, state: FSMContext):
     user = message.from_user
     anketa = format_anketa(user.full_name if user else "Unknown", data)
 
+    if group_id is None:
+        logger.warning("group_id topilmadi, user_id=%s", user_id)
+        await message.answer(ERROR_GENERIC)
+        return
+
+    try:
+        admins = await bot.get_chat_administrators(chat_id=group_id)
+    except (TelegramBadRequest, TelegramForbiddenError):
+        logger.exception("Adminlar ro'yxatini olib bo'lmadi, group_id=%s", group_id)
+        await message.answer(ERROR_GENERIC)
+        return
+
     await message.answer(anketa)
     await message.answer(THANKS)
 
-    if group_id is None:
-        logger.warning("group_id topilmadi, user_id=%s", user_id)
-        return
-
     sent = 0
-    admins = await bot.get_chat_administrators(chat_id=group_id)
+    app_id = await create_application(
+        user_id, group_id, user.full_name if user else "Unknown", anketa
+    )
 
     for admin in admins:
         if admin.user.is_bot:
@@ -77,9 +97,7 @@ async def capture_join_group(message: Message, bot: Bot, state: FSMContext):
             bot=bot,
             chat_id=admin.user.id,
             text=anketa,
-            reply_markup=action_inline(
-                group_id=group_id, user_id=user.id if user else message.chat.id
-            ),
+            reply_markup=action_inline(app_id),
         ):
             sent += 1
 
