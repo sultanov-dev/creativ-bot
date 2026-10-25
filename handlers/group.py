@@ -11,10 +11,11 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
 )
 from aiogram.filters import Command, CommandObject
-from aiogram.types import ChatPermissions, Message
+from aiogram.types import ChatMemberUpdated, ChatPermissions, Message
 
 from utils import userbot
 from utils.admin import get_user_status
+from utils.commands import setup_group_commands
 
 router = Router()
 router.message.filter(F.chat.type.in_({"group", "supergroup"}))
@@ -56,6 +57,16 @@ async def _remove(bot: Bot, chat_id: int, user_id: int, *, ban: bool) -> None:
             if attempt == 1:
                 raise
             await asyncio.sleep(e.retry_after)
+
+
+@router.my_chat_member(F.chat.type.in_({"group", "supergroup"}))
+async def bot_added(event: ChatMemberUpdated, bot: Bot):
+    """Bot guruhga qo'shilganda yoki admin qilinganda creator menyusini o'rnatadi."""
+    if event.new_chat_member.status in (
+        ChatMemberStatus.MEMBER,
+        ChatMemberStatus.ADMINISTRATOR,
+    ):
+        await setup_group_commands(bot, event.chat.id)
 
 
 @router.message(Command("kick_deleted"))
