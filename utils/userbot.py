@@ -17,15 +17,33 @@ async def start() -> bool:
         logger.info("API_ID/API_HASH berilmagan, userbot o'chiq")
         return False
 
-    await client.connect()
-    if not await client.is_user_authorized():
-        logger.warning("Userbot sessiyasi yo'q: avval `python userbot_login.py` ni ishga tushiring")
-        await client.disconnect()
-        return False
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            logger.warning(
+                "Userbot sessiyasi yo'q: avval `python userbot_login.py` ni ishga tushiring"
+            )
+            await client.disconnect()
+            return False
 
-    # chat ID larni Telethon keshiga yuklash
-    await client.get_dialogs()
-    return True
+        me = await client.get_me()
+        if me.bot:
+            logger.warning(
+                "Userbot sessiyasi bot tokeni bilan yaratilgan, u a'zolarni ko'ra olmaydi. "
+                "userbot.session ni o'chirib, `python userbot_login.py` da telefon raqam bilan kiring"
+            )
+            await client.disconnect()
+            return False
+
+        # chat ID larni Telethon keshiga yuklash
+        await client.get_dialogs()
+        return True
+    except Exception:
+        # userbot ishlamasa ham asosiy bot ishlashda davom etadi
+        logger.exception("Userbot ishga tushmadi")
+        if client.is_connected():
+            await client.disconnect()
+        return False
 
 
 async def stop() -> None:
