@@ -15,7 +15,7 @@ python main.py                                    # long polling; creates bot.db
 
 Docker: `docker compose up -d --build` runs the bot; `bot.db` lives in the `bot-data` volume (`DATA_DIR=/data`, default `.` locally).
 
-Env vars (read in `config.py`): `BOT_TOKEN`, `ADMIN_IDS` (optional, test/dev only: comma-separated IDs that get extra error alerts; group admins always come from the group itself). Uncaught handler errors are logged and DMed to the creator of the affected group (`handlers/errors.py` resolves the group from the update, the callback's application, or FSM data), `REQUIRED_VOTES` (default 100). There is deliberately no group ID in config: the bot is deployed into whatever group it is added to, and the group is always taken from the update (join request chat, `my_chat_member`, message chat).
+Env vars (read in `config.py`): `BOT_TOKEN`, `DEVELOPER_IDS` (optional, comma-separated: uncaught handler errors are logged and DMed to these developers with update/chat/user context by `handlers/errors.py`, never to group admins; group admins always come from the group itself), `REQUIRED_VOTES` (default 100). There is deliberately no group ID in config: the bot is deployed into whatever group it is added to, and the group is always taken from the update (join request chat, `my_chat_member`, message chat).
 
 ## Architecture
 
