@@ -13,7 +13,7 @@ cp .env.example .env                              # then fill in values
 python main.py                                    # long polling; creates bot.db on first run
 ```
 
-Env vars (read in `config.py`): `BOT_TOKEN`, `ADMIN_IDS` (comma-separated), `REQUIRED_VOTES` (default 100). There is deliberately no group ID in config: the bot is deployed into whatever group it is added to, and the group is always taken from the update (join request chat, `my_chat_member`, message chat).
+Env vars (read in `config.py`): `BOT_TOKEN`, `ADMIN_IDS` (optional, test/dev only: comma-separated IDs that get error alerts from `handlers/errors.py`; group admins always come from the group itself), `REQUIRED_VOTES` (default 100). There is deliberately no group ID in config: the bot is deployed into whatever group it is added to, and the group is always taken from the update (join request chat, `my_chat_member`, message chat).
 
 ## Architecture
 
