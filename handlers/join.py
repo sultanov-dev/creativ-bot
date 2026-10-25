@@ -28,4 +28,6 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
     )
 
     await private_state.set_state(Form.age)
-    await private_state.update_data(group_id=request.chat.id)
+    await private_state.update_data(
+        group_id=request.chat.id, user_id=request.user_chat_id
+    )

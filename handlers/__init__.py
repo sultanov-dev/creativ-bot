@@ -1,7 +1,7 @@
 from aiogram import Router
 
-from . import anketa, join, start
+from . import admin, anketa, join, start
 
 
 def get_routers() -> list[Router]:
-    return [start.router, join.router, anketa.router]
+    return [start.router, join.router, anketa.router, admin.router]

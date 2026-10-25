@@ -1,16 +1,21 @@
+import logging
+
 from aiogram import Bot, F, Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
+from keyboards.admin import action_inline
 from states import Form
-from texts import ASK_ABOUT, ASK_JOB, ASK_REASON, ONLY_TEXT, WRONG_AGE
+from texts import ASK_ABOUT, ASK_JOB, ASK_REASON, ONLY_TEXT, THANKS, WRONG_AGE
+from utils.admin import safe_send
 from utils.form_anketa import format_anketa
 from utils.num_matcher import extract_number
 from utils.typing import send_typing
 
 router = Router()
 router.message.filter(F.chat.type == "private")
+logger = logging.getLogger(__name__)
 
 
 @router.message(F.text, Form.age)
@@ -44,17 +49,44 @@ async def capture_about(message: Message, bot: Bot, state: FSMContext):
 
 
 @router.message(F.text, Form.join_group)
-async def capture_join_group(message: Message, state: FSMContext):
+async def capture_join_group(message: Message, bot: Bot, state: FSMContext):
     await state.update_data(join_group=message.text)
     data = await state.get_data()
+    group_id = data.get("group_id")
+    user_id = message.chat.id
+    await state.clear()
 
     user = message.from_user
     anketa = format_anketa(user.full_name if user else "Unknown", data)
 
-    await state.clear()
     await message.answer(anketa)
+    await message.answer(THANKS)
 
-    # Adminga anketani yuborish
+    if group_id is None:
+        logger.warning("group_id topilmadi, user_id=%s", user_id)
+        return
+
+    sent = 0
+    admins = await bot.get_chat_administrators(chat_id=group_id)
+
+    for admin in admins:
+        if admin.user.is_bot:
+            continue
+
+        if await safe_send(
+            bot=bot,
+            chat_id=admin.user.id,
+            text=anketa,
+            reply_markup=action_inline(
+                group_id=group_id, user_id=user.id if user else message.chat.id
+            ),
+        ):
+            sent += 1
+
+    if sent == 0:
+        logger.warning(
+            "Hech bir admin anketani olmadi (botni start qilmagan bo'lishi mumkin)"
+        )
 
 
 @router.message(StateFilter(Form))
