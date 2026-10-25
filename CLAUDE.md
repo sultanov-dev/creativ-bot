@@ -26,7 +26,7 @@ Flow across files (it spans several, so read them together):
 3. `handlers/admin.py` — `accept`/`reject` callbacks. Verifies the clicker is a group admin, then transitions status atomically with `database.change_status(old, new)` (`UPDATE ... WHERE status = old`, so double-clicks are rejected). `reject` declines the join request; `accept` moves to `voting` and posts a vote message with `keyboards/vote.py` (`VoteCB`) into the group, saving `vote_message_id`.
 4. `handlers/vote.py` — `on_vote` records one vote per group member (`votes` table, applicant can't vote on own application), refreshes the button counters, and finalizes when `yes >= REQUIRED_VOTES` (approve join request) or `no >= REQUIRED_VOTES` (decline).
 
-5. `handlers/reason.py` + `utils/reasons.py` — a 👎 vote makes the bot DM the voter asking for a reason (if the DM fails, the voter is told to `/start` the bot and `handlers/start.py` re-asks). The reply is matched to the voter's latest reason-less 👎 vote from the last 24h (`database.get_pending_reason`, no FSM). On finalization `send_reasons_summary` DMs all collected reasons to group admins; reasons arriving after finalization are forwarded individually.
+5. `handlers/reason.py` + `utils/reasons.py` — a 👎 vote makes the bot DM the voter asking for a reason (if the DM fails, the voter is told to `/start` the bot and `handlers/start.py` re-asks). The reply is matched to the voter's latest reason-less 👎 vote from the last 24h (`database.get_pending_reason`, no FSM). Each reason is DMed to the group admins immediately (`utils/reasons.send_to_admins`), without waiting for voting to finish.
 
 Application status lifecycle: `pending` → `rejected` | `voting` → `accepted` | `rejected`.
 

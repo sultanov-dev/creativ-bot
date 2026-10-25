@@ -105,17 +105,6 @@ async def set_vote_reason(app_id: int, voter_id: int, reason: str) -> None:
         await db.commit()
 
 
-async def get_no_reasons(app_id: int) -> list[tuple[int, str]]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute(
-            "SELECT voter_id, reason FROM votes "
-            "WHERE application_id = ? AND vote = 'no' AND reason IS NOT NULL "
-            "ORDER BY created_at",
-            (app_id,),
-        )
-        return [(r[0], r[1]) for r in await cur.fetchall()]
-
-
 async def count_votes(app_id: int) -> tuple[int, int]:
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(

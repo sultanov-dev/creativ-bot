@@ -24,9 +24,8 @@ async def capture_reason(message: Message, bot: Bot):
     await set_vote_reason(app_id, message.from_user.id, message.text)
     await message.answer("Rahmat, javobingiz adminlarga yetkaziladi 🙏")
 
-    # ovoz berish hali davom etayotgan bo'lsa, sabablar yakunda yig'ib yuboriladi
     app = await get_application(app_id)
-    if app is not None and app["status"] != "voting":
+    if app is not None:
         await send_to_admins(
             bot,
             app["group_id"],

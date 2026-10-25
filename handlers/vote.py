@@ -10,7 +10,6 @@ from config import REQUIRED_VOTES
 from database import add_vote, change_status, count_votes, get_application
 from keyboards.vote import vote_inline
 from utils.admin import get_user_status, safe_send
-from utils.reasons import send_reasons_summary
 
 router = Router()
 
@@ -85,7 +84,6 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
                 # so'rov muddati o'tgan yoki foydalanuvchi allaqachon a'zo
                 pass
             await _finish(call, f"✅ Qabul qilindi ({yes} 👍 / {no} 👎)")
-            await send_reasons_summary(bot, app, "qabul qilindi")
             await safe_send(
                 bot=bot,
                 chat_id=applicant_id,
@@ -101,7 +99,6 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
             except TelegramBadRequest:
                 pass
             await _finish(call, f"❌ Rad etildi ({yes} 👍 / {no} 👎)")
-            await send_reasons_summary(bot, app, "rad etildi")
             await safe_send(
                 bot=bot,
                 chat_id=applicant_id,
