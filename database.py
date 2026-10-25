@@ -1,6 +1,10 @@
+import os
+
 import aiosqlite
 
-DB_PATH = "bot.db"
+from config import DATA_DIR
+
+DB_PATH = os.path.join(DATA_DIR, "bot.db")
 
 
 async def init_db() -> None:

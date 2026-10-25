@@ -1,0 +1,10 @@
+.git
+.claude
+venv
+__pycache__
+*.pyc
+.env
+*.db
+*.session
+*.session-journal
+CLAUDE.md
