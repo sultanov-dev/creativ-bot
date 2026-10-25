@@ -11,7 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# bot.db va userbot.session shu papkada saqlanadi, volume sifatida ulanadi
+# bot.db shu papkada saqlanadi, volume sifatida ulanadi
 VOLUME /data
 
 CMD ["python", "main.py"]

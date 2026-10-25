@@ -13,9 +13,13 @@ from aiogram.exceptions import (
 from aiogram.filters import Command, CommandObject
 from aiogram.types import ChatMemberUpdated, ChatPermissions, Message
 
-from utils import userbot
+from database import get_members
 from utils.admin import get_user_status
 from utils.commands import setup_group_commands
+from utils.members import track, untrack
+
+# Telegram o'chirilgan akkauntlarni shu ism bilan qaytaradi
+DELETED_NAME = "Deleted Account"
 
 router = Router()
 router.message.filter(F.chat.type.in_({"group", "supergroup"}))
@@ -69,31 +73,67 @@ async def bot_added(event: ChatMemberUpdated, bot: Bot):
         await setup_group_commands(bot, event.chat.id)
 
 
-@router.message(Command("kick_deleted"))
-async def kick_deleted(message: Message, bot: Bot):
-    if not userbot.is_ready():
-        await message.reply(
-            "Userbot ulanmagan. `.env` da API_ID/API_HASH ni to'ldirib, "
-            "`python userbot_login.py` ni ishga tushiring."
-        )
+@router.chat_member(F.chat.type.in_({"group", "supergroup"}))
+async def member_changed(event: ChatMemberUpdated):
+    """A'zolar ro'yxatini yangilab boradi (qo'shilganda/chiqqanda)."""
+    member = event.new_chat_member
+    if member.user.is_bot:
         return
 
-    status_msg = await message.reply("🔎 O'chirilgan akkauntlar qidirilmoqda...")
-    deleted = await userbot.list_deleted(message.chat.id)
+    is_in = member.status in (
+        ChatMemberStatus.MEMBER,
+        ChatMemberStatus.ADMINISTRATOR,
+        ChatMemberStatus.CREATOR,
+    ) or (member.status == ChatMemberStatus.RESTRICTED and member.is_member)
+
+    if is_in:
+        await track(event.chat.id, member.user.id)
+    else:
+        await untrack(event.chat.id, member.user.id)
+
+
+async def _get_member(bot: Bot, chat_id: int, user_id: int):
+    for attempt in range(2):
+        try:
+            return await bot.get_chat_member(chat_id, user_id)
+        except TelegramRetryAfter as e:
+            if attempt == 1:
+                raise
+            await asyncio.sleep(e.retry_after)
+
+
+@router.message(Command("kick_deleted"))
+async def kick_deleted(message: Message, bot: Bot):
+    chat_id = message.chat.id
+    members = await get_members(chat_id)
+    status_msg = await message.reply(
+        f"🔎 Bot kuzatgan {len(members)} ta a'zo tekshirilmoqda..."
+    )
 
     kicked = failed = 0
-    for user_id in deleted:
+    for user_id in members:
         try:
-            await _remove(bot, message.chat.id, user_id, ban=False)
+            member = await _get_member(bot, chat_id, user_id)
+            if member is None or member.status in (
+                ChatMemberStatus.LEFT,
+                ChatMemberStatus.KICKED,
+            ):
+                await untrack(chat_id, user_id)
+                continue
+            if member.user.first_name != DELETED_NAME:
+                continue
+            await _remove(bot, chat_id, user_id, ban=False)
+            await untrack(chat_id, user_id)
             kicked += 1
         except (TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter):
-            logger.warning("Chiqarib bo'lmadi: %s", user_id)
+            logger.warning("Tekshirib/chiqarib bo'lmadi: %s", user_id)
             failed += 1
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.05)
 
     await status_msg.edit_text(
-        f"🧹 O'chirilgan akkauntlar: topildi {len(deleted)}, "
-        f"chiqarildi {kicked}, xato {failed}."
+        f"🧹 Tekshirildi: {len(members)}, o'chirilgan akkaunt chiqarildi: {kicked}, "
+        f"xato: {failed}.\n"
+        "Eslatma: bot faqat o'zi ko'rgan (yozgan yoki qo'shilgan) a'zolarni biladi."
     )
 
 

@@ -32,6 +32,12 @@ async def init_db() -> None:
                 PRIMARY KEY (application_id, voter_id)
             );
 
+            CREATE TABLE IF NOT EXISTS members (
+                chat_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                PRIMARY KEY (chat_id, user_id)
+            );
+
             CREATE TABLE IF NOT EXISTS fsm (
                 key   TEXT PRIMARY KEY,
                 value TEXT NOT NULL
@@ -100,6 +106,32 @@ async def add_vote(app_id: int, voter_id: int, vote: str) -> bool:
         )
         await db.commit()
         return cur.rowcount == 1
+
+
+async def add_member(chat_id: int, user_id: int) -> None:
+    async with aiosqlite.connect(DB_PATH, timeout=30) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO members (chat_id, user_id) VALUES (?, ?)",
+            (chat_id, user_id),
+        )
+        await db.commit()
+
+
+async def remove_member(chat_id: int, user_id: int) -> None:
+    async with aiosqlite.connect(DB_PATH, timeout=30) as db:
+        await db.execute(
+            "DELETE FROM members WHERE chat_id = ? AND user_id = ?",
+            (chat_id, user_id),
+        )
+        await db.commit()
+
+
+async def get_members(chat_id: int) -> list[int]:
+    async with aiosqlite.connect(DB_PATH, timeout=30) as db:
+        cur = await db.execute(
+            "SELECT user_id FROM members WHERE chat_id = ?", (chat_id,)
+        )
+        return [r[0] for r in await cur.fetchall()]
 
 
 async def get_pending_reason(voter_id: int) -> dict | None:

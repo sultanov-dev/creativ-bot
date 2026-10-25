@@ -13,7 +13,7 @@ cp .env.example .env                              # then fill in values
 python main.py                                    # long polling; creates bot.db on first run
 ```
 
-Docker: `docker compose up -d --build` runs the bot; `bot.db` and `userbot.session` live in the `bot-data` volume (`DATA_DIR=/data`, default `.` locally). Create the userbot session once with `docker compose run --rm bot python userbot_login.py`.
+Docker: `docker compose up -d --build` runs the bot; `bot.db` lives in the `bot-data` volume (`DATA_DIR=/data`, default `.` locally).
 
 Env vars (read in `config.py`): `BOT_TOKEN`, `ADMIN_IDS` (optional, test/dev only: comma-separated IDs that get extra error alerts; group admins always come from the group itself). Uncaught handler errors are logged and DMed to the creator of the affected group (`handlers/errors.py` resolves the group from the update, the callback's application, or FSM data), `REQUIRED_VOTES` (default 100). There is deliberately no group ID in config: the bot is deployed into whatever group it is added to, and the group is always taken from the update (join request chat, `my_chat_member`, message chat).
 
@@ -30,7 +30,7 @@ Flow across files (it spans several, so read them together):
 
 5. `handlers/reason.py` + `utils/reasons.py` — a 👎 vote makes the bot DM the voter asking for a reason (if the DM fails, the voter is told to `/start` the bot and `handlers/start.py` re-asks). The reply is matched to the voter's latest reason-less 👎 vote from the last 24h (`database.get_pending_reason`, no FSM). Each reason is DMed to the group admins immediately (`utils/reasons.send_to_admins`), without waiting for voting to finish.
 
-6. `handlers/group.py` — group moderation commands (`/kick_deleted`, `/ban`, `/unban`, `/mute`, `/unmute`, `/stats`). A router-level `creator_only` filter means only the group creator is obeyed; everyone else is silently ignored. `/kick_deleted` needs the **userbot**: `utils/userbot.py` is a Telethon client on the creator's own Telegram account (`API_ID`/`API_HASH` from my.telegram.org, session file `userbot.session`, created once by `python userbot_login.py`) because the Bot API cannot list group members. The userbot only lists deleted accounts; the bot itself kicks them (ban + unban). Without the session the bot still runs and `/kick_deleted` replies that the userbot is not connected.
+6. `handlers/group.py` — group moderation commands (`/kick_deleted`, `/ban`, `/unban`, `/mute`, `/unmute`, `/stats`). A router-level `creator_only` filter means only the group creator is obeyed; everyone else is silently ignored. The Bot API cannot list group members, so `/kick_deleted` only checks members the bot has *seen*: `utils/members.TrackMembersMiddleware` (all group messages, join/leave service messages) and the `chat_member` handler record them in the `members` table. The command re-fetches each tracked member and kicks (ban + unban) those whose first name is "Deleted Account". Old silent members the bot never saw are not covered — an earlier Telethon userbot approach was dropped on purpose (personal-account session risk).
 
 Application status lifecycle: `pending` → `rejected` | `voting` → `accepted` | `rejected`.
 
