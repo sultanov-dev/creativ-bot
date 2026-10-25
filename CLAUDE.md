@@ -28,6 +28,8 @@ Flow across files (it spans several, so read them together):
 
 5. `handlers/reason.py` + `utils/reasons.py` — a 👎 vote makes the bot DM the voter asking for a reason (if the DM fails, the voter is told to `/start` the bot and `handlers/start.py` re-asks). The reply is matched to the voter's latest reason-less 👎 vote from the last 24h (`database.get_pending_reason`, no FSM). Each reason is DMed to the group admins immediately (`utils/reasons.send_to_admins`), without waiting for voting to finish.
 
+6. `handlers/group.py` — group moderation commands (`/kick_deleted`, `/ban`, `/unban`, `/mute`, `/unmute`, `/stats`). A router-level `creator_only` filter means only the group creator is obeyed; everyone else is silently ignored. `/kick_deleted` needs the **userbot**: `utils/userbot.py` is a Telethon client on the creator's own Telegram account (`API_ID`/`API_HASH` from my.telegram.org, session file `userbot.session`, created once by `python userbot_login.py`) because the Bot API cannot list group members. The userbot only lists deleted accounts; the bot itself kicks them (ban + unban). Without the session the bot still runs and `/kick_deleted` replies that the userbot is not connected.
+
 Application status lifecycle: `pending` → `rejected` | `voting` → `accepted` | `rejected`.
 
 Supporting pieces:
