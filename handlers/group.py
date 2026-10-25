@@ -36,6 +36,8 @@ async def creator_only(message: Message, bot: Bot) -> bool:
     return status == ChatMemberStatus.CREATOR
 
 
+# avval arzon tekshiruv (buyruqmi?), keyin API chaqiruvli creator_only: har bir xabar uchun so'rov ketmasin
+router.message.filter(F.text.startswith("/"))
 router.message.filter(creator_only)
 
 
@@ -114,20 +116,28 @@ async def kick_deleted(message: Message, bot: Bot):
     for user_id in members:
         try:
             member = await _get_member(bot, chat_id, user_id)
-            if member is None or member.status in (
-                ChatMemberStatus.LEFT,
-                ChatMemberStatus.KICKED,
-            ):
-                await untrack(chat_id, user_id)
-                continue
-            if member.user.first_name != DELETED_NAME:
-                continue
-            await _remove(bot, chat_id, user_id, ban=False)
+        except TelegramBadRequest:
+            # foydalanuvchi topilmadi (guruhda yo'q): ro'yxatdan olib tashlaymiz
             await untrack(chat_id, user_id)
-            kicked += 1
-        except (TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter):
-            logger.warning("Tekshirib/chiqarib bo'lmadi: %s", user_id)
+            continue
+        except (TelegramForbiddenError, TelegramRetryAfter):
+            logger.warning("Tekshirib bo'lmadi: %s", user_id)
             failed += 1
+            continue
+
+        if member is None or member.status in (
+            ChatMemberStatus.LEFT,
+            ChatMemberStatus.KICKED,
+        ):
+            await untrack(chat_id, user_id)
+        elif member.user.first_name == DELETED_NAME:
+            try:
+                await _remove(bot, chat_id, user_id, ban=False)
+                await untrack(chat_id, user_id)
+                kicked += 1
+            except (TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter):
+                logger.warning("Chiqarib bo'lmadi: %s", user_id)
+                failed += 1
         await asyncio.sleep(0.05)
 
     await status_msg.edit_text(

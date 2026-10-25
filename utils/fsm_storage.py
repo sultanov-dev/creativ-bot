@@ -1,7 +1,6 @@
 import json
 from typing import Any, Mapping
 
-import aiosqlite
 from aiogram.fsm.state import State
 from aiogram.fsm.storage.base import (
     BaseStorage,
@@ -10,31 +9,32 @@ from aiogram.fsm.storage.base import (
     StorageKey,
 )
 
+from database import get_db
+
 
 class SQLiteStorage(BaseStorage):
     """FSM holati va ma'lumotlarini SQLite'da saqlaydi, bot qayta ishga tushsa ham yo'qolmaydi."""
 
-    def __init__(self, db_path: str) -> None:
-        self.db_path = db_path
+    def __init__(self) -> None:
         self.key_builder = DefaultKeyBuilder(with_destiny=True)
 
     async def _get(self, key: str) -> str | None:
-        async with aiosqlite.connect(self.db_path, timeout=30) as db:
-            cur = await db.execute("SELECT value FROM fsm WHERE key = ?", (key,))
-            row = await cur.fetchone()
-            return row[0] if row else None
+        db = await get_db()
+        cur = await db.execute("SELECT value FROM fsm WHERE key = ?", (key,))
+        row = await cur.fetchone()
+        return row[0] if row else None
 
     async def _set(self, key: str, value: str | None) -> None:
-        async with aiosqlite.connect(self.db_path, timeout=30) as db:
-            if value is None:
-                await db.execute("DELETE FROM fsm WHERE key = ?", (key,))
-            else:
-                await db.execute(
-                    "INSERT INTO fsm (key, value) VALUES (?, ?) "
-                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                    (key, value),
-                )
-            await db.commit()
+        db = await get_db()
+        if value is None:
+            await db.execute("DELETE FROM fsm WHERE key = ?", (key,))
+        else:
+            await db.execute(
+                "INSERT INTO fsm (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
+        await db.commit()
 
     async def set_state(self, key: StorageKey, state: StateType = None) -> None:
         value = state.state if isinstance(state, State) else state

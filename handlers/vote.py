@@ -2,7 +2,7 @@ from html import escape
 
 from aiogram import Bot, Router
 from aiogram.enums import ChatMemberStatus
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 
 from callbacks import VoteCB
@@ -25,7 +25,7 @@ async def _finish(call: CallbackQuery, result: str) -> None:
     if isinstance(call.message, Message):
         try:
             await call.message.edit_text(f"{call.message.html_text}\n\n{result}")
-        except TelegramBadRequest:
+        except TelegramAPIError:
             pass
 
 
@@ -112,7 +112,8 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
             await call.message.edit_reply_markup(
                 reply_markup=vote_inline(app["id"], yes=yes, no=no)
             )
-        except TelegramBadRequest:
+        except TelegramAPIError:
+            # flood limit yoki o'zgarmagan markup: ovoz baribir yozilgan
             pass
 
     await call.answer(note, show_alert=alert)

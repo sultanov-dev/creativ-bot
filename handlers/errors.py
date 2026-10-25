@@ -1,9 +1,14 @@
 import logging
+import time
 from html import escape
 
 from aiogram import Bot, Router
 from aiogram.enums import ChatMemberStatus
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import (
+    TelegramAPIError,
+    TelegramBadRequest,
+    TelegramForbiddenError,
+)
 from aiogram.fsm.context import FSMContext
 from aiogram.types import ErrorEvent, Update
 
@@ -17,6 +22,24 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 GROUP_TYPES = ("group", "supergroup")
+
+ALERT_COOLDOWN = 300
+_last_alert: dict[str, float] = {}
+
+BENIGN_MARKERS = (
+    "query is too old",
+    "message is not modified",
+    "bot was blocked by the user",
+    "user is deactivated",
+    "message to edit not found",
+)
+
+
+def _is_benign(exc: BaseException) -> bool:
+    """Foydalanuvchiga ham, creator'ga ham ogohlantirish kerak bo'lmagan Telegram xatolari."""
+    return isinstance(exc, (TelegramBadRequest, TelegramForbiddenError)) and any(
+        marker in str(exc).lower() for marker in BENIGN_MARKERS
+    )
 
 
 async def _find_group_id(update: Update, state: FSMContext | None) -> int | None:
@@ -56,6 +79,11 @@ async def on_error(event: ErrorEvent, bot: Bot, state: FSMContext | None = None)
     """Handlerlarda ushlanmagan xatolar: log, foydalanuvchiga xabar, guruh creator'iga ogohlantirish."""
     exc = event.exception
     update = event.update
+
+    if _is_benign(exc):
+        logger.warning("Zararsiz Telegram xatosi: %r", exc)
+        return True
+
     logger.error("Ushlanmagan xatolik: %r", exc, exc_info=exc)
 
     try:
@@ -76,6 +104,13 @@ async def on_error(event: ErrorEvent, bot: Bot, state: FSMContext | None = None)
         creator = await _creator_id(bot, group_id)
         if creator is not None:
             recipients.add(creator)
+
+    # bir xil xato uchun creator'ga 5 daqiqada bir martadan ko'p yozmaymiz
+    alert_key = f"{type(exc).__name__}:{exc}"
+    now = time.monotonic()
+    if now - _last_alert.get(alert_key, -ALERT_COOLDOWN) < ALERT_COOLDOWN:
+        return True
+    _last_alert[alert_key] = now
 
     text = f"⚠️ Bot xatosi: <code>{escape(type(exc).__name__)}: {escape(str(exc))[:300]}</code>"
     for chat_id in recipients:

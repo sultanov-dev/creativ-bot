@@ -5,6 +5,7 @@ ASK_REASON = "Nega guruhga qo'shilmoqchisiz?"
 
 WRONG_AGE = "Iltimos, yoshingizni to'g'ri yozing (10 dan 100 gacha)."
 ONLY_TEXT = "Iltimos, javobni matn ko'rinishida yozing ✍️"
+TOO_LONG = "Javob juda uzun. Iltimos, 800 belgidan oshmasin, qisqaroq yozing ✍️"
 ERROR_GENERIC = "Xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring."
 ALREADY_APPLIED = "Sizning arizangiz allaqachon ko'rib chiqilmoqda. Natijani kuting ⏳"
 THANKS ="Savollarga javob uchun rahmat! 😊 Arizangiz adminga yuborildi."

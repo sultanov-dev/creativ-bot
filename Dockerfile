@@ -11,7 +11,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# bot.db shu papkada saqlanadi, volume sifatida ulanadi
+# root bo'lmagan foydalanuvchi; bot.db shu papkada saqlanadi, volume sifatida ulanadi
+RUN useradd --create-home app && mkdir /data && chown app:app /data
+USER app
 VOLUME /data
 
 CMD ["python", "main.py"]

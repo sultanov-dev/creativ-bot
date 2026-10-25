@@ -30,5 +30,5 @@ async def capture_reason(message: Message, bot: Bot):
             bot,
             app["group_id"],
             f"📋 <b>{escape(app['full_name'])}</b> arizasi bo'yicha 👎 sababi\n"
-            f"• <b>{escape(message.from_user.full_name)}</b>: {escape(message.text)}",
+            f"• <b>{escape(message.from_user.full_name)}</b>: {escape(message.text[:1000])}",
         )
