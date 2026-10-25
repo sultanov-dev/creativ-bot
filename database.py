@@ -78,6 +78,44 @@ async def add_vote(app_id: int, voter_id: int, vote: str) -> bool:
         return cur.rowcount == 1
 
 
+async def get_pending_reason(voter_id: int) -> dict | None:
+    """Oxirgi 24 soat ichidagi, sababi hali yozilmagan 'yo'q' ovozi."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            """
+            SELECT v.application_id AS app_id, a.full_name AS applicant_name
+            FROM votes v JOIN applications a ON a.id = v.application_id
+            WHERE v.voter_id = ? AND v.vote = 'no' AND v.reason IS NULL
+              AND v.created_at > datetime('now', '-1 day')
+            ORDER BY v.created_at DESC LIMIT 1
+            """,
+            (voter_id,),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+
+async def set_vote_reason(app_id: int, voter_id: int, reason: str) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE votes SET reason = ? WHERE application_id = ? AND voter_id = ?",
+            (reason, app_id, voter_id),
+        )
+        await db.commit()
+
+
+async def get_no_reasons(app_id: int) -> list[tuple[int, str]]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT voter_id, reason FROM votes "
+            "WHERE application_id = ? AND vote = 'no' AND reason IS NOT NULL "
+            "ORDER BY created_at",
+            (app_id,),
+        )
+        return [(r[0], r[1]) for r in await cur.fetchall()]
+
+
 async def count_votes(app_id: int) -> tuple[int, int]:
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(

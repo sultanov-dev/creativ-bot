@@ -1,3 +1,5 @@
+from html import escape
+
 from aiogram import Bot, Router
 from aiogram.enums import ChatMemberStatus
 from aiogram.exceptions import TelegramBadRequest
@@ -8,6 +10,7 @@ from config import REQUIRED_VOTES
 from database import add_vote, change_status, count_votes, get_application
 from keyboards.vote import vote_inline
 from utils.admin import get_user_status, safe_send
+from utils.reasons import send_reasons_summary
 
 router = Router()
 
@@ -55,6 +58,23 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
         await call.answer("Siz allaqachon ovoz bergansiz", show_alert=True)
         return
 
+    note, alert = "Ovozingiz qabul qilindi", False
+    if callback_data.vote == "no":
+        asked = await safe_send(
+            bot=bot,
+            chat_id=voter_id,
+            text=(
+                f"Siz <b>{escape(app['full_name'])}</b> arizasiga 👎 berdingiz.\n"
+                "Nima uchun \"yo'q\" dedingiz? Sababini yozib yuboring:"
+            ),
+        )
+        if not asked:
+            note = (
+                "Sababini aytish uchun botga lichkada /start bosing, "
+                "so'ng sababni yozing."
+            )
+            alert = True
+
     yes, no = await count_votes(app["id"])
 
     if yes >= REQUIRED_VOTES:
@@ -65,12 +85,13 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
                 # so'rov muddati o'tgan yoki foydalanuvchi allaqachon a'zo
                 pass
             await _finish(call, f"✅ Qabul qilindi ({yes} 👍 / {no} 👎)")
+            await send_reasons_summary(bot, app, "qabul qilindi")
             await safe_send(
                 bot=bot,
                 chat_id=applicant_id,
                 text="Tabriklaymiz, arizangiz qabul qilindi! 🎉",
             )
-        await call.answer("Ovozingiz qabul qilindi")
+        await call.answer(note, show_alert=alert)
         return
 
     if no >= REQUIRED_VOTES:
@@ -80,12 +101,13 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
             except TelegramBadRequest:
                 pass
             await _finish(call, f"❌ Rad etildi ({yes} 👍 / {no} 👎)")
+            await send_reasons_summary(bot, app, "rad etildi")
             await safe_send(
                 bot=bot,
                 chat_id=applicant_id,
                 text="Afsuski, guruh a'zolari arizangizni rad etishdi.",
             )
-        await call.answer("Ovozingiz qabul qilindi")
+        await call.answer(note, show_alert=alert)
         return
 
     if isinstance(call.message, Message):
@@ -96,4 +118,4 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
         except TelegramBadRequest:
             pass
 
-    await call.answer("Ovozingiz qabul qilindi")
+    await call.answer(note, show_alert=alert)
