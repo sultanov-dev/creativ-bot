@@ -25,6 +25,11 @@ async def init_db() -> None:
                 created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (application_id, voter_id)
             );
+
+            CREATE TABLE IF NOT EXISTS fsm (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
         """)
         await db.commit()
 

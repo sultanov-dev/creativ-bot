@@ -35,5 +35,5 @@ Application status lifecycle: `pending` → `rejected` | `voting` → `accepted`
 Supporting pieces:
 - `handlers/__init__.py:get_routers()` — router registration order matters; add new routers there.
 - `callbacks.py` — `CallbackData` factories; `texts.py` — user-facing message constants; `utils/` — bot instance (`create_bot.py`), `safe_send`/`is_group_admin`/`mark_done` helpers (`admin.py`), typing-delay sender, number extraction, anketa formatting.
-- `database.py` — every function opens its own `aiosqlite.connect(DB_PATH)` connection (`bot.db` in the cwd, gitignored via `*.db`); schema is created by `init_db()` with `CREATE TABLE IF NOT EXISTS`, so schema changes need a manual migration.
+- `database.py` — every function opens its own `aiosqlite.connect(DB_PATH)` connection (`bot.db` in the cwd, gitignored via `*.db`); FSM state/data also live in `bot.db` (`fsm` table, `utils/fsm_storage.SQLiteStorage`) so half-filled anketas survive restarts; schema is created by `init_db()` with `CREATE TABLE IF NOT EXISTS`, so schema changes need a manual migration.
 - All user-facing text is in Uzbek; keep new messages and log strings consistent with that.

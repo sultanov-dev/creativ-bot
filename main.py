@@ -3,16 +3,17 @@ import logging
 
 from aiogram import Dispatcher
 
-from database import init_db
+from database import DB_PATH, init_db
 from handlers import get_routers
 from utils import userbot
 from utils.commands import setup_private_commands
 from utils.create_bot import bot
+from utils.fsm_storage import SQLiteStorage
 
 
 async def main():
     logging.basicConfig(level=logging.INFO)
-    dp = Dispatcher()
+    dp = Dispatcher(storage=SQLiteStorage(DB_PATH))
     dp.include_routers(*get_routers())
 
     await init_db()
