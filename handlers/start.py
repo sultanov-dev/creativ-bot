@@ -6,26 +6,19 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from database import get_pending_reason
-from states import Form
-from texts import ASK_ABOUT, ASK_AGE, ASK_JOB, ASK_REASON
+from utils.questions import question_for
 
 router = Router()
-
-QUESTIONS = {
-    Form.age.state: ASK_AGE,
-    Form.job.state: ASK_JOB,
-    Form.about.state: ASK_ABOUT,
-    Form.join_group.state: ASK_REASON,
-}
 
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     # anketa yarim qolgan bo'lsa, to'xtagan savolni qayta beramiz
-    question = QUESTIONS.get(await state.get_state() or "")
+    question = question_for(await state.get_state() or "")
     if question:
+        text, markup = question
         await message.answer("Anketani to'ldirishni davom ettiramiz 👇")
-        await message.answer(question)
+        await message.answer(text, reply_markup=markup)
         return
 
     name = escape(message.from_user.full_name) if message.from_user is not None else ""

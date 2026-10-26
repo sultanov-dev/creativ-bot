@@ -1,11 +1,22 @@
 from html import escape
 
 
-def format_anketa(full_name: str, data: dict) -> str:
-    return (
-        f"👤 <b>Ism:</b> {escape(full_name)}\n"
-        f"🎂 <b>Yosh:</b> {data.get('age')}\n"
-        f"💼 <b>Kasb:</b> {escape(data['job'])}\n"
-        f"📝 <b>O'zi haqida:</b> {escape(data['about'])}\n"
-        f"❓ <b>Qo'shilish sababi:</b> {escape(data['join_group'])}\n"
-    )
+def full_name_of(data: dict) -> str:
+    """Ism va familiya alohida saqlanadi, ko'rsatilganda bitta to'liq ism bo'ladi."""
+    return " ".join(p for p in (data.get("first_name"), data.get("last_name")) if p)
+
+
+def format_anketa(data: dict, *, with_phone: bool = False) -> str:
+    """Anketa matni. Telefon shaxsiy ma'lumot: guruhga ketadigan variantda with_phone=False."""
+    lines = [f"👤 <b>Ism:</b> {escape(full_name_of(data))}"]
+    if data.get("username"):
+        lines.append(f"🔗 <b>Username:</b> @{escape(data['username'])}")
+    if with_phone and data.get("phone"):
+        lines.append(f"📞 <b>Telefon:</b> {escape(data['phone'])}")
+    lines += [
+        f"🎂 <b>Yosh:</b> {data.get('age')}",
+        f"💼 <b>Kasb:</b> {escape(data['job'])}",
+        f"📝 <b>O'zi haqida:</b> {escape(data['about'])}",
+        f"❓ <b>Qo'shilish sababi:</b> {escape(data['join_group'])}",
+    ]
+    return "\n".join(lines) + "\n"

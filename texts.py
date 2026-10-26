@@ -1,3 +1,22 @@
+ASK_FIRST_NAME = "Ismingiz nima? (Telegramdagi nom emas, haqiqiy ismingizni yozing)"
+ASK_LAST_NAME = "Familiyangiz nima?"
+ASK_USERNAME = (
+    "Telegram username'ingizni yozing, masalan: @username.\n"
+    "Bu majburiy emas, xohlamasangiz o'tkazib yuborishingiz mumkin."
+)
+ASK_PHONE = (
+    "Telefon raqamingizni yozing yoki pastdagi tugma orqali yuboring.\n"
+    "Bu ham majburiy emas, o'tkazib yuborishingiz mumkin."
+)
+SKIP_BUTTON = "⏭ O'tkazib yuborish"
+PHONE_BUTTON = "📱 Raqamni ulashish"
+WRONG_NAME = "Iltimos, ismni to'g'ri yozing: faqat harflar, 2 dan 40 belgigacha."
+WRONG_USERNAME = (
+    "Username noto'g'ri. U lotin harfi bilan boshlanib, 5 dan 32 belgigacha harf, raqam yoki _ bo'lishi kerak. "
+    "Yoki o'tkazib yuboring."
+)
+WRONG_PHONE = "Telefon raqami noto'g'ri. Masalan: +998901234567. Yoki o'tkazib yuboring."
+WRONG_CONTACT = "Iltimos, o'zingizning raqamingizni yuboring."
 ASK_AGE = "Yoshingiz nechida?"
 ASK_JOB = "Kasbingiz nima?"
 ASK_ABOUT = "O'zingiz haqingizda gapirib bering:"

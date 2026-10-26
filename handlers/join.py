@@ -4,11 +4,11 @@ from aiogram.types import ChatJoinRequest
 
 from database import get_active_application
 from states import Form
-from texts import ALREADY_APPLIED, ASK_AGE
+from texts import ALREADY_APPLIED
 from utils.admin import safe_send
 from utils.fsm import get_private_state
 from utils.get_welcome import welcome_text
-from utils.typing import send_typing
+from utils.questions import ask
 
 router = Router()
 
@@ -27,7 +27,7 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
     )
 
     # holat javob kelishidan oldin o'rnatilishi kerak
-    await private_state.set_state(Form.age)
+    await private_state.set_state(Form.first_name)
     await private_state.update_data(
         group_id=request.chat.id, user_id=request.user_chat_id
     )
@@ -35,9 +35,4 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
     await bot.send_message(
         chat_id=request.user_chat_id, text=welcome_text(request.from_user.full_name)
     )
-    await send_typing(
-        bot=bot,
-        chat_id=request.user_chat_id,
-        text=ASK_AGE,
-        delay=3.0,
-    )
+    await ask(bot, request.user_chat_id, Form.first_name, delay=3.0)

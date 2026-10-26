@@ -13,7 +13,13 @@ from aiogram.exceptions import (
 from aiogram.filters import Command, CommandObject
 from aiogram.types import ChatMemberUpdated, ChatPermissions, Message
 
-from database import count_votes, end_voting_now, get_application, get_members
+from database import (
+    count_votes,
+    end_voting_now,
+    get_application,
+    get_application_by_vote_message,
+    get_members,
+)
 from utils.admin import get_user_status, safe_send
 from utils.commands import setup_group_commands
 from utils.members import track, untrack
@@ -255,34 +261,39 @@ FINISH_RESULTS = {
 
 
 @router.message(Command("finish"))
-async def finish(message: Message, command: CommandObject, bot: Bot):
-    """Ovoz berishni muddatidan oldin tugatadi; natijalar creator'ga lichkada yuboriladi."""
-    app_id = None
-    if command.args:
-        if not _is_number(command.args.strip()):
-            await message.reply("Ishlatish: /finish yoki /finish &lt;ariza_id&gt;")
-            return
-        app_id = int(command.args.strip())
+async def finish(message: Message, bot: Bot):
+    """Reply qilingan ovoz berish xabaridagi ovozni darhol tugatadi; natija creator'ga lichkada yuboriladi.
 
-    ids = await end_voting_now(message.chat.id, app_id)
-    if not ids:
-        await message.reply("Hozir ovoz berilayotgan ariza yo'q.")
+    Reply bo'lmasa hech narsa tugatilmaydi: guruhdagi boshqa faol ovozlar tegilmaydi.
+    """
+    reply = message.reply_to_message
+    if reply is None:
+        await message.reply(
+            "Tugatmoqchi bo'lgan ovoz berish xabariga reply qilib /finish yozing. "
+            "Faqat o'sha ovoz tugatiladi."
+        )
         return
 
+    app = await get_application_by_vote_message(message.chat.id, reply.message_id)
+    if app is None:
+        await message.reply("Bu ovoz berish xabari emas. Ovoz berish xabariga reply qiling.")
+        return
+    if app["status"] != "voting":
+        await message.reply("Bu ovoz berish allaqachon yakunlangan.")
+        return
+
+    await end_voting_now(message.chat.id, app["id"])
     await finalize_due_votings(bot)
 
-    lines = [f"🏁 <b>Ovoz berish tugatildi</b> ({len(ids)} ta ariza)\n"]
-    for i in ids:
-        app = await get_application(i)
-        if app is None:
-            continue
-        yes, no = await count_votes(i)
-        lines.append(
-            f"• №{i} <b>{escape(app['full_name'])}</b>: {yes} 👍 / {no} 👎, "
-            f"{FINISH_RESULTS.get(app['status'], app['status'])}"
-        )
+    app = await get_application(app["id"]) or app
+    yes, no = await count_votes(app["id"])
+    report = (
+        "🏁 <b>Ovoz berish tugatildi</b>\n\n"
+        f"№{app['id']} <b>{escape(app['full_name'])}</b>: {yes} 👍 / {no} 👎, "
+        f"{FINISH_RESULTS.get(app['status'], app['status'])}"
+    )
 
-    delivered = await safe_send(bot=bot, chat_id=message.from_user.id, text="\n".join(lines))
+    delivered = await safe_send(bot=bot, chat_id=message.from_user.id, text=report)
     if delivered:
         await message.reply("🏁 Ovoz berish tugatildi, hisobot lichkangizga yuborildi.")
     else:
@@ -290,4 +301,3 @@ async def finish(message: Message, command: CommandObject, bot: Bot):
             "🏁 Ovoz berish tugatildi, lekin hisobotni lichkaga yuborib bo'lmadi: "
             "botga lichkada /start bosing."
         )
-

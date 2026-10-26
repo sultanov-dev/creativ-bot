@@ -50,7 +50,11 @@ async def init_db() -> None:
             status          TEXT NOT NULL DEFAULT 'pending',
             vote_message_id INTEGER,
             created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            voting_ends_at  TIMESTAMP
+            voting_ends_at  TIMESTAMP,
+            first_name      TEXT,
+            last_name       TEXT,
+            tg_username     TEXT,
+            phone           TEXT
         );
 
         CREATE TABLE IF NOT EXISTS votes (
@@ -86,6 +90,8 @@ async def init_db() -> None:
     # eski bazalar uchun: CREATE TABLE IF NOT EXISTS mavjud jadvalga ustun qo'shmaydi
     await _add_column(db, "applications", "voting_ends_at", "TIMESTAMP")
     await _add_column(db, "votes", "weight", "INTEGER NOT NULL DEFAULT 1")
+    for column in ("first_name", "last_name", "tg_username", "phone"):
+        await _add_column(db, "applications", column, "TEXT")
     await db.execute(
         "UPDATE applications SET voting_ends_at = datetime('now', ?) "
         "WHERE status = 'voting' AND voting_ends_at IS NULL",
@@ -101,14 +107,26 @@ async def _add_column(db: aiosqlite.Connection, table: str, column: str, ddl: st
 
 
 async def create_application(
-    user_id: int, group_id: int, full_name: str, anketa: str
+    user_id: int,
+    group_id: int,
+    full_name: str,
+    anketa: str,
+    *,
+    first_name: str | None = None,
+    last_name: str | None = None,
+    tg_username: str | None = None,
+    phone: str | None = None,
 ) -> int | None:
-    """Ariza id'si; shu guruhga faol ariza allaqachon bo'lsa None."""
+    """Ariza id'si; shu guruhga faol ariza allaqachon bo'lsa None.
+
+    full_name = ism + familiya (ko'rsatish uchun); ism va familiya alohida ustunlarda ham saqlanadi.
+    """
     db = await get_db()
     try:
         cur = await db.execute(
-            "INSERT INTO applications (user_id, group_id, full_name, anketa) VALUES (?, ?, ?, ?)",
-            (user_id, group_id, full_name, anketa),
+            "INSERT INTO applications (user_id, group_id, full_name, anketa, "
+            "first_name, last_name, tg_username, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, group_id, full_name, anketa, first_name, last_name, tg_username, phone),
         )
     except aiosqlite.IntegrityError:
         return None
@@ -119,6 +137,17 @@ async def create_application(
 async def get_application(app_id: int) -> dict | None:
     db = await get_db()
     cur = await db.execute("SELECT * FROM applications WHERE id = ?", (app_id,))
+    row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def get_application_by_vote_message(group_id: int, message_id: int) -> dict | None:
+    """Guruhdagi ovoz berish xabari (vote_message_id) bo'yicha ariza."""
+    db = await get_db()
+    cur = await db.execute(
+        "SELECT * FROM applications WHERE group_id = ? AND vote_message_id = ?",
+        (group_id, message_id),
+    )
     row = await cur.fetchone()
     return dict(row) if row else None
 

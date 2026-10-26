@@ -61,7 +61,9 @@ async def _send_report(bot: Bot, app: dict, yes: int, no: int) -> str:
     yes_n, no_n = await count_voters(app["id"])
     text = (
         "⚖️ <b>Oxirgi qaror sizda</b>\n\n"
-        f"{app['anketa']}\n\n"
+        f"{app['anketa']}"
+        + (f"📞 <b>Telefon:</b> {escape(app['phone'])}\n" if app.get("phone") else "")
+        + "\n"
         f"Ovozlar (admin ovozi {ADMIN_VOTE_WEIGHT} ga teng): "
         f"<b>{yes}</b> 👍 / <b>{no}</b> 👎\n"
         f"Ovoz bergan a'zolar: {yes_n} 👍 / {no_n} 👎\n\n"
