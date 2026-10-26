@@ -35,6 +35,17 @@ async def is_group_admin(bot: Bot, chat_id: int, user_id: int) -> bool:
     return status in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR)
 
 
+async def get_group_creator_id(bot: Bot, chat_id: int) -> int | None:
+    try:
+        admins = await bot.get_chat_administrators(chat_id)
+    except (TelegramBadRequest, TelegramForbiddenError):
+        return None
+    for a in admins:
+        if a.status == ChatMemberStatus.CREATOR:
+            return a.user.id
+    return None
+
+
 async def safe_send(bot: Bot, chat_id: int, text: str, **kwargs) -> bool:
     try:
         await bot.send_message(chat_id=chat_id, text=text, **kwargs)

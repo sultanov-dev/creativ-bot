@@ -86,7 +86,8 @@ async def accept(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
                 "🗳 <b>Yangi a'zo uchun ovoz berish</b>\n\n"
                 f"{app['anketa']}\n\n"
                 f"⏳ Ovoz berish <b>{VOTING_MINUTES}</b> daqiqa davom etadi. "
-                "Muddat tugagach ko'proq ovoz to'plagan tomon g'olib bo'ladi.\n"
+                "Muddat tugagach 👍 ko'p bo'lsa ariza qabul qilinadi, "
+                "aks holda oxirgi qarorni guruh egasi qabul qiladi.\n"
                 f"Guruh adminining ovozi <b>{ADMIN_VOTE_WEIGHT}</b> ta ovozga teng."
             ),
             reply_markup=vote_inline(app_id=app["id"]),
