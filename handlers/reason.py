@@ -21,5 +21,5 @@ async def capture_reason(message: Message):
     await set_vote_reason(app_id, message.from_user.id, message.text)
     # sabab saqlanadi: ovoz berish tugagach AI uni boshqalar bilan umumlashtirib, rad etilgan arizachiga yuboradi (utils/voting.py)
     await message.answer(
-        "Rahmat, fikringiz qabul qilindi 🙏 Ariza rad etilsa, sabablar umumlashtirilib, ismingiz aytilmagan holda arizachiga yumshoq tarzda tushuntiriladi."
+        "Rahmat, fikringiz qabul qilindi 🙏"
     )

@@ -21,6 +21,7 @@ from database import (
     get_members,
 )
 from utils.admin import get_user_status, is_admin, safe_send
+from utils.autodelete import CommandCleanupMiddleware
 from utils.commands import setup_group_commands
 from utils.members import track, untrack
 from utils.voting import finalize_due_votings
@@ -49,6 +50,8 @@ router.message.filter(
     Command("kick_deleted", "ban", "unban", "mute", "unmute", "stats", "finish")
 )
 router.message.filter(admin_only)
+# adminning buyruq xabari ham (bot javobi kabi) AUTO_DELETE_SECONDS dan keyin o'chadi
+router.message.middleware(CommandCleanupMiddleware())
 
 # mute muddati chegarasi (1 yil): timedelta/Telegram'da haddan katta son xatoga olib kelmasin
 MAX_MUTE_MINUTES = 366 * 24 * 60

@@ -2,16 +2,16 @@ import asyncio
 import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Any
+from typing import Any, Awaitable, Callable
 
-from aiogram import Bot
+from aiogram import BaseMiddleware, Bot
 from aiogram.client.session.middlewares.base import (
     BaseRequestMiddleware,
     NextRequestMiddlewareType,
 )
 from aiogram.exceptions import TelegramAPIError
 from aiogram.methods import SendMessage, TelegramMethod
-from aiogram.types import InlineKeyboardMarkup, Message
+from aiogram.types import InlineKeyboardMarkup, Message, TelegramObject
 
 from callbacks import VoteCB
 from config import AUTO_DELETE_SECONDS
@@ -59,6 +59,34 @@ async def _delete_later(bot: Bot, chat_id: int, message_id: int) -> None:
         pass  # xabar allaqachon o'chirilgan yoki o'chirish huquqi yo'q
 
 
+def schedule_delete(bot: Bot, chat_id: int, message_id: int) -> None:
+    """Xabarni AUTO_DELETE_SECONDS dan keyin o'chirishga qo'yadi (0 bo'lsa hech narsa qilmaydi)."""
+    if AUTO_DELETE_SECONDS <= 0:
+        return
+    task = asyncio.create_task(_delete_later(bot, chat_id, message_id))
+    _tasks.add(task)
+    task.add_done_callback(_tasks.discard)
+
+
+class CommandCleanupMiddleware(BaseMiddleware):
+    """Admin guruhga yozgan va bot ishlagan buyruq xabarini ham (/finish, /ban...) o'chiradi: chat to'lib qolmasin.
+
+    Faqat handler topilgan xabarlarga ishlaydi (router.message.middleware): begona buyruqlarga tegmaydi.
+    """
+
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict[str, Any],
+    ) -> Any:
+        try:
+            return await handler(event, data)
+        finally:
+            if isinstance(event, Message) and event.chat.type in GROUP_TYPES:
+                schedule_delete(data["bot"], event.chat.id, event.message_id)
+
+
 class AutoDeleteMiddleware(BaseRequestMiddleware):
     """Botning guruhga yozgan xabarlarini AUTO_DELETE_SECONDS dan keyin o'chiradi (guruh to'lib ketmasin).
 
@@ -80,7 +108,5 @@ class AutoDeleteMiddleware(BaseRequestMiddleware):
             and not _keep.get()
             and not _is_vote_message(method)
         ):
-            task = asyncio.create_task(_delete_later(bot, result.chat.id, result.message_id))
-            _tasks.add(task)
-            task.add_done_callback(_tasks.discard)
+            schedule_delete(bot, result.chat.id, result.message_id)
         return result
