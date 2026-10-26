@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 
 import aiosqlite
@@ -76,6 +77,13 @@ async def init_db() -> None:
             ON applications (user_id, group_id)
             WHERE status IN ('pending', 'voting', 'creator_review');
 
+        -- foydalanuvchining birinchi anketasi: qayta qo'shilganda savollar takrorlanmaydi
+        CREATE TABLE IF NOT EXISTS profiles (
+            user_id    INTEGER PRIMARY KEY,
+            data       TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS members (
             chat_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
@@ -132,6 +140,23 @@ async def create_application(
         return None
     await db.commit()
     return cur.lastrowid  # type: ignore
+
+
+async def save_profile(user_id: int, data: dict) -> None:
+    """Birinchi anketani saqlaydi; allaqachon bor bo'lsa, o'zgartirmaydi."""
+    db = await get_db()
+    await db.execute(
+        "INSERT OR IGNORE INTO profiles (user_id, data) VALUES (?, ?)",
+        (user_id, json.dumps(data, ensure_ascii=False)),
+    )
+    await db.commit()
+
+
+async def get_profile(user_id: int) -> dict | None:
+    db = await get_db()
+    cur = await db.execute("SELECT data FROM profiles WHERE user_id = ?", (user_id,))
+    row = await cur.fetchone()
+    return json.loads(row["data"]) if row else None
 
 
 async def get_application(app_id: int) -> dict | None:

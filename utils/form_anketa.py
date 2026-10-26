@@ -1,5 +1,10 @@
 from html import escape
 
+# anketaning foydalanuvchiga tegishli maydonlari (database.profiles'da saqlanadi)
+PROFILE_FIELDS = (
+    "first_name", "last_name", "username", "phone", "age", "job", "about", "join_group",
+)
+
 
 def full_name_of(data: dict) -> str:
     """Ism va familiya alohida saqlanadi, ko'rsatilganda bitta to'liq ism bo'ladi."""

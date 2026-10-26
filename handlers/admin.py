@@ -1,13 +1,12 @@
 from aiogram import Bot, F, Router
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery
 
 from callbacks import ApplicantCB
-from config import VOTING_MINUTES
-from database import change_status, get_application, set_vote_message, start_voting
-from keyboards.vote import vote_inline
+from database import change_status, get_application
 from texts import APPLICATION_REJECTED
 from utils.admin import is_group_admin, mark_done, safe_send
+from utils.applications import open_voting
 
 router = Router()
 
@@ -69,39 +68,26 @@ async def accept(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
         await call.answer("Bu amal faqat guruh adminlari uchun.", show_alert=True)
         return
 
-    if not await start_voting(app["id"], VOTING_MINUTES):
-        await call.answer("Bu ariza allaqachon ko'rib chiqilgan.", show_alert=True)
-        await mark_done(
-            call=call,
-            result="⚠️ Allaqachon ko'rib chiqilgan",
-            bot=bot,
-            chat_id=group_id,
-            user_id=call.from_user.id,
-        )
-        return
-
-    try:
-        vote_msg = await bot.send_message(
-            chat_id=group_id,
-            text=(
-                "🗳 <b>Yangi a'zo uchun ovoz berish</b>\n\n"
-                f"{app['anketa']}\n\n"
-                f"⏳ Ovoz berish <b>{VOTING_MINUTES}</b> daqiqa davom etadi. "
-                "Muddat tugagach natija guruh egasiga yuboriladi, "
-                "yakuniy qarorni esa guruh egasi qabul qiladi."
-            ),
-            reply_markup=vote_inline(app_id=app["id"]),
-        )
-    except (TelegramBadRequest, TelegramForbiddenError):
-        # xabar yuborilmasa, ariza qayta ko'rib chiqilishi uchun holatni qaytaramiz
-        await change_status(app_id=app["id"], old="voting", new="pending")
+    if not await open_voting(bot, app):
+        # ikki marta bosilgan bo'lsa, ariza allaqachon pending emas
+        current = await get_application(app["id"])
+        if current is None or current["status"] != "pending":
+            await call.answer("Bu ariza allaqachon ko'rib chiqilgan.", show_alert=True)
+            await mark_done(
+                call=call,
+                result="⚠️ Allaqachon ko'rib chiqilgan",
+                bot=bot,
+                chat_id=group_id,
+                user_id=call.from_user.id,
+            )
+            return
+        # ovoz xabari yuborilmasa, ariza qayta ko'rib chiqilishi uchun pending'da qoladi
         await call.answer(
             "Kechirasiz, ovoz berish xabarini guruhga yuborib bo'lmadi. "
             "Botning guruhda xabar yozish huquqini tekshiring.",
             show_alert=True,
         )
         return
-    await set_vote_message(app_id=app["id"], message_id=vote_msg.message_id)
 
     await call.answer(text="Ariza guruh a'zolari ovoziga qo'yildi")
     await mark_done(
