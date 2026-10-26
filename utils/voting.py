@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 # creatorga boradigan xabar Telegram limiti (4096) ichida qolishi uchun
 REPORT_LIMIT = 3500
 REASON_LIMIT = 200
+HEADER = "@@HEADER@@"  # creator va adminlar uchun sarlavha almashtiriladi
 
 
 async def _voter_name(bot: Bot, group_id: int, voter_id: int) -> str:
@@ -58,7 +59,7 @@ async def _send_report(bot: Bot, app: dict, yes: int, no: int) -> str:
         return UNREACHABLE
 
     text = (
-        "⚖️ <b>Yakuniy qaror sizda</b>\n\n"
+        f"{HEADER}\n\n"
         f"{app['anketa']}"
         + (f"📞 <b>Telefon:</b> {escape(app['phone'])}\n" if app.get("phone") else "")
         + "\n"
@@ -77,14 +78,28 @@ async def _send_report(bot: Bot, app: dict, yes: int, no: int) -> str:
         shown += 1
     if shown < len(no_votes):
         text += f"\n… va yana {len(no_votes) - shown} ta"
-    text += "\n\nArizani qabul qilasizmi yoki rad etasizmi?"
-
     try:
         await bot.send_message(
-            chat_id=creator_id, text=text, reply_markup=creator_inline(app["id"])
+            chat_id=creator_id,
+            text=text.replace(HEADER, "⚖️ <b>Yakuniy qaror sizda</b>", 1)
+            + "\n\nArizani qabul qilasizmi yoki rad etasizmi?",
+            reply_markup=creator_inline(app["id"]),
         )
     except (TelegramBadRequest, TelegramForbiddenError):
         return UNREACHABLE
+
+    # boshqa adminlarga faqat ma'lumot uchun nusxa (tugmalarsiz): qarorni baribir creator qabul qiladi
+    info = text.replace(HEADER, "📋 <b>Ovoz berish yakunlandi</b>", 1) + (
+        "\n\nYakuniy qarorni guruh egasi qabul qiladi."
+    )
+    try:
+        admins = await bot.get_chat_administrators(app["group_id"])
+    except TelegramAPIError:
+        return SENT
+    for a in admins:
+        if a.user.is_bot or a.user.id == creator_id:
+            continue
+        await safe_send(bot=bot, chat_id=a.user.id, text=info)
     return SENT
 
 
