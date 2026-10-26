@@ -1,20 +1,26 @@
 from html import escape
 
-from aiogram import Router
+from aiogram import Bot, Router
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from database import get_pending_reason
+from handlers.profile import show_review
+from states import Form
 from utils.questions import question_for
 
 router = Router()
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, state: FSMContext):
+async def cmd_start(message: Message, state: FSMContext, bot: Bot):
     # anketa yarim qolgan bo'lsa, to'xtagan savolni qayta beramiz
-    question = question_for(await state.get_state() or "")
+    current = await state.get_state() or ""
+    if current == Form.review.state:
+        await show_review(bot, message.chat.id, state)
+        return
+    question = question_for(current)
     if question:
         text, markup = question
         await message.answer("Anketani to'ldirishda davom etamiz 👇")

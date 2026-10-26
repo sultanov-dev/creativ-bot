@@ -10,6 +10,7 @@ from aiogram.types import Message
 
 from config import ADMIN_IDS
 from database import change_status, create_application, get_active_application, save_profile
+from handlers.profile import finish_edit
 from keyboards.action import action_inline
 from states import Form
 from texts import (
@@ -63,6 +64,15 @@ def _clean_phone(text: str) -> str | None:
     return ("+" if text.startswith("+") else "") + digits
 
 
+async def _advance(message: Message, bot: Bot, state: FSMContext, next_state) -> None:
+    """Keyingi savolga o'tadi; avval saqlangan anketa tahrirlanayotgan bo'lsa, o'zgarishni saqlab ko'rib chiqishga qaytadi."""
+    if (await state.get_data()).get("editing"):
+        await finish_edit(bot, message.chat.id, state)
+        return
+    await state.set_state(next_state)
+    await ask(bot, message.chat.id, next_state)
+
+
 @router.message(F.text, Form.full_name)
 async def capture_full_name(message: Message, bot: Bot, state: FSMContext):
     name = _clean_name(message.text)
@@ -71,8 +81,7 @@ async def capture_full_name(message: Message, bot: Bot, state: FSMContext):
         return
 
     await state.update_data(full_name=name)
-    await state.set_state(Form.username)
-    await ask(bot, message.chat.id, Form.username)
+    await _advance(message, bot, state, Form.username)
 
 
 @router.message(F.text, Form.username)
@@ -87,8 +96,7 @@ async def capture_username(message: Message, bot: Bot, state: FSMContext):
         username = match.group(1)
 
     await state.update_data(username=username)
-    await state.set_state(Form.phone)
-    await ask(bot, message.chat.id, Form.phone)
+    await _advance(message, bot, state, Form.phone)
 
 
 @router.message(F.contact | F.text, Form.phone)
@@ -108,8 +116,7 @@ async def capture_phone(message: Message, bot: Bot, state: FSMContext):
             return
 
     await state.update_data(phone=phone)
-    await state.set_state(Form.age)
-    await ask(bot, message.chat.id, Form.age)
+    await _advance(message, bot, state, Form.age)
 
 
 @router.message(F.text, Form.age)
@@ -121,8 +128,7 @@ async def capture_age(message: Message, bot: Bot, state: FSMContext):
         return
 
     await state.update_data(age=age)
-    await state.set_state(Form.job)
-    await ask(bot, message.chat.id, Form.job)
+    await _advance(message, bot, state, Form.job)
 
 
 @router.message(F.text, Form.job)
@@ -132,8 +138,7 @@ async def capture_job(message: Message, bot: Bot, state: FSMContext):
         return
 
     await state.update_data(job=message.text)
-    await state.set_state(Form.about)
-    await ask(bot, message.chat.id, Form.about)
+    await _advance(message, bot, state, Form.about)
 
 
 @router.message(F.text, Form.about)
@@ -143,8 +148,7 @@ async def capture_about(message: Message, bot: Bot, state: FSMContext):
         return
 
     await state.update_data(about=message.text)
-    await state.set_state(Form.join_group)
-    await ask(bot, message.chat.id, Form.join_group)
+    await _advance(message, bot, state, Form.join_group)
 
 
 @router.message(F.text, Form.join_group)
@@ -155,6 +159,9 @@ async def capture_join_group(message: Message, bot: Bot, state: FSMContext):
 
     await state.update_data(join_group=message.text)
     data = await state.get_data()
+    if data.get("editing"):
+        await finish_edit(bot, message.chat.id, state)
+        return
     group_id = data.get("group_id")
     user_id = message.chat.id
     await state.clear()

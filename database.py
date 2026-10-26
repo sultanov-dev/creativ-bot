@@ -143,10 +143,11 @@ async def create_application(
 
 
 async def save_profile(user_id: int, data: dict) -> None:
-    """Birinchi anketani saqlaydi; allaqachon bor bo'lsa, o'zgartirmaydi."""
+    """Foydalanuvchining saqlangan anketasi: yo'q bo'lsa yaratiladi, bor bo'lsa yangilanadi (tahrirlanganda)."""
     db = await get_db()
     await db.execute(
-        "INSERT OR IGNORE INTO profiles (user_id, data) VALUES (?, ?)",
+        "INSERT INTO profiles (user_id, data) VALUES (?, ?) "
+        "ON CONFLICT(user_id) DO UPDATE SET data = excluded.data",
         (user_id, json.dumps(data, ensure_ascii=False)),
     )
     await db.commit()

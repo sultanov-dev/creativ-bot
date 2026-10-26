@@ -9,3 +9,4 @@ class Form(StatesGroup):
     job = State()
     about = State()
     join_group = State()
+    review = State()  # avval to'ldirilgan anketani tasdiqlash yoki tahrirlash

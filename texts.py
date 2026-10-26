@@ -35,8 +35,17 @@ ERROR_GENERIC = "Kechirasiz, xatolik yuz berdi. Iltimos, birozdan keyin qayta ur
 ALREADY_APPLIED = "Arizangiz allaqachon ko'rib chiqilmoqda. Natijani kutib turing ⏳"
 THANKS = "Javoblaringiz uchun rahmat! 😊 Arizangiz guruh adminlariga yuborildi."
 
+PROFILE_REVIEW = (
+    "Siz avval anketa to'ldirgansiz. Ma'lumotlaringiz:\n\n"
+    "{anketa}\n"
+    "Shu ma'lumotlar bilan davom etamizmi yoki o'zgartirasizmi?"
+)
+PROFILE_PICK_FIELD = "Qaysi ma'lumotni o'zgartirmoqchisiz?"
+PROFILE_SAVED = "✅ Saqlandi"
+PROFILE_USE_BUTTONS = "Iltimos, pastdagi tugmalardan birini tanlang 👇"
+PROFILE_BUTTON_STALE = "Bu tugma eskirgan. Guruhga qo'shilish so'rovini qayta yuboring."
+
 REPEAT_APPLICATION_SENT = (
-    "Siz avval bizga o'zingiz haqingizda ma'lumot bergansiz, shuning uchun savollarni qayta so'ramaymiz 😊\n"
     "Arizangiz guruh a'zolari ovoziga qo'yildi 🗳\n"
     "Natijani shu yerda xabar qilamiz, sabr qiling ⏳"
 )
