@@ -183,6 +183,34 @@ async def get_due_votings() -> list[dict]:
     return [dict(r) for r in await cur.fetchall()]
 
 
+async def end_voting_now(group_id: int, app_id: int | None = None) -> list[int]:
+    """Guruhdagi (yoki bitta) ovoz berilayotgan arizalarning muddatini hozirga tushiradi; id'larni qaytaradi."""
+    db = await get_db()
+    query = "SELECT id FROM applications WHERE status = 'voting' AND group_id = ?"
+    params: list = [group_id]
+    if app_id is not None:
+        query += " AND id = ?"
+        params.append(app_id)
+    ids = [r[0] for r in await (await db.execute(query, params)).fetchall()]
+    for i in ids:
+        await db.execute(
+            "UPDATE applications SET voting_ends_at = datetime('now') "
+            "WHERE id = ? AND status = 'voting'",
+            (i,),
+        )
+    await db.commit()
+    return ids
+
+
+async def get_known_group_ids() -> list[int]:
+    """Bot ishlagan guruhlar (ariza yoki a'zo yozuvi bor)."""
+    db = await get_db()
+    cur = await db.execute(
+        "SELECT group_id FROM applications UNION SELECT chat_id FROM members"
+    )
+    return [r[0] for r in await cur.fetchall()]
+
+
 async def set_vote_message(app_id: int, message_id: int) -> None:
     db = await get_db()
     await db.execute(

@@ -3,9 +3,9 @@ import os
 
 from aiogram import Dispatcher
 
-from database import close_db, init_db
+from database import close_db, get_known_group_ids, init_db
 from handlers import get_routers
-from utils.commands import setup_private_commands
+from utils.commands import setup_group_commands, setup_private_commands
 from utils.create_bot import bot
 from utils.expiry import run_expiry_loop
 from utils.fsm_storage import SQLiteStorage
@@ -27,6 +27,9 @@ async def main():
 
     await init_db()
     await setup_private_commands(bot)
+    # yangi buyruqlar mavjud guruhlardagi creator menyusida ham chiqishi uchun
+    for group_id in await get_known_group_ids():
+        await setup_group_commands(bot, group_id)
     expiry_task = asyncio.create_task(run_expiry_loop(bot))
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())

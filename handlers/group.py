@@ -13,10 +13,11 @@ from aiogram.exceptions import (
 from aiogram.filters import Command, CommandObject
 from aiogram.types import ChatMemberUpdated, ChatPermissions, Message
 
-from database import get_members
-from utils.admin import get_user_status
+from database import count_votes, end_voting_now, get_application, get_members
+from utils.admin import get_user_status, safe_send
 from utils.commands import setup_group_commands
 from utils.members import track, untrack
+from utils.voting import finalize_due_votings
 
 # Telegram o'chirilgan akkauntlarni shu ism bilan qaytaradi
 DELETED_NAME = "Deleted Account"
@@ -38,7 +39,7 @@ async def creator_only(message: Message, bot: Bot) -> bool:
 
 # avval arzon tekshiruv (bizning buyruqmi?), keyin API chaqiruvli creator_only: har bir "/..." xabar uchun so'rov ketmasin
 router.message.filter(
-    Command("kick_deleted", "ban", "unban", "mute", "unmute", "stats")
+    Command("kick_deleted", "ban", "unban", "mute", "unmute", "stats", "finish")
 )
 router.message.filter(creator_only)
 
@@ -242,3 +243,51 @@ async def unmute(message: Message, bot: Bot):
 async def stats(message: Message, bot: Bot):
     count = await bot.get_chat_member_count(message.chat.id)
     await message.reply(f"👥 Guruhda a'zolar soni: <b>{count}</b>")
+
+
+FINISH_RESULTS = {
+    "accepted": "✅ qabul qilindi",
+    "creator_review": "🔎 qaror sizda, hisobot alohida xabarda",
+    "rejected": "❌ rad etildi",
+    "expired": "⌛ hech kim ovoz bermadi, ariza yopildi",
+    "voting": "⏳ vaqtincha xato, birozdan keyin avtomatik yakunlanadi",
+}
+
+
+@router.message(Command("finish"))
+async def finish(message: Message, command: CommandObject, bot: Bot):
+    """Ovoz berishni muddatidan oldin tugatadi; natijalar creator'ga lichkada yuboriladi."""
+    app_id = None
+    if command.args:
+        if not _is_number(command.args.strip()):
+            await message.reply("Ishlatish: /finish yoki /finish &lt;ariza_id&gt;")
+            return
+        app_id = int(command.args.strip())
+
+    ids = await end_voting_now(message.chat.id, app_id)
+    if not ids:
+        await message.reply("Hozir ovoz berilayotgan ariza yo'q.")
+        return
+
+    await finalize_due_votings(bot)
+
+    lines = [f"🏁 <b>Ovoz berish tugatildi</b> ({len(ids)} ta ariza)\n"]
+    for i in ids:
+        app = await get_application(i)
+        if app is None:
+            continue
+        yes, no = await count_votes(i)
+        lines.append(
+            f"• №{i} <b>{escape(app['full_name'])}</b>: {yes} 👍 / {no} 👎, "
+            f"{FINISH_RESULTS.get(app['status'], app['status'])}"
+        )
+
+    delivered = await safe_send(bot=bot, chat_id=message.from_user.id, text="\n".join(lines))
+    if delivered:
+        await message.reply("🏁 Ovoz berish tugatildi, hisobot lichkangizga yuborildi.")
+    else:
+        await message.reply(
+            "🏁 Ovoz berish tugatildi, lekin hisobotni lichkaga yuborib bo'lmadi: "
+            "botga lichkada /start bosing."
+        )
+

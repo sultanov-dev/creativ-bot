@@ -22,6 +22,7 @@ CREATOR_COMMANDS = [
     BotCommand(command="mute", description="Foydalanuvchini jim qilish: /mute [daqiqa]"),
     BotCommand(command="unmute", description="Foydalanuvchini jimlikdan chiqarish"),
     BotCommand(command="stats", description="Guruh a'zolari soni"),
+    BotCommand(command="finish", description="Ovoz berishni darhol tugatish: /finish [ariza_id]"),
 ]
 
 
