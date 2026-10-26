@@ -304,6 +304,17 @@ async def get_no_votes(app_id: int) -> list[dict]:
     return [dict(r) for r in await cur.fetchall()]
 
 
+async def count_voters(app_id: int) -> tuple[int, int]:
+    """Ovoz bergan a'zolar soni (vaznsiz): (ha, yo'q)."""
+    db = await get_db()
+    cur = await db.execute(
+        "SELECT SUM(vote = 'yes'), SUM(vote = 'no') FROM votes WHERE application_id = ?",
+        (app_id,),
+    )
+    row = await cur.fetchone()
+    return (row[0] or 0, row[1] or 0) if row else (0, 0)
+
+
 async def count_votes(app_id: int) -> tuple[int, int]:
     """Vaznli ovozlar yig'indisi: (ha, yo'q)."""
     db = await get_db()

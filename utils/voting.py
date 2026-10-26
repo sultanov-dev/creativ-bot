@@ -8,7 +8,14 @@ from aiogram.exceptions import (
     TelegramForbiddenError,
 )
 
-from database import change_status, count_votes, get_due_votings, get_no_votes
+from config import ADMIN_VOTE_WEIGHT
+from database import (
+    change_status,
+    count_voters,
+    count_votes,
+    get_due_votings,
+    get_no_votes,
+)
 from keyboards.creator import creator_inline
 from utils.admin import get_group_creator_id, safe_send
 
@@ -51,10 +58,13 @@ async def _send_report(bot: Bot, app: dict, yes: int, no: int) -> str:
     if creator_id is None:
         return UNREACHABLE
 
+    yes_n, no_n = await count_voters(app["id"])
     text = (
         "⚖️ <b>Oxirgi qaror sizda</b>\n\n"
         f"{app['anketa']}\n\n"
-        f"Guruh ovozi: <b>{yes}</b> 👍 / <b>{no}</b> 👎\n"
+        f"Ovozlar (admin ovozi {ADMIN_VOTE_WEIGHT} ga teng): "
+        f"<b>{yes}</b> 👍 / <b>{no}</b> 👎\n"
+        f"Ovoz bergan a'zolar: {yes_n} 👍 / {no_n} 👎\n\n"
         "👎 bergan a'zolar:"
     )
     no_votes = await get_no_votes(app["id"])
@@ -83,8 +93,8 @@ async def _send_report(bot: Bot, app: dict, yes: int, no: int) -> str:
 async def finalize_due_votings(bot: Bot) -> int:
     """Muddati tugagan ovoz berishlarni yakunlaydi.
 
-    👍 ko'p bo'lsa qabul qilinadi. 👎 ko'p yoki teng bo'lsa qaror guruh creatoriga ketadi
-    (handlers/creator.py). Hech kim ovoz bermagan bo'lsa ariza yopiladi.
+    Kamida bitta ovoz bo'lsa, natijadan qat'i nazar qaror guruh creatoriga ketadi (handlers/creator.py);
+    creatorga yetkazib bo'lmasa guruh ovozi hal qiladi. Hech kim ovoz bermagan bo'lsa ariza yopiladi.
     """
     done = 0
     for app in await get_due_votings():
@@ -92,10 +102,8 @@ async def finalize_due_votings(bot: Bot) -> int:
         if yes == 0 and no == 0:
             new, result = "expired", "⌛ Ovoz berish muddati tugadi, hech kim ovoz bermadi."
             note = "Arizangiz bo'yicha hech kim ovoz bermadi va yopildi. Xohlasangiz, qayta so'rov yuborishingiz mumkin."
-        elif yes > no:
-            new, result = "accepted", "✅ Qabul qilindi"
-            note = "Tabriklaymiz, arizangiz qabul qilindi! 🎉"
         else:
+            # ovoz natijasidan qat'i nazar (👍 ko'p bo'lsa ham) oxirgi qarorni creator qabul qiladi
             new, result = "creator_review", "🔎 Creator qaroriga yuborildi"
             note = "Guruh a'zolarining ovozi tugadi. Oxirgi qarorni guruh egasi qabul qiladi, natijani kuting ⏳"
 
@@ -111,11 +119,17 @@ async def finalize_due_votings(bot: Bot) -> int:
                 await change_status(app["id"], old="creator_review", new="voting")
                 continue
             if outcome == UNREACHABLE:
-                # creatorga yetkazib bo'lmasa (/start bosmagan), ariza osilib qolmasligi uchun rad etiladi
-                logger.warning("Ariza %s: creatorga yuborib bo'lmadi, rad etildi", app["id"])
-                await change_status(app["id"], old="creator_review", new="rejected")
-                new, result = "rejected", "❌ Rad etildi"
-                note = "Afsuski, guruh a'zolari arizangizni rad etishdi."
+                # creatorga yetkazib bo'lmasa (/start bosmagan), ariza osilib qolmasligi uchun
+                # guruh ovozi bo'yicha hal qilinadi (👍 ko'p bo'lsa qabul, aks holda rad)
+                new = "accepted" if yes > no else "rejected"
+                logger.warning(
+                    "Ariza %s: creatorga yuborib bo'lmadi, ovoz bo'yicha hal qilindi: %s", app["id"], new
+                )
+                await change_status(app["id"], old="creator_review", new=new)
+                if new == "accepted":
+                    result, note = "✅ Qabul qilindi", "Tabriklaymiz, arizangiz qabul qilindi! 🎉"
+                else:
+                    result, note = "❌ Rad etildi", "Afsuski, guruh a'zolari arizangizni rad etishdi."
         done += 1
         logger.info("Ovoz berish yakunlandi: ariza %s -> %s (%s/%s)", app["id"], new, yes, no)
 

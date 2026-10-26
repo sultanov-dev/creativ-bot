@@ -12,7 +12,7 @@ router = Router()
 
 @router.callback_query(CreatorCB.filter())
 async def on_creator_decision(call: CallbackQuery, callback_data: CreatorCB, bot: Bot):
-    """Guruh a'zolari 👎 ko'p bergan arizada oxirgi qaror: faqat guruh creatori hal qiladi."""
+    """Ovoz berish tugagach oxirgi qaror: faqat guruh creatori hal qiladi (ovoz natijasidan qat'i nazar)."""
     if callback_data.action not in ("accept", "reject"):
         await call.answer()
         return
