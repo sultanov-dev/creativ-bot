@@ -1,6 +1,6 @@
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 
-from callbacks import ProfileCB
+from texts import PROFILE_BACK_BUTTON, PROFILE_EDIT_BUTTON, PROFILE_KEEP_BUTTON
 
 # anketa maydoni -> tugma yozuvi (tahrirlash menyusida)
 FIELD_LABELS = {
@@ -12,20 +12,22 @@ FIELD_LABELS = {
     "about": "📝 O'zi haqida",
     "join_group": "❓ Qo'shilish sababi",
 }
+FIELD_BY_LABEL = {label: field for field, label in FIELD_LABELS.items()}
 
 
-def review_inline():
-    builder = InlineKeyboardBuilder()
-    builder.button(text="✏️ O'zgartirish", callback_data=ProfileCB(action="edit"))
-    builder.button(text="✅ Shunday qoldirish", callback_data=ProfileCB(action="keep"))
-    builder.adjust(1)
-    return builder.as_markup()
+def review_keyboard() -> ReplyKeyboardMarkup:
+    """Klaviatura o'rnida chiqadigan 2 qator: har qatorda bitta tugma."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=PROFILE_EDIT_BUTTON)],
+            [KeyboardButton(text=PROFILE_KEEP_BUTTON)],
+        ],
+        resize_keyboard=True,
+    )
 
 
-def fields_inline():
-    builder = InlineKeyboardBuilder()
-    for field, label in FIELD_LABELS.items():
-        builder.button(text=label, callback_data=ProfileCB(action="field", field=field))
-    builder.button(text="⬅️ Orqaga", callback_data=ProfileCB(action="back"))
-    builder.adjust(1)
-    return builder.as_markup()
+def fields_keyboard() -> ReplyKeyboardMarkup:
+    labels = list(FIELD_LABELS.values())
+    rows = [[KeyboardButton(text=t) for t in labels[i : i + 2]] for i in range(0, len(labels), 2)]
+    rows.append([KeyboardButton(text=PROFILE_BACK_BUTTON)])
+    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)

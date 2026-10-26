@@ -2,6 +2,7 @@ import logging
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.types import ReplyKeyboardRemove
 
 from config import VOTING_MINUTES
 from database import (
@@ -59,7 +60,7 @@ async def apply_from_profile(
         phone=profile.get("phone"),
     )
     if app_id is None:
-        await safe_send(bot=bot, chat_id=chat_id, text=ALREADY_APPLIED)
+        await safe_send(bot=bot, chat_id=chat_id, text=ALREADY_APPLIED, reply_markup=ReplyKeyboardRemove())
         return
 
     app = await get_application(app_id)
@@ -67,7 +68,7 @@ async def apply_from_profile(
         # ovoz xabari guruhga ketmadi: ariza osilib qolmasin, foydalanuvchi qayta urinishi mumkin
         logger.warning("Saqlangan anketa bilan ovoz berishni boshlab bo'lmadi, ariza %s", app_id)
         await change_status(app_id, old="pending", new="failed")
-        await safe_send(bot=bot, chat_id=chat_id, text=ERROR_GENERIC)
+        await safe_send(bot=bot, chat_id=chat_id, text=ERROR_GENERIC, reply_markup=ReplyKeyboardRemove())
         return
 
-    await safe_send(bot=bot, chat_id=chat_id, text=REPEAT_APPLICATION_SENT)
+    await safe_send(bot=bot, chat_id=chat_id, text=REPEAT_APPLICATION_SENT, reply_markup=ReplyKeyboardRemove())

@@ -43,7 +43,9 @@ PROFILE_REVIEW = (
 PROFILE_PICK_FIELD = "Qaysi ma'lumotni o'zgartirmoqchisiz?"
 PROFILE_SAVED = "✅ Saqlandi"
 PROFILE_USE_BUTTONS = "Iltimos, pastdagi tugmalardan birini tanlang 👇"
-PROFILE_BUTTON_STALE = "Bu tugma eskirgan. Guruhga qo'shilish so'rovini qayta yuboring."
+PROFILE_EDIT_BUTTON = "✏️ O'zgartirish"
+PROFILE_KEEP_BUTTON = "✅ Shunday qoldirish"
+PROFILE_BACK_BUTTON = "⬅️ Orqaga"
 
 REPEAT_APPLICATION_SENT = (
     "Arizangiz guruh a'zolari ovoziga qo'yildi 🗳\n"

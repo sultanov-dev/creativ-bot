@@ -17,7 +17,7 @@ router = Router()
 async def cmd_start(message: Message, state: FSMContext, bot: Bot):
     # anketa yarim qolgan bo'lsa, to'xtagan savolni qayta beramiz
     current = await state.get_state() or ""
-    if current == Form.review.state:
+    if current in (Form.review.state, Form.pick_field.state):
         await show_review(bot, message.chat.id, state)
         return
     question = question_for(current)
