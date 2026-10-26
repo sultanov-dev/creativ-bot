@@ -3,8 +3,8 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import CallbackQuery
 
 from callbacks import ApplicantCB
-from config import REQUIRED_VOTES
-from database import change_status, get_application, set_vote_message
+from config import ADMIN_VOTE_WEIGHT, VOTING_MINUTES
+from database import change_status, get_application, set_vote_message, start_voting
 from keyboards.vote import vote_inline
 from utils.admin import is_group_admin, mark_done, safe_send
 
@@ -68,7 +68,7 @@ async def accept(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
         await call.answer("Siz admin emassiz!", show_alert=True)
         return
 
-    if not await change_status(app_id=app["id"], old="pending", new="voting"):
+    if not await start_voting(app["id"], VOTING_MINUTES):
         await call.answer("Bu ariza allaqachon ko'rib chiqilgan", show_alert=True)
         await mark_done(
             call=call,
@@ -85,7 +85,9 @@ async def accept(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
             text=(
                 "🗳 <b>Yangi a'zo uchun ovoz berish</b>\n\n"
                 f"{app['anketa']}\n\n"
-                f"Qabul qilish uchun kamida <b>{REQUIRED_VOTES}</b> ta 👍 kerak."
+                f"⏳ Ovoz berish <b>{VOTING_MINUTES}</b> daqiqa davom etadi. "
+                "Muddat tugagach ko'proq ovoz to'plagan tomon g'olib bo'ladi.\n"
+                f"Guruh adminining ovozi <b>{ADMIN_VOTE_WEIGHT}</b> ta ovozga teng."
             ),
             reply_markup=vote_inline(app_id=app["id"]),
         )

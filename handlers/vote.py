@@ -1,24 +1,22 @@
+from datetime import datetime, timezone
 from html import escape
 
 from aiogram import Bot, Router
-from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
+from aiogram.exceptions import TelegramAPIError
 from aiogram.types import CallbackQuery, Message
 
 from callbacks import VoteCB
-from config import REQUIRED_VOTES
-from database import add_vote, change_status, count_votes, get_application
+from config import ADMIN_VOTE_WEIGHT
+from database import add_vote, count_votes, get_application
 from keyboards.vote import vote_inline
-from utils.admin import is_group_member, safe_send
+from utils.admin import is_group_admin, is_group_member, safe_send
 
 router = Router()
 
 
-async def _finish(call: CallbackQuery, result: str) -> None:
-    if isinstance(call.message, Message):
-        try:
-            await call.message.edit_text(f"{call.message.html_text}\n\n{result}")
-        except TelegramAPIError:
-            pass
+def utcnow_str() -> str:
+    # SQLite datetime('now') bilan bir xil format
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
 @router.callback_query(VoteCB.filter())
@@ -33,6 +31,10 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
         await call.answer()
         return
 
+    if app["voting_ends_at"] and app["voting_ends_at"] <= utcnow_str():
+        await call.answer("Ovoz berish muddati tugadi, natija tez orada e'lon qilinadi", show_alert=True)
+        return
+
     group_id = app["group_id"]
     applicant_id = app["user_id"]
     voter_id = call.from_user.id
@@ -45,11 +47,14 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
         await call.answer("Faqat guruh a'zolari ovoz bera oladi", show_alert=True)
         return
 
-    if not await add_vote(app["id"], voter_id, callback_data.vote):
+    weight = ADMIN_VOTE_WEIGHT if await is_group_admin(bot, group_id, voter_id) else 1
+    if not await add_vote(app["id"], voter_id, callback_data.vote, weight):
         await call.answer("Siz allaqachon ovoz bergansiz", show_alert=True)
         return
 
     note, alert = "Ovozingiz qabul qilindi", False
+    if weight > 1:
+        note = f"Ovozingiz qabul qilindi (admin ovozi: {weight} ta ovozga teng)"
     if callback_data.vote == "no":
         asked = await safe_send(
             bot=bot,
@@ -67,37 +72,6 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
             alert = True
 
     yes, no = await count_votes(app["id"])
-
-    if yes >= REQUIRED_VOTES:
-        if await change_status(app["id"], old="voting", new="accepted"):
-            try:
-                await bot.approve_chat_join_request(chat_id=group_id, user_id=applicant_id)
-            except TelegramBadRequest:
-                # so'rov muddati o'tgan yoki foydalanuvchi allaqachon a'zo
-                pass
-            await _finish(call, f"✅ Qabul qilindi ({yes} 👍 / {no} 👎)")
-            await safe_send(
-                bot=bot,
-                chat_id=applicant_id,
-                text="Tabriklaymiz, arizangiz qabul qilindi! 🎉",
-            )
-        await call.answer(note, show_alert=alert)
-        return
-
-    if no >= REQUIRED_VOTES:
-        if await change_status(app["id"], old="voting", new="rejected"):
-            try:
-                await bot.decline_chat_join_request(chat_id=group_id, user_id=applicant_id)
-            except TelegramBadRequest:
-                pass
-            await _finish(call, f"❌ Rad etildi ({yes} 👍 / {no} 👎)")
-            await safe_send(
-                bot=bot,
-                chat_id=applicant_id,
-                text="Afsuski, guruh a'zolari arizangizni rad etishdi.",
-            )
-        await call.answer(note, show_alert=alert)
-        return
 
     if isinstance(call.message, Message):
         try:
