@@ -20,7 +20,7 @@ from database import (
     get_application_by_vote_message,
     get_members,
 )
-from utils.admin import get_user_status, safe_send
+from utils.admin import get_user_status, is_admin, safe_send
 from utils.commands import setup_group_commands
 from utils.members import track, untrack
 from utils.voting import finalize_due_votings
@@ -35,19 +35,20 @@ logger = logging.getLogger(__name__)
 PRIVILEGED = (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR)
 
 
-async def creator_only(message: Message, bot: Bot) -> bool:
-    """Buyruqlarni faqat guruh creator'i bajara oladi; boshqalarga bot javob bermaydi."""
-    if message.from_user is None:
-        return False
-    status = await get_user_status(bot, message.chat.id, message.from_user.id)
-    return status == ChatMemberStatus.CREATOR
+async def admin_only(message: Message) -> bool:
+    """Buyruqlarni faqat bot adminlari (ADMIN_IDS) bajara oladi; boshqalarga bot javob bermaydi."""
+    return message.from_user is not None and is_admin(message.from_user.id)
 
 
-# avval arzon tekshiruv (bizning buyruqmi?), keyin API chaqiruvli creator_only: har bir "/..." xabar uchun so'rov ketmasin
+async def _is_protected(bot: Bot, chat_id: int, user_id: int) -> bool:
+    """Bot admini yoki guruh admini bloklanmasligi/jim qilinmasligi kerak."""
+    return is_admin(user_id) or await get_user_status(bot, chat_id, user_id) in PRIVILEGED
+
+
 router.message.filter(
     Command("kick_deleted", "ban", "unban", "mute", "unmute", "stats", "finish")
 )
-router.message.filter(creator_only)
+router.message.filter(admin_only)
 
 # mute muddati chegarasi (1 yil): timedelta/Telegram'da haddan katta son xatoga olib kelmasin
 MAX_MUTE_MINUTES = 366 * 24 * 60
@@ -84,7 +85,7 @@ async def _remove(bot: Bot, chat_id: int, user_id: int, *, ban: bool) -> None:
 
 @router.my_chat_member(F.chat.type.in_({"group", "supergroup"}))
 async def bot_added(event: ChatMemberUpdated, bot: Bot):
-    """Bot guruhga qo'shilganda yoki admin qilinganda creator menyusini o'rnatadi."""
+    """Bot guruhga qo'shilganda yoki admin qilinganda admin menyusini o'rnatadi."""
     if event.new_chat_member.status in (
         ChatMemberStatus.MEMBER,
         ChatMemberStatus.ADMINISTRATOR,
@@ -170,7 +171,7 @@ async def ban(message: Message, command: CommandObject, bot: Bot):
     if user_id is None:
         await message.reply("Foydalanuvchi xabariga javob bering yoki ID yozing: /ban &lt;id&gt;")
         return
-    if await get_user_status(bot, message.chat.id, user_id) in PRIVILEGED:
+    if await _is_protected(bot, message.chat.id, user_id):
         await message.reply("Kechirasiz, adminni bloklab bo'lmaydi.")
         return
 
@@ -204,7 +205,7 @@ async def mute(message: Message, command: CommandObject, bot: Bot):
         return
 
     user_id = reply.from_user.id
-    if await get_user_status(bot, message.chat.id, user_id) in PRIVILEGED:
+    if await _is_protected(bot, message.chat.id, user_id):
         await message.reply("Kechirasiz, adminni jim qilib bo'lmaydi.")
         return
 
@@ -253,7 +254,7 @@ async def stats(message: Message, bot: Bot):
 
 FINISH_RESULTS = {
     "accepted": "✅ qabul qilindi",
-    "creator_review": "🔎 yakuniy qaror sizda, hisobot alohida xabarda",
+    "creator_review": "🔎 yakuniy qaror adminlarga yuborildi",
     "rejected": "❌ rad etildi",
     "expired": "⌛ hech kim ovoz bermadi, ariza yopildi",
     "voting": "⏳ vaqtincha xatolik, birozdan keyin o'zi yakunlanadi",
@@ -262,7 +263,7 @@ FINISH_RESULTS = {
 
 @router.message(Command("finish"))
 async def finish(message: Message, bot: Bot):
-    """Reply qilingan ovoz berish xabaridagi ovozni darhol tugatadi; natija creator'ga lichkada yuboriladi.
+    """Reply qilingan ovoz berish xabaridagi ovozni darhol tugatadi; yakuniy qaror uchun hisobot adminlarga yuboriladi, buyruq bergan adminga esa qisqa natija.
 
     Reply bo'lmasa hech narsa tugatilmaydi: guruhdagi boshqa faol ovozlar tegilmaydi.
     """

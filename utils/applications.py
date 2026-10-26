@@ -21,8 +21,8 @@ async def open_voting(bot: Bot, app: dict) -> bool:
                 "🗳 <b>Yangi a'zo uchun ovoz berish</b>\n\n"
                 f"{app['anketa']}\n\n"
                 f"⏳ Ovoz berish <b>{VOTING_MINUTES}</b> daqiqa davom etadi. "
-                "Muddat tugagach natija guruh egasiga yuboriladi, "
-                "yakuniy qarorni esa guruh egasi qabul qiladi."
+                "Muddat tugagach natija adminlarga yuboriladi, "
+                "yakuniy qarorni esa adminlar qabul qiladi."
             ),
             reply_markup=vote_inline(app_id=app["id"]),
         )

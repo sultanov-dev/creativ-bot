@@ -5,6 +5,8 @@ from aiogram.enums import ChatMemberStatus
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import CallbackQuery, Message
 
+from config import ADMIN_IDS
+
 
 async def get_user_status(bot: Bot, chat_id: int, user_id: int):
     try:
@@ -29,21 +31,9 @@ async def is_group_member(bot: Bot, chat_id: int, user_id: int) -> bool:
     )
 
 
-async def is_group_admin(bot: Bot, chat_id: int, user_id: int) -> bool:
-    status = await get_user_status(bot, chat_id, user_id)
-
-    return status in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR)
-
-
-async def get_group_creator_id(bot: Bot, chat_id: int) -> int | None:
-    try:
-        admins = await bot.get_chat_administrators(chat_id)
-    except (TelegramBadRequest, TelegramForbiddenError):
-        return None
-    for a in admins:
-        if a.status == ChatMemberStatus.CREATOR:
-            return a.user.id
-    return None
+def is_admin(user_id: int) -> bool:
+    """Bot admini: faqat ADMIN_IDS ro'yxati (.env) hisoblanadi."""
+    return user_id in ADMIN_IDS
 
 
 async def safe_send(bot: Bot, chat_id: int, text: str, **kwargs) -> bool:
@@ -54,18 +44,11 @@ async def safe_send(bot: Bot, chat_id: int, text: str, **kwargs) -> bool:
         return False
 
 
-async def mark_done(
-    call: CallbackQuery, result: str, bot: Bot, chat_id: int, user_id: int
-):
-    status = await get_user_status(bot, chat_id, user_id)
-
+async def mark_done(call: CallbackQuery, result: str):
+    """Admin xabaridagi tugmalarni olib, natija va qaror qilgan admin ismini yozadi."""
     if isinstance(call.message, Message):
         who = escape(call.from_user.full_name)
-        # aiogram status'ni ba'zan oddiy str, ba'zan enum qaytaradi
-        role = str(getattr(status, "value", status)) if status else "noma'lum"
         try:
-            await call.message.edit_text(
-                f"{call.message.html_text}\n\n{result} · {who} ({role})"
-            )
+            await call.message.edit_text(f"{call.message.html_text}\n\n{result} · {who}")
         except TelegramBadRequest:
             pass

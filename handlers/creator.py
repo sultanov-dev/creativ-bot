@@ -1,7 +1,6 @@
 from html import escape
 
 from aiogram import Bot, Router
-from aiogram.enums import ChatMemberStatus
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import CallbackQuery, Message
 
@@ -9,7 +8,7 @@ from callbacks import CreatorCB
 from database import change_status, count_votes, get_application, get_no_votes
 from keyboards.creator import creator_confirm_inline
 from texts import APPLICATION_ACCEPTED, APPLICATION_REJECTED
-from utils.admin import get_user_status, safe_send
+from utils.admin import is_admin, safe_send
 from utils.summary import summarize_reasons
 
 router = Router()
@@ -41,7 +40,7 @@ async def _decide(call: CallbackQuery, bot: Bot, app: dict, accepted: bool) -> N
     result = "✅ Qabul qilindi" if accepted else "❌ Rad etildi"
     await call.answer(result)
     if isinstance(call.message, Message):
-        await _edit(call, f"{call.message.html_text}\n\n{result}")
+        await _edit(call, f"{call.message.html_text}\n\n{result} · {escape(call.from_user.full_name)}")
 
     await safe_send(
         bot=bot,
@@ -88,7 +87,7 @@ async def _show_confirm(call: CallbackQuery, app: dict, accepted: bool, yes: int
 
 @router.callback_query(CreatorCB.filter())
 async def on_creator_decision(call: CallbackQuery, callback_data: CreatorCB, bot: Bot):
-    """Ovoz berish tugagach oxirgi qaror: faqat guruh creatori hal qiladi (ovoz natijasidan qat'i nazar).
+    """Ovoz berish tugagach oxirgi qaror: istalgan admin hal qiladi, birinchi bosgani amal qiladi (ovoz natijasidan qat'i nazar).
 
     Ko'pchilik fikriga qarshi qaror (👎 ko'p/teng bo'lganda "Qabul", 👍 ko'p/teng bo'lganda "Rad") avval
     tasdiqlash oynasini ochadi; oynadagi "Qabul"/"Rad" tugmalari (final_*) yakuniy qaror beradi.
@@ -103,8 +102,8 @@ async def on_creator_decision(call: CallbackQuery, callback_data: CreatorCB, bot
         await call.answer("Kechirasiz, bu ariza topilmadi", show_alert=True)
         return
 
-    if await get_user_status(bot, app["group_id"], call.from_user.id) != ChatMemberStatus.CREATOR:
-        await call.answer("Yakuniy qarorni faqat guruh egasi qabul qiladi.", show_alert=True)
+    if not is_admin(call.from_user.id):
+        await call.answer("Yakuniy qarorni faqat adminlar qabul qiladi.", show_alert=True)
         return
 
     if app["status"] != "creator_review":

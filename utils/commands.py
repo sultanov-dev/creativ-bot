@@ -1,7 +1,6 @@
 import logging
 
 from aiogram import Bot
-from aiogram.enums import ChatMemberStatus
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import (
     BotCommand,
@@ -9,13 +8,15 @@ from aiogram.types import (
     BotCommandScopeChatMember,
 )
 
+from config import ADMIN_IDS
+
 logger = logging.getLogger(__name__)
 
 PRIVATE_COMMANDS = [
     BotCommand(command="start", description="Botni ishga tushirish va anketani davom ettirish"),
 ]
 
-CREATOR_COMMANDS = [
+ADMIN_COMMANDS = [
     BotCommand(command="kick_deleted", description="O'chirilgan akkauntlarni guruhdan chiqarish"),
     BotCommand(command="ban", description="Foydalanuvchini bloklash (xabariga javob bering yoki ID yozing)"),
     BotCommand(command="unban", description="Foydalanuvchini blokdan chiqarish"),
@@ -31,13 +32,13 @@ async def setup_private_commands(bot: Bot) -> None:
 
 
 async def setup_group_commands(bot: Bot, chat_id: int) -> None:
-    """Guruhdagi "/" menyusini faqat shu guruh creator'i uchun o'rnatadi."""
-    try:
-        admins = await bot.get_chat_administrators(chat_id)
-        creator = next(a for a in admins if a.status == ChatMemberStatus.CREATOR)
-        await bot.set_my_commands(
-            CREATOR_COMMANDS,
-            scope=BotCommandScopeChatMember(chat_id=chat_id, user_id=creator.user.id),
-        )
-    except (TelegramBadRequest, TelegramForbiddenError, StopIteration):
-        logger.warning("Guruh buyruqlarini o'rnatib bo'lmadi (chat_id=%s)", chat_id)
+    """Guruhdagi "/" menyusini faqat ADMIN_IDS adminlari uchun o'rnatadi."""
+    for admin_id in ADMIN_IDS:
+        try:
+            await bot.set_my_commands(
+                ADMIN_COMMANDS,
+                scope=BotCommandScopeChatMember(chat_id=chat_id, user_id=admin_id),
+            )
+        except (TelegramBadRequest, TelegramForbiddenError):
+            # admin guruhda emas yoki bot guruhdan chiqarilgan
+            logger.warning("Guruh buyruqlarini o'rnatib bo'lmadi (chat_id=%s, admin=%s)", chat_id, admin_id)

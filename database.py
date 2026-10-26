@@ -179,7 +179,7 @@ async def get_application_by_vote_message(group_id: int, message_id: int) -> dic
 
 async def get_expired_applications(days: int) -> list[dict]:
     """Admin ko'rib chiqmagan (pending) yoki ovoz berish tugaganidan beri `days` kun creator javobini
-    kutayotgan (creator_review) arizalar.
+    kutayotgan (creator_review, ya'ni adminlar qaroriga) arizalar.
 
     Ovoz berish bosqichidagi (voting) arizalar bu yerga kirmaydi: ularni `voting_ends_at` yopadi.
     """

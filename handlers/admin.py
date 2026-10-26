@@ -5,7 +5,7 @@ from aiogram.types import CallbackQuery
 from callbacks import ApplicantCB
 from database import change_status, get_application
 from texts import APPLICATION_REJECTED
-from utils.admin import is_group_admin, mark_done, safe_send
+from utils.admin import is_admin, mark_done, safe_send
 from utils.applications import open_voting
 
 router = Router()
@@ -22,19 +22,13 @@ async def reject(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
     group_id = app["group_id"]
     user_id = app["user_id"]
 
-    if not await is_group_admin(bot=bot, chat_id=group_id, user_id=call.from_user.id):
-        await call.answer("Bu amal faqat guruh adminlari uchun.", show_alert=True)
+    if not is_admin(call.from_user.id):
+        await call.answer("Bu amal faqat adminlar uchun.", show_alert=True)
         return
 
     if not await change_status(app_id=app["id"], old="pending", new="rejected"):
         await call.answer("Bu ariza allaqachon ko'rib chiqilgan.", show_alert=True)
-        await mark_done(
-            call=call,
-            result="⚠️ Allaqachon ko'rib chiqilgan",
-            bot=bot,
-            chat_id=group_id,
-            user_id=call.from_user.id,
-        )
+        await mark_done(call, "⚠️ Allaqachon ko'rib chiqilgan")
         return
 
     try:
@@ -43,13 +37,7 @@ async def reject(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
         pass
 
     await call.answer("Ariza rad etildi")
-    await mark_done(
-        call=call,
-        result="❌ Rad etildi",
-        bot=bot,
-        chat_id=group_id,
-        user_id=call.from_user.id,
-    )
+    await mark_done(call, "❌ Rad etildi")
     await safe_send(bot=bot, chat_id=user_id, text=APPLICATION_REJECTED)
 
 
@@ -64,8 +52,8 @@ async def accept(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
     group_id = app["group_id"]
     user_id = app["user_id"]
 
-    if not await is_group_admin(bot, chat_id=group_id, user_id=call.from_user.id):
-        await call.answer("Bu amal faqat guruh adminlari uchun.", show_alert=True)
+    if not is_admin(call.from_user.id):
+        await call.answer("Bu amal faqat adminlar uchun.", show_alert=True)
         return
 
     if not await open_voting(bot, app):
@@ -73,13 +61,7 @@ async def accept(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
         current = await get_application(app["id"])
         if current is None or current["status"] != "pending":
             await call.answer("Bu ariza allaqachon ko'rib chiqilgan.", show_alert=True)
-            await mark_done(
-                call=call,
-                result="⚠️ Allaqachon ko'rib chiqilgan",
-                bot=bot,
-                chat_id=group_id,
-                user_id=call.from_user.id,
-            )
+            await mark_done(call, "⚠️ Allaqachon ko'rib chiqilgan")
             return
         # ovoz xabari yuborilmasa, ariza qayta ko'rib chiqilishi uchun pending'da qoladi
         await call.answer(
@@ -90,13 +72,7 @@ async def accept(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
         return
 
     await call.answer(text="Ariza guruh a'zolari ovoziga qo'yildi")
-    await mark_done(
-        call=call,
-        result="🗳 Ovozga qo'yildi",
-        bot=bot,
-        chat_id=group_id,
-        user_id=call.from_user.id,
-    )
+    await mark_done(call, "🗳 Ovozga qo'yildi")
     await safe_send(
         bot=bot,
         chat_id=user_id,

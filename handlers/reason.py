@@ -19,7 +19,7 @@ async def capture_reason(message: Message):
 
     app_id = pending["app_id"]
     await set_vote_reason(app_id, message.from_user.id, message.text)
-    # sabablar creatorga alohida yuborilmaydi: ovoz berish tugagach yagona hisobotga kiradi (utils/voting.py)
+    # sabablar adminlarga alohida yuborilmaydi: ovoz berish tugagach yagona hisobotga kiradi (utils/voting.py)
     await message.answer(
-        "Rahmat, fikringiz qabul qilindi 🙏 Ovoz berish yakunlangach, u guruh egasiga umumiy hisobot bilan yuboriladi."
+        "Rahmat, fikringiz qabul qilindi 🙏 Ovoz berish yakunlangach, u adminlarga umumiy xulosa sifatida yetkaziladi."
     )

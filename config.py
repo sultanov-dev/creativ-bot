@@ -5,9 +5,17 @@ from dotenv import load_dotenv
 load_dotenv(".env")
 
 BOT_TOKEN = str(os.getenv("BOT_TOKEN"))
-# dasturchining Telegram ID(lari): bot xatolari shu yerga yuboriladi (guruh adminlariga aloqasi yo'q)
-DEVELOPER_IDS = [int(x) for x in os.getenv("DEVELOPER_IDS", "").split(",") if x]
-# ovoz berish shuncha daqiqa davom etadi; muddat tugagach natija creatorga yuboriladi
+
+def _ids(name: str) -> list[int]:
+    return [int(x) for x in os.getenv(name, "").replace(" ", "").split(",") if x]
+
+
+# bot adminlarining Telegram ID(lari): anketalarni ko'rib chiqadi, yakuniy qaror qiladi va guruh buyruqlarini
+# bajaradi. Guruhdagi Telegram adminlik huquqiga bog'liq emas, faqat shu ro'yxat hisoblanadi.
+ADMIN_IDS = _ids("ADMIN_IDS")
+# dasturchining Telegram ID(lari): bot xatolari shu yerga yuboriladi
+DEVELOPER_IDS = _ids("DEVELOPER_IDS")
+# ovoz berish shuncha daqiqa davom etadi; muddat tugagach natija adminlarga yuboriladi
 VOTING_MINUTES = int(os.getenv("VOTING_MINUTES") or 10)
 # juda katta qiymatda SQLite datetime() NULL qaytaradi va ariza abadiy "voting" da qolib ketadi
 MAX_VOTING_MINUTES = 7 * 24 * 60

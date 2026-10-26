@@ -8,6 +8,7 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
+from config import ADMIN_IDS
 from database import change_status, create_application, get_active_application, save_profile
 from keyboards.action import action_inline
 from states import Form
@@ -183,10 +184,8 @@ async def capture_join_group(message: Message, bot: Bot, state: FSMContext):
         await message.answer(ERROR_GENERIC)
         return
 
-    try:
-        admins = await bot.get_chat_administrators(chat_id=group_id)
-    except (TelegramBadRequest, TelegramForbiddenError):
-        logger.exception("Adminlar ro'yxatini olib bo'lmadi, group_id=%s", group_id)
+    if not ADMIN_IDS:
+        logger.error("ADMIN_IDS bo'sh: anketani ko'rib chiqadigan admin yo'q")
         await message.answer(ERROR_GENERIC)
         return
 
@@ -212,12 +211,11 @@ async def capture_join_group(message: Message, bot: Bot, state: FSMContext):
         *(
             safe_send(
                 bot=bot,
-                chat_id=admin.user.id,
+                chat_id=admin_id,
                 text=private_anketa,
                 reply_markup=action_inline(app_id),
             )
-            for admin in admins
-            if not admin.user.is_bot
+            for admin_id in ADMIN_IDS
         )
     )
 
