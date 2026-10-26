@@ -6,10 +6,12 @@ from aiogram.types import CallbackQuery
 
 from callbacks import VoteCB
 from config import ADMIN_VOTE_WEIGHT
-from database import add_vote, get_application
+from database import add_vote, get_application, get_vote
 from utils.admin import is_group_admin, is_group_member, safe_send
 
 router = Router()
+
+VOTE_LABELS = {"yes": "👍 Ha", "no": "👎 Yo'q"}
 
 
 def utcnow_str() -> str:
@@ -47,10 +49,17 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
 
     weight = ADMIN_VOTE_WEIGHT if await is_group_admin(bot, group_id, voter_id) else 1
     if not await add_vote(app["id"], voter_id, callback_data.vote, weight):
-        await call.answer("Siz allaqachon ovoz bergansiz", show_alert=True)
+        previous = await get_vote(app["id"], voter_id)
+        await call.answer(
+            f"Siz allaqachon «{VOTE_LABELS.get(previous, '?')}» deb ovoz bergansiz. "
+            "Ovozni o'zgartirib bo'lmaydi.",
+            show_alert=True,
+        )
         return
 
-    note, alert = "Ovozingiz qabul qilindi", False
+    # tugmalar hamma uchun bir xil, shuning uchun tanlovni ogohlantirish oynasida aniq ko'rsatamiz
+    chosen = VOTE_LABELS[callback_data.vote]
+    note, alert = f"✅ Siz «{chosen}» deb ovoz berdingiz. Ovozingiz qabul qilindi.", True
     if callback_data.vote == "no":
         asked = await safe_send(
             bot=bot,
@@ -62,9 +71,8 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
         )
         if not asked:
             note = (
-                "Sababini aytish uchun botga lichkada /start bosing, "
-                "so'ng sababni yozing."
+                f"✅ Siz «{chosen}» deb ovoz berdingiz.\n"
+                "Sababini aytish uchun botga lichkada /start bosing, so'ng sababni yozing."
             )
-            alert = True
 
     await call.answer(note, show_alert=alert)

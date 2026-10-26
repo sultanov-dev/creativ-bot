@@ -203,6 +203,17 @@ async def add_vote(app_id: int, voter_id: int, vote: str, weight: int = 1) -> bo
     return cur.rowcount == 1
 
 
+async def get_vote(app_id: int, voter_id: int) -> str | None:
+    """Foydalanuvchining shu arizaga bergan ovozi ('yes'/'no') yoki None."""
+    db = await get_db()
+    cur = await db.execute(
+        "SELECT vote FROM votes WHERE application_id = ? AND voter_id = ?",
+        (app_id, voter_id),
+    )
+    row = await cur.fetchone()
+    return row[0] if row else None
+
+
 async def add_member(chat_id: int, user_id: int) -> None:
     db = await get_db()
     await db.execute(
