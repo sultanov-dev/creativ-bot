@@ -32,7 +32,7 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
 
     if app["voting_ends_at"] and app["voting_ends_at"] <= utcnow_str():
         await call.answer(
-            "Ovoz berish muddati tugadi. Natija adminlarga yuboriladi.", show_alert=True
+            "Ovoz berish muddati tugadi. Natija tez orada ma'lum bo'ladi.", show_alert=True
         )
         return
 

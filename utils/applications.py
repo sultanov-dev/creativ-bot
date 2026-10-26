@@ -1,9 +1,9 @@
+import logging
+
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
-import logging
-
-from config import VOTING_MINUTES
+from config import VOTE_ACCEPT_PERCENT, VOTING_MINUTES
 from database import (
     change_status,
     create_application,
@@ -34,8 +34,8 @@ async def open_voting(bot: Bot, app: dict) -> bool:
                 "🗳 <b>Yangi a'zo uchun ovoz berish</b>\n\n"
                 f"{app['anketa']}\n\n"
                 f"⏳ Ovoz berish <b>{VOTING_MINUTES}</b> daqiqa davom etadi. "
-                "Muddat tugagach natija adminlarga yuboriladi, "
-                "yakuniy qarorni esa adminlar qabul qiladi."
+                f"Ovozlarning kamida {VOTE_ACCEPT_PERCENT}% i «Ha» bo'lsa, "
+                "a'zo guruhga qabul qilinadi."
             ),
             reply_markup=vote_inline(app_id=app["id"]),
         )

@@ -22,6 +22,11 @@ MAX_VOTING_MINUTES = 7 * 24 * 60
 if not 1 <= VOTING_MINUTES <= MAX_VOTING_MINUTES:
     raise ValueError(f"VOTING_MINUTES 1 dan {MAX_VOTING_MINUTES} gacha bo'lishi kerak")
 
+# ovozlarning kamida shuncha foizi "ha" bo'lsa, a'zo guruhga qabul qilinadi (adminlar qarori kerak emas)
+VOTE_ACCEPT_PERCENT = int(os.getenv("VOTE_ACCEPT_PERCENT") or 60)
+if not 1 <= VOTE_ACCEPT_PERCENT <= 100:
+    raise ValueError("VOTE_ACCEPT_PERCENT 1 dan 100 gacha bo'lishi kerak")
+
 # botning guruhga yozgan xabarlari shuncha soniyadan keyin o'chadi (0 = o'chirmaslik); ovoz berish xabari bundan mustasno
 AUTO_DELETE_SECONDS = int(os.getenv("AUTO_DELETE_SECONDS") or 120)
 
