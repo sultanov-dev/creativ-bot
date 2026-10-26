@@ -1,19 +1,98 @@
-from aiogram import Bot, F, Router
+from html import escape
+
+from aiogram import Bot, Router
 from aiogram.enums import ChatMemberStatus
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import CallbackQuery, Message
 
 from callbacks import CreatorCB
-from database import change_status, get_application
+from database import change_status, count_votes, get_application, get_no_votes
+from keyboards.creator import creator_confirm_inline
 from utils.admin import get_user_status, safe_send
+from utils.summary import summarize_reasons
 
 router = Router()
 
 
+async def _edit(call: CallbackQuery, text: str, **kwargs) -> None:
+    if isinstance(call.message, Message):
+        try:
+            await call.message.edit_text(text, **kwargs)
+        except TelegramAPIError:
+            pass
+
+
+async def _decide(call: CallbackQuery, bot: Bot, app: dict, accepted: bool) -> None:
+    """Yakuniy qaror: so'rov tasdiqlanadi yoki rad etiladi, arizachiga xabar boradi."""
+    new = "accepted" if accepted else "rejected"
+    if not await change_status(app["id"], old="creator_review", new=new):
+        await call.answer("Bu ariza bo'yicha qaror allaqachon qabul qilingan", show_alert=True)
+        return
+
+    try:
+        if accepted:
+            await bot.approve_chat_join_request(chat_id=app["group_id"], user_id=app["user_id"])
+        else:
+            await bot.decline_chat_join_request(chat_id=app["group_id"], user_id=app["user_id"])
+    except TelegramAPIError:
+        pass  # so'rov muddati o'tgan yoki foydalanuvchi allaqachon a'zo
+
+    result = "✅ Qabul qilindi" if accepted else "❌ Rad etildi"
+    await call.answer(result)
+    if isinstance(call.message, Message):
+        await _edit(call, f"{call.message.html_text}\n\n{result}")
+
+    await safe_send(
+        bot=bot,
+        chat_id=app["user_id"],
+        text=(
+            "Tabriklaymiz, arizangiz qabul qilindi! 🎉"
+            if accepted
+            else "Afsuski, arizangiz rad etildi."
+        ),
+    )
+
+
+async def _show_confirm(call: CallbackQuery, app: dict, accepted: bool, yes: int, no: int) -> None:
+    """Ko'pchilikka qarshi qaror oldidan tasdiqlash oynasi.
+
+    Qabul qilinsa (👎 ko'p yoki teng): 👎 bergan a'zolar sabablarining AI xulosasi ko'rsatiladi.
+    Rad etilsa (👍 ko'p): faqat ovoz sonlari va savol.
+    """
+    counts = f"Ovozlar: <b>{yes}</b> 👍 / <b>{no}</b> 👎"
+    name = f"№{app['id']} <b>{escape(app['full_name'])}</b>"
+
+    if accepted:
+        # AI uzoq javob berishi mumkin: ikki marta bosilmasligi uchun avval tugmasiz holat
+        await _edit(call, f"⏳ {name}: 👎 sabablari umumlashtirilmoqda...")
+        reasons = [v["reason"] for v in await get_no_votes(app["id"])]
+        summary, _ = await summarize_reasons(reasons)
+        text = (
+            "⚠️ <b>Ko'pchilik qarshi</b>\n\n"
+            f"{name}\n{counts}\n\n"
+            "👎 bergan a'zolar fikri (qisqacha xulosa):\n"
+            f"{escape(summary)}\n\n"
+            "Baribir qabul qilasizmi? Qaror tugmasini bosing."
+        )
+    else:
+        text = (
+            "⚠️ <b>Ko'pchilik rozi</b>\n\n"
+            f"{name}\n{counts}\n\n"
+            "Guruh a'zolarining ko'pchiligi 👍 bergan. Baribir rad etasizmi? Qaror tugmasini bosing."
+        )
+
+    await _edit(call, text, reply_markup=creator_confirm_inline(app["id"]))
+
+
 @router.callback_query(CreatorCB.filter())
 async def on_creator_decision(call: CallbackQuery, callback_data: CreatorCB, bot: Bot):
-    """Ovoz berish tugagach oxirgi qaror: faqat guruh creatori hal qiladi (ovoz natijasidan qat'i nazar)."""
-    if callback_data.action not in ("accept", "reject"):
+    """Ovoz berish tugagach oxirgi qaror: faqat guruh creatori hal qiladi (ovoz natijasidan qat'i nazar).
+
+    Ko'pchilik fikriga qarshi qaror (👎 ko'p/teng bo'lganda "Qabul", 👍 ko'p bo'lganda "Rad") avval
+    tasdiqlash oynasini ochadi; oynadagi "Qabul"/"Rad" tugmalari (final_*) yakuniy qaror beradi.
+    """
+    action = callback_data.action
+    if action not in ("accept", "reject", "final_accept", "final_reject"):
         await call.answer()
         return
 
@@ -22,41 +101,21 @@ async def on_creator_decision(call: CallbackQuery, callback_data: CreatorCB, bot
         await call.answer("Ariza topilmadi", show_alert=True)
         return
 
-    group_id = app["group_id"]
-    user_id = app["user_id"]
-
-    if await get_user_status(bot, group_id, call.from_user.id) != ChatMemberStatus.CREATOR:
+    if await get_user_status(bot, app["group_id"], call.from_user.id) != ChatMemberStatus.CREATOR:
         await call.answer("Bu qarorni faqat guruh egasi qabul qiladi", show_alert=True)
         return
 
-    accepted = callback_data.action == "accept"
-    new = "accepted" if accepted else "rejected"
-    if not await change_status(app["id"], old="creator_review", new=new):
+    if app["status"] != "creator_review":
         await call.answer("Bu ariza bo'yicha qaror allaqachon qabul qilingan", show_alert=True)
         return
 
-    try:
-        if accepted:
-            await bot.approve_chat_join_request(chat_id=group_id, user_id=user_id)
-        else:
-            await bot.decline_chat_join_request(chat_id=group_id, user_id=user_id)
-    except TelegramAPIError:
-        pass  # so'rov muddati o'tgan yoki foydalanuvchi allaqachon a'zo
+    accepted = action.endswith("accept")
+    if action in ("accept", "reject"):
+        yes, no = await count_votes(app["id"])
+        against_majority = (accepted and no >= yes) or (not accepted and yes > no)
+        if against_majority:
+            await call.answer()
+            await _show_confirm(call, app, accepted, yes, no)
+            return
 
-    result = "✅ Qabul qilindi" if accepted else "❌ Rad etildi"
-    await call.answer(result)
-    if isinstance(call.message, Message):
-        try:
-            await call.message.edit_text(f"{call.message.html_text}\n\n{result}")
-        except TelegramAPIError:
-            pass
-
-    await safe_send(
-        bot=bot,
-        chat_id=user_id,
-        text=(
-            "Tabriklaymiz, arizangiz qabul qilindi! 🎉"
-            if accepted
-            else "Afsuski, arizangiz rad etildi."
-        ),
-    )
+    await _decide(call, bot, app, accepted)
