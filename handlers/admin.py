@@ -6,6 +6,7 @@ from callbacks import ApplicantCB
 from config import VOTING_MINUTES
 from database import change_status, get_application, set_vote_message, start_voting
 from keyboards.vote import vote_inline
+from texts import APPLICATION_REJECTED
 from utils.admin import is_group_admin, mark_done, safe_send
 
 router = Router()
@@ -16,18 +17,18 @@ async def reject(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
     app = await get_application(callback_data.app_id)
 
     if app is None:
-        await call.answer("Ariza topilmadi", show_alert=True)
+        await call.answer("Kechirasiz, bu ariza topilmadi", show_alert=True)
         return
 
     group_id = app["group_id"]
     user_id = app["user_id"]
 
     if not await is_group_admin(bot=bot, chat_id=group_id, user_id=call.from_user.id):
-        await call.answer("Siz admin emassiz!", show_alert=True)
+        await call.answer("Bu amal faqat guruh adminlari uchun.", show_alert=True)
         return
 
     if not await change_status(app_id=app["id"], old="pending", new="rejected"):
-        await call.answer("Bu ariza allaqachon ko'rib chiqilgan", show_alert=True)
+        await call.answer("Bu ariza allaqachon ko'rib chiqilgan.", show_alert=True)
         await mark_done(
             call=call,
             result="⚠️ Allaqachon ko'rib chiqilgan",
@@ -42,7 +43,7 @@ async def reject(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
     except TelegramBadRequest:
         pass
 
-    await call.answer("Rad etildi!")
+    await call.answer("Ariza rad etildi")
     await mark_done(
         call=call,
         result="❌ Rad etildi",
@@ -50,7 +51,7 @@ async def reject(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
         chat_id=group_id,
         user_id=call.from_user.id,
     )
-    await safe_send(bot=bot, chat_id=user_id, text="Afsuski arizangiz rad etildi!")
+    await safe_send(bot=bot, chat_id=user_id, text=APPLICATION_REJECTED)
 
 
 @router.callback_query(ApplicantCB.filter(F.action == "accept"))
@@ -58,18 +59,18 @@ async def accept(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
     app = await get_application(callback_data.app_id)
 
     if app is None:
-        await call.answer("Ariza topilmadi", show_alert=True)
+        await call.answer("Kechirasiz, bu ariza topilmadi", show_alert=True)
         return
 
     group_id = app["group_id"]
     user_id = app["user_id"]
 
     if not await is_group_admin(bot, chat_id=group_id, user_id=call.from_user.id):
-        await call.answer("Siz admin emassiz!", show_alert=True)
+        await call.answer("Bu amal faqat guruh adminlari uchun.", show_alert=True)
         return
 
     if not await start_voting(app["id"], VOTING_MINUTES):
-        await call.answer("Bu ariza allaqachon ko'rib chiqilgan", show_alert=True)
+        await call.answer("Bu ariza allaqachon ko'rib chiqilgan.", show_alert=True)
         await mark_done(
             call=call,
             result="⚠️ Allaqachon ko'rib chiqilgan",
@@ -86,8 +87,8 @@ async def accept(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
                 "🗳 <b>Yangi a'zo uchun ovoz berish</b>\n\n"
                 f"{app['anketa']}\n\n"
                 f"⏳ Ovoz berish <b>{VOTING_MINUTES}</b> daqiqa davom etadi. "
-                "Muddat tugagach ovozlar guruh egasiga yuboriladi va "
-                "oxirgi qarorni guruh egasi qabul qiladi."
+                "Muddat tugagach natija guruh egasiga yuboriladi, "
+                "yakuniy qarorni esa guruh egasi qabul qiladi."
             ),
             reply_markup=vote_inline(app_id=app["id"]),
         )
@@ -95,17 +96,17 @@ async def accept(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
         # xabar yuborilmasa, ariza qayta ko'rib chiqilishi uchun holatni qaytaramiz
         await change_status(app_id=app["id"], old="voting", new="pending")
         await call.answer(
-            "Ovoz berish xabarini guruhga yuborib bo'lmadi", show_alert=True
+            "Kechirasiz, ovoz berish xabarini guruhga yuborib bo'lmadi. "
+            "Botning guruhda xabar yozish huquqini tekshiring.",
+            show_alert=True,
         )
         return
     await set_vote_message(app_id=app["id"], message_id=vote_msg.message_id)
 
-    await call.answer(
-        text="Arizangiz guruh a'zolari o'rtasida ovoz berishga yuborildi!"
-    )
+    await call.answer(text="Ariza guruh a'zolari ovoziga qo'yildi")
     await mark_done(
         call=call,
-        result="🗳 Ovoz berishga yuborildi",
+        result="🗳 Ovozga qo'yildi",
         bot=bot,
         chat_id=group_id,
         user_id=call.from_user.id,
@@ -113,5 +114,8 @@ async def accept(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
     await safe_send(
         bot=bot,
         chat_id=user_id,
-        text="Arizangiz guruh a'zolari o'rtasida ovoz berishga yuborildi! Natijani kuting ⏳",
+        text=(
+            "Arizangiz admin ko'rigidan o'tdi va guruh a'zolari ovoziga qo'yildi 🗳\n"
+            "Natijani shu yerda xabar qilamiz, sabr qiling ⏳"
+        ),
     )

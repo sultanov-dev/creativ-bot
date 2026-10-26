@@ -65,7 +65,7 @@ async def mark_done(
         role = str(getattr(status, "value", status)) if status else "noma'lum"
         try:
             await call.message.edit_text(
-                f"{call.message.html_text}\n\n{result} — {who} ({role})"
+                f"{call.message.html_text}\n\n{result} · {who} ({role})"
             )
         except TelegramBadRequest:
             pass

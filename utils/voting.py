@@ -15,6 +15,7 @@ from database import (
     get_no_votes,
 )
 from keyboards.creator import creator_inline
+from texts import APPLICATION_ACCEPTED, APPLICATION_REJECTED
 from utils.admin import get_group_creator_id, safe_send
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,7 @@ async def _send_report(bot: Bot, app: dict, yes: int, no: int) -> str:
         return UNREACHABLE
 
     text = (
-        "⚖️ <b>Oxirgi qaror sizda</b>\n\n"
+        "⚖️ <b>Yakuniy qaror sizda</b>\n\n"
         f"{app['anketa']}"
         + (f"📞 <b>Telefon:</b> {escape(app['phone'])}\n" if app.get("phone") else "")
         + "\n"
@@ -76,7 +77,7 @@ async def _send_report(bot: Bot, app: dict, yes: int, no: int) -> str:
         shown += 1
     if shown < len(no_votes):
         text += f"\n… va yana {len(no_votes) - shown} ta"
-    text += "\n\nQabul qilasizmi yoki rad qilasizmi?"
+    text += "\n\nArizani qabul qilasizmi yoki rad etasizmi?"
 
     try:
         await bot.send_message(
@@ -97,12 +98,18 @@ async def finalize_due_votings(bot: Bot) -> int:
     for app in await get_due_votings():
         yes, no = await count_votes(app["id"])
         if yes == 0 and no == 0:
-            new, result = "expired", "⌛ Ovoz berish muddati tugadi, hech kim ovoz bermadi."
-            note = "Arizangiz bo'yicha hech kim ovoz bermadi va yopildi. Xohlasangiz, qayta so'rov yuborishingiz mumkin."
+            new, result = "expired", "⌛ Ovoz berish yakunlandi: hech kim ovoz bermadi, ariza yopildi."
+            note = (
+                "Arizangiz bo'yicha hech kim ovoz bermadi, shuning uchun u yopildi. "
+                "Xohlasangiz, guruhga qo'shilish so'rovini qayta yuborishingiz mumkin."
+            )
         else:
             # ovoz natijasidan qat'i nazar (👍 ko'p bo'lsa ham) oxirgi qarorni creator qabul qiladi
-            new, result = "creator_review", "🔎 Creator qaroriga yuborildi"
-            note = "Guruh a'zolarining ovozi tugadi. Oxirgi qarorni guruh egasi qabul qiladi, natijani kuting ⏳"
+            new, result = "creator_review", "🔎 Yakuniy qaror guruh egasiga yuborildi"
+            note = (
+                "Guruh a'zolarining ovoz berishi yakunlandi. "
+                "Yakuniy qarorni guruh egasi qabul qiladi, natijani shu yerda xabar qilamiz ⏳"
+            )
 
         # ayni paytda holat o'zgargan bo'lsa, change_status False qaytaradi
         if not await change_status(app["id"], old="voting", new=new):
@@ -124,9 +131,9 @@ async def finalize_due_votings(bot: Bot) -> int:
                 )
                 await change_status(app["id"], old="creator_review", new=new)
                 if new == "accepted":
-                    result, note = "✅ Qabul qilindi", "Tabriklaymiz, arizangiz qabul qilindi! 🎉"
+                    result, note = "✅ Qabul qilindi", APPLICATION_ACCEPTED
                 else:
-                    result, note = "❌ Rad etildi", "Afsuski, guruh a'zolari arizangizni rad etishdi."
+                    result, note = "❌ Rad etildi", APPLICATION_REJECTED
         done += 1
         logger.info("Ovoz berish yakunlandi: ariza %s -> %s (%s/%s)", app["id"], new, yes, no)
 

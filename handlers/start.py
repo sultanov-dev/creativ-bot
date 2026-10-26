@@ -17,20 +17,20 @@ async def cmd_start(message: Message, state: FSMContext):
     question = question_for(await state.get_state() or "")
     if question:
         text, markup = question
-        await message.answer("Anketani to'ldirishni davom ettiramiz 👇")
+        await message.answer("Anketani to'ldirishda davom etamiz 👇")
         await message.answer(text, reply_markup=markup)
         return
 
     name = escape(message.from_user.full_name) if message.from_user is not None else ""
-    await message.answer(f"Salom, {name}! Men Choyxona botiman ☕")
+    await message.answer(f"Salom, {name}! Men Choyxona botiman ☕ Xush kelibsiz!")
 
     if message.from_user is None:
         return
 
-    # ovoz berganda lichkaga yozib bo'lmagan bo'lsa, sababni shu yerda so'raymiz
+    # ovoz berganda shaxsiy xabar yuborib bo'lmagan bo'lsa, sababni shu yerda so'raymiz
     pending = await get_pending_reason(message.from_user.id)
     if pending:
         await message.answer(
-            f"Siz <b>{escape(pending['applicant_name'])}</b> arizasiga 👎 bergansiz. "
-            "Nima uchun \"yo'q\" dedingiz? Sababini yozing:"
+            f"Siz <b>{escape(pending['applicant_name'])}</b> arizasiga 👎 bergansiz.\n"
+            "Qaroringiz sababini qisqacha yozib yuborsangiz, minnatdor bo'lamiz:"
         )

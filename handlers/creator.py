@@ -8,6 +8,7 @@ from aiogram.types import CallbackQuery, Message
 from callbacks import CreatorCB
 from database import change_status, count_votes, get_application, get_no_votes
 from keyboards.creator import creator_confirm_inline
+from texts import APPLICATION_ACCEPTED, APPLICATION_REJECTED
 from utils.admin import get_user_status, safe_send
 from utils.summary import summarize_reasons
 
@@ -26,7 +27,7 @@ async def _decide(call: CallbackQuery, bot: Bot, app: dict, accepted: bool) -> N
     """Yakuniy qaror: so'rov tasdiqlanadi yoki rad etiladi, arizachiga xabar boradi."""
     new = "accepted" if accepted else "rejected"
     if not await change_status(app["id"], old="creator_review", new=new):
-        await call.answer("Bu ariza bo'yicha qaror allaqachon qabul qilingan", show_alert=True)
+        await call.answer("Bu ariza bo'yicha yakuniy qaror allaqachon qabul qilingan.", show_alert=True)
         return
 
     try:
@@ -45,11 +46,7 @@ async def _decide(call: CallbackQuery, bot: Bot, app: dict, accepted: bool) -> N
     await safe_send(
         bot=bot,
         chat_id=app["user_id"],
-        text=(
-            "Tabriklaymiz, arizangiz qabul qilindi! 🎉"
-            if accepted
-            else "Afsuski, arizangiz rad etildi."
-        ),
+        text=APPLICATION_ACCEPTED if accepted else APPLICATION_REJECTED,
     )
 
 
@@ -64,7 +61,7 @@ async def _show_confirm(call: CallbackQuery, app: dict, accepted: bool, yes: int
 
     if accepted:
         # AI uzoq javob berishi mumkin: ikki marta bosilmasligi uchun avval tugmasiz holat
-        await _edit(call, f"⏳ {name}: 👎 sabablari umumlashtirilmoqda...")
+        await _edit(call, f"⏳ {name}: 👎 sabablari umumlashtirilmoqda…")
         reasons = [v["reason"] for v in await get_no_votes(app["id"])]
         summary, _ = await summarize_reasons(reasons)
         text = (
@@ -72,13 +69,13 @@ async def _show_confirm(call: CallbackQuery, app: dict, accepted: bool, yes: int
             f"{name}\n{counts}\n\n"
             "👎 bergan a'zolar fikri (qisqacha xulosa):\n"
             f"{escape(summary)}\n\n"
-            "Baribir qabul qilasizmi? Qaror tugmasini bosing."
+            "Shunday bo'lsa-da, arizani qabul qilasizmi? Yakuniy qarorni tanlang."
         )
     else:
         text = (
             "⚠️ <b>Ko'pchilik rozi</b>\n\n"
             f"{name}\n{counts}\n\n"
-            "Guruh a'zolarining ko'pchiligi 👍 bergan. Baribir rad etasizmi? Qaror tugmasini bosing."
+            "A'zolarning ko'pchiligi 👍 bergan. Shunday bo'lsa-da, arizani rad etasizmi? Yakuniy qarorni tanlang."
         )
 
     await _edit(call, text, reply_markup=creator_confirm_inline(app["id"]))
@@ -98,15 +95,15 @@ async def on_creator_decision(call: CallbackQuery, callback_data: CreatorCB, bot
 
     app = await get_application(callback_data.app_id)
     if app is None:
-        await call.answer("Ariza topilmadi", show_alert=True)
+        await call.answer("Kechirasiz, bu ariza topilmadi", show_alert=True)
         return
 
     if await get_user_status(bot, app["group_id"], call.from_user.id) != ChatMemberStatus.CREATOR:
-        await call.answer("Bu qarorni faqat guruh egasi qabul qiladi", show_alert=True)
+        await call.answer("Yakuniy qarorni faqat guruh egasi qabul qiladi.", show_alert=True)
         return
 
     if app["status"] != "creator_review":
-        await call.answer("Bu ariza bo'yicha qaror allaqachon qabul qilingan", show_alert=True)
+        await call.answer("Bu ariza bo'yicha yakuniy qaror allaqachon qabul qilingan.", show_alert=True)
         return
 
     accepted = action.endswith("accept")

@@ -1,5 +1,5 @@
-ASK_FIRST_NAME = "Ismingiz nima? (Telegramdagi nom emas, haqiqiy ismingizni yozing)"
-ASK_LAST_NAME = "Familiyangiz nima?"
+ASK_FIRST_NAME = "Avval tanishib olaylik. Ismingiz nima? Telegramdagi nomni emas, haqiqiy ismingizni yozing."
+ASK_LAST_NAME = "Familiyangiz-chi?"
 ASK_USERNAME = (
     "Telegram username'ingizni yozing, masalan: @username.\n"
     "Bu majburiy emas, xohlamasangiz o'tkazib yuborishingiz mumkin."
@@ -10,33 +10,44 @@ ASK_PHONE = (
 )
 SKIP_BUTTON = "⏭ O'tkazib yuborish"
 PHONE_BUTTON = "📱 Raqamni ulashish"
-WRONG_NAME = "Iltimos, ismni to'g'ri yozing: faqat harflar, 2 dan 40 belgigacha."
+WRONG_NAME = "Kechirasiz, ism to'g'ri ko'rinmadi. Faqat harflardan iborat, 2 tadan 40 tagacha belgi yozing."
 WRONG_USERNAME = (
-    "Username noto'g'ri. U lotin harfi bilan boshlanib, 5 dan 32 belgigacha harf, raqam yoki _ bo'lishi kerak. "
-    "Yoki o'tkazib yuboring."
+    "Kechirasiz, username to'g'ri ko'rinmadi. U lotin harfi bilan boshlanib, "
+    "5 tadan 32 tagacha harf, raqam yoki _ belgisidan iborat bo'lishi kerak. "
+    "Xohlasangiz, o'tkazib yuborishingiz mumkin."
 )
-WRONG_PHONE = "Telefon raqami noto'g'ri. Masalan: +998901234567. Yoki o'tkazib yuboring."
-WRONG_CONTACT = "Iltimos, o'zingizning raqamingizni yuboring."
+WRONG_PHONE = (
+    "Kechirasiz, raqam to'g'ri ko'rinmadi. Masalan: +998901234567. "
+    "Xohlasangiz, o'tkazib yuborishingiz mumkin."
+)
+WRONG_CONTACT = "Kechirasiz, faqat o'zingizning raqamingizni yuborishingiz mumkin."
 ASK_AGE = "Yoshingiz nechida?"
-ASK_JOB = "Kasbingiz nima?"
-ASK_ABOUT = "O'zingiz haqingizda gapirib bering:"
-ASK_REASON = "Nega guruhga qo'shilmoqchisiz?"
+ASK_JOB = "Kasbingiz nima? Qaysi yo'nalishda ishlaysiz?"
+ASK_ABOUT = "O'zingiz haqingizda qisqacha gapirib bering."
+ASK_REASON = "Nega aynan bizning guruhga qo'shilmoqchisiz?"
 
-WRONG_AGE = "Iltimos, yoshingizni to'g'ri yozing (10 dan 100 gacha)."
-ONLY_TEXT = "Iltimos, javobni matn ko'rinishida yozing ✍️"
-TOO_LONG = "Javob juda uzun. Iltimos, 800 belgidan oshmasin, qisqaroq yozing ✍️"
-ERROR_GENERIC = "Xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring."
-ALREADY_APPLIED = "Sizning arizangiz allaqachon ko'rib chiqilmoqda. Natijani kuting ⏳"
-THANKS ="Savollarga javob uchun rahmat! 😊 Arizangiz adminga yuborildi."
+WRONG_AGE = "Kechirasiz, yoshingiz to'g'ri ko'rinmadi. 10 dan 100 gacha son yozing."
+ONLY_TEXT = "Kechirasiz, javobni faqat matn ko'rinishida qabul qila olaman ✍️"
+TOO_LONG = "Kechirasiz, javob juda uzun. Iltimos, 800 belgidan oshirmay, qisqaroq yozing ✍️"
+ERROR_GENERIC = "Kechirasiz, xatolik yuz berdi. Iltimos, birozdan keyin qayta urinib ko'ring."
+ALREADY_APPLIED = "Arizangiz allaqachon ko'rib chiqilmoqda. Natijani kutib turing ⏳"
+THANKS = "Javoblaringiz uchun rahmat! 😊 Arizangiz guruh adminlariga yuborildi."
+
+APPLICATION_ACCEPTED = "Tabriklaymiz, arizangiz qabul qilindi! Guruhga xush kelibsiz 🎉"
+APPLICATION_REJECTED = (
+    "Qiziqishingiz uchun rahmat. Afsuski, arizangiz bu safar rad etildi. "
+    "Sizga omad tilaymiz!"
+)
 
 AI_SYSTEM_PROMPT = (
-    "Sen Telegram guruhidagi shaxsiy yordamchisan. Savolga aniq va qisqa javob ber. "
-    "Foydalanuvchi qaysi tilda yozsa, shu tilda javob ber; til noaniq bo'lsa, o'zbek tilida. "
-    "Javobni Telegram HTML formatida yoz: faqat <b>, <i>, <u>, <s>, <code>, <pre>, <a href> teglaridan foydalan, "
-    "oddiy matndagi <, > va & belgilarini &lt;, &gt;, &amp; deb yoz. Markdown ishlatma. "
-    "Javobda hech qayerda tire yoki defis (-, –, —) belgisini ishlatma; ro'yxat uchun • belgisidan yoki raqamlardan foydalan."
+    "Siz Telegram guruhidagi xushmuomala va samimiy yordamchisiz. Savolga aniq va qisqa javob bering. "
+    "Foydalanuvchi qaysi tilda yozsa, shu tilda javob bering; til noaniq bo'lsa, o'zbek tilida. "
+    "Foydalanuvchiga hurmat bilan, «siz» deb murojaat qiling. "
+    "Javobni Telegram HTML formatida yozing: faqat <b>, <i>, <u>, <s>, <code>, <pre>, <a href> teglaridan foydalaning, "
+    "oddiy matndagi <, > va & belgilarini &lt;, &gt;, &amp; deb yozing. Markdown ishlatmang. "
+    "Javobda hech qayerda tire yoki defis (-, –, —) belgisini ishlatmang; ro'yxat uchun • belgisidan yoki raqamlardan foydalaning."
 )
 AI_EMPTY = "Savolingizni yozing, masalan: @{username} bugun ob-havo qanday?"
-AI_TOO_LONG = "Savol juda uzun. Iltimos, 2000 belgidan oshmasin, qisqaroq yozing ✍️"
-AI_COOLDOWN = "Biroz kuting, oldingi savolingiz hali ishlanmoqda ⏳"
-AI_ERROR = "Hozir javob bera olmayapman. Iltimos, keyinroq qayta urinib ko'ring."
+AI_TOO_LONG = "Kechirasiz, savol juda uzun. Iltimos, 2000 belgidan oshirmay, qisqaroq yozing ✍️"
+AI_COOLDOWN = "Biroz sabr qiling, oldingi savolingiz hali ishlanmoqda ⏳"
+AI_ERROR = "Kechirasiz, hozir javob bera olmayapman. Iltimos, birozdan keyin qayta urinib ko'ring."

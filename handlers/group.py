@@ -126,7 +126,7 @@ async def kick_deleted(message: Message, bot: Bot):
     chat_id = message.chat.id
     members = await get_members(chat_id)
     status_msg = await message.reply(
-        f"🔎 Bot kuzatgan {len(members)} ta a'zo tekshirilmoqda..."
+        f"🔎 Bot kuzatgan {len(members)} ta a'zo tekshirilmoqda…"
     )
 
     kicked = failed = 0
@@ -168,44 +168,44 @@ async def kick_deleted(message: Message, bot: Bot):
 async def ban(message: Message, command: CommandObject, bot: Bot):
     user_id = _target_id(message, command)
     if user_id is None:
-        await message.reply("Foydalanuvchiga reply qiling yoki ID yozing: /ban &lt;id&gt;")
+        await message.reply("Foydalanuvchi xabariga javob bering yoki ID yozing: /ban &lt;id&gt;")
         return
     if await get_user_status(bot, message.chat.id, user_id) in PRIVILEGED:
-        await message.reply("Adminni ban qilib bo'lmaydi")
+        await message.reply("Kechirasiz, adminni bloklab bo'lmaydi.")
         return
 
     try:
         await _remove(bot, message.chat.id, user_id, ban=True)
     except (TelegramBadRequest, TelegramForbiddenError):
-        await message.reply("Ban qilib bo'lmadi (botda huquq yo'qmi?)")
+        await message.reply("Kechirasiz, bloklab bo'lmadi. Botda yetarli huquq borligini tekshiring.")
         return
-    await message.reply(f"🚫 <code>{user_id}</code> ban qilindi")
+    await message.reply(f"🚫 <code>{user_id}</code> bloklandi")
 
 
 @router.message(Command("unban"))
 async def unban(message: Message, command: CommandObject, bot: Bot):
     user_id = _target_id(message, command)
     if user_id is None:
-        await message.reply("Foydalanuvchiga reply qiling yoki ID yozing: /unban &lt;id&gt;")
+        await message.reply("Foydalanuvchi xabariga javob bering yoki ID yozing: /unban &lt;id&gt;")
         return
     try:
         await bot.unban_chat_member(message.chat.id, user_id, only_if_banned=True)
     except (TelegramBadRequest, TelegramForbiddenError):
-        await message.reply("Bandan chiqarib bo'lmadi")
+        await message.reply("Kechirasiz, blokdan chiqarib bo'lmadi.")
         return
-    await message.reply(f"✅ <code>{user_id}</code> bandan chiqarildi")
+    await message.reply(f"✅ <code>{user_id}</code> blokdan chiqarildi")
 
 
 @router.message(Command("mute"))
 async def mute(message: Message, command: CommandObject, bot: Bot):
     reply = message.reply_to_message
     if reply is None or reply.from_user is None:
-        await message.reply("Foydalanuvchi xabariga reply qiling: /mute [daqiqa]")
+        await message.reply("Foydalanuvchi xabariga javob bering: /mute [daqiqa]")
         return
 
     user_id = reply.from_user.id
     if await get_user_status(bot, message.chat.id, user_id) in PRIVILEGED:
-        await message.reply("Adminni mute qilib bo'lmaydi")
+        await message.reply("Kechirasiz, adminni jim qilib bo'lmaydi.")
         return
 
     minutes = int(command.args) if command.args and _is_number(command.args) else 60
@@ -219,10 +219,10 @@ async def mute(message: Message, command: CommandObject, bot: Bot):
             until_date=until,
         )
     except (TelegramBadRequest, TelegramForbiddenError):
-        await message.reply("Mute qilib bo'lmadi (botda huquq yo'qmi?)")
+        await message.reply("Kechirasiz, jim qilib bo'lmadi. Botda yetarli huquq borligini tekshiring.")
         return
     await message.reply(
-        f"🔇 {escape(reply.from_user.full_name)} {minutes} daqiqaga mute qilindi"
+        f"🔇 {escape(reply.from_user.full_name)} {minutes} daqiqaga jim qilindi"
     )
 
 
@@ -230,7 +230,7 @@ async def mute(message: Message, command: CommandObject, bot: Bot):
 async def unmute(message: Message, bot: Bot):
     reply = message.reply_to_message
     if reply is None or reply.from_user is None:
-        await message.reply("Foydalanuvchi xabariga reply qiling: /unmute")
+        await message.reply("Foydalanuvchi xabariga javob bering: /unmute")
         return
 
     chat = await bot.get_chat(message.chat.id)
@@ -240,9 +240,9 @@ async def unmute(message: Message, bot: Bot):
             message.chat.id, reply.from_user.id, permissions=permissions
         )
     except (TelegramBadRequest, TelegramForbiddenError):
-        await message.reply("Mute'ni olib bo'lmadi")
+        await message.reply("Kechirasiz, jimlikdan chiqarib bo'lmadi.")
         return
-    await message.reply(f"🔊 {escape(reply.from_user.full_name)} mute'dan chiqarildi")
+    await message.reply(f"🔊 {escape(reply.from_user.full_name)} jimlikdan chiqarildi")
 
 
 @router.message(Command("stats"))
@@ -253,10 +253,10 @@ async def stats(message: Message, bot: Bot):
 
 FINISH_RESULTS = {
     "accepted": "✅ qabul qilindi",
-    "creator_review": "🔎 qaror sizda, hisobot alohida xabarda",
+    "creator_review": "🔎 yakuniy qaror sizda, hisobot alohida xabarda",
     "rejected": "❌ rad etildi",
     "expired": "⌛ hech kim ovoz bermadi, ariza yopildi",
-    "voting": "⏳ vaqtincha xato, birozdan keyin avtomatik yakunlanadi",
+    "voting": "⏳ vaqtincha xatolik, birozdan keyin o'zi yakunlanadi",
 }
 
 
@@ -269,17 +269,17 @@ async def finish(message: Message, bot: Bot):
     reply = message.reply_to_message
     if reply is None:
         await message.reply(
-            "Tugatmoqchi bo'lgan ovoz berish xabariga reply qilib /finish yozing. "
-            "Faqat o'sha ovoz tugatiladi."
+            "Yakunlamoqchi bo'lgan ovoz berish xabariga javob bergan holda /finish yozing. "
+            "Faqat o'sha ovoz yakunlanadi."
         )
         return
 
     app = await get_application_by_vote_message(message.chat.id, reply.message_id)
     if app is None:
-        await message.reply("Bu ovoz berish xabari emas. Ovoz berish xabariga reply qiling.")
+        await message.reply("Bu ovoz berish xabari emas. Iltimos, ovoz berish xabariga javob bering.")
         return
     if app["status"] != "voting":
-        await message.reply("Bu ovoz berish allaqachon yakunlangan.")
+        await message.reply("Bu ariza bo'yicha ovoz berish allaqachon yakunlangan.")
         return
 
     await end_voting_now(message.chat.id, app["id"])
@@ -288,16 +288,16 @@ async def finish(message: Message, bot: Bot):
     app = await get_application(app["id"]) or app
     yes, no = await count_votes(app["id"])
     report = (
-        "🏁 <b>Ovoz berish tugatildi</b>\n\n"
+        "🏁 <b>Ovoz berish yakunlandi</b>\n\n"
         f"№{app['id']} <b>{escape(app['full_name'])}</b>: {yes} 👍 / {no} 👎, "
         f"{FINISH_RESULTS.get(app['status'], app['status'])}"
     )
 
     delivered = await safe_send(bot=bot, chat_id=message.from_user.id, text=report)
     if delivered:
-        await message.reply("🏁 Ovoz berish tugatildi, hisobot lichkangizga yuborildi.")
+        await message.reply("🏁 Ovoz berish yakunlandi, hisobot shaxsiy xabaringizga yuborildi.")
     else:
         await message.reply(
-            "🏁 Ovoz berish tugatildi, lekin hisobotni lichkaga yuborib bo'lmadi: "
-            "botga lichkada /start bosing."
+            "🏁 Ovoz berish yakunlandi, lekin hisobotni shaxsiy xabar sifatida yubora olmadim. "
+            "Botning shaxsiy chatida /start bosing."
         )

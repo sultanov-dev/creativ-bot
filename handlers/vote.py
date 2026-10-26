@@ -23,7 +23,7 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
     app = await get_application(callback_data.app_id)
 
     if app is None or app["status"] != "voting":
-        await call.answer(text="Ariza berish allaqachon yakunlangan", show_alert=True)
+        await call.answer(text="Bu ariza bo'yicha ovoz berish yakunlangan.", show_alert=True)
         return
 
     if callback_data.vote not in ("yes", "no"):
@@ -31,7 +31,9 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
         return
 
     if app["voting_ends_at"] and app["voting_ends_at"] <= utcnow_str():
-        await call.answer("Ovoz berish muddati tugadi, natija tez orada e'lon qilinadi", show_alert=True)
+        await call.answer(
+            "Ovoz berish muddati tugadi. Natija guruh egasiga yuboriladi.", show_alert=True
+        )
         return
 
     group_id = app["group_id"]
@@ -39,11 +41,11 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
     voter_id = call.from_user.id
 
     if voter_id == applicant_id:
-        await call.answer("O'zingizning arizangizga ovoz bera olmaysiz", show_alert=True)
+        await call.answer("Kechirasiz, o'z arizangizga ovoz bera olmaysiz.", show_alert=True)
         return
 
     if not await is_group_member(bot, group_id, voter_id):
-        await call.answer("Faqat guruh a'zolari ovoz bera oladi", show_alert=True)
+        await call.answer("Ovoz berish faqat guruh a'zolari uchun.", show_alert=True)
         return
 
     if not await add_vote(app["id"], voter_id, callback_data.vote):
@@ -57,20 +59,20 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
 
     # tugmalar hamma uchun bir xil, shuning uchun tanlovni ogohlantirish oynasida aniq ko'rsatamiz
     chosen = VOTE_LABELS[callback_data.vote]
-    note, alert = f"✅ Siz «{chosen}» deb ovoz berdingiz. Ovozingiz qabul qilindi.", True
+    note, alert = f"✅ Ovozingiz qabul qilindi: «{chosen}». Rahmat!", True
     if callback_data.vote == "no":
         asked = await safe_send(
             bot=bot,
             chat_id=voter_id,
             text=(
                 f"Siz <b>{escape(app['full_name'])}</b> arizasiga 👎 berdingiz.\n"
-                "Nima uchun \"yo'q\" dedingiz? Sababini yozib yuboring:"
+                "Qaroringiz sababini qisqacha yozib yuborsangiz, minnatdor bo'lamiz:"
             ),
         )
         if not asked:
             note = (
-                f"✅ Siz «{chosen}» deb ovoz berdingiz.\n"
-                "Sababini aytish uchun botga lichkada /start bosing, so'ng sababni yozing."
+                f"✅ Ovozingiz qabul qilindi: «{chosen}».\n"
+                "Sababini yozish uchun botning shaxsiy chatida /start bosing."
             )
 
     await call.answer(note, show_alert=alert)

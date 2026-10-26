@@ -37,7 +37,7 @@ async def expire_applications(bot: Bot) -> int:
                 await bot.edit_message_text(
                     chat_id=app["group_id"],
                     message_id=app["vote_message_id"],
-                    text=f"{app['anketa']}\n⌛ Ovoz berish muddati tugadi, ariza yopildi.",
+                    text=f"{app['anketa']}\n⌛ Ariza {EXPIRE_DAYS} kun ichida ko'rib chiqilmadi va yopildi.",
                 )
             except TelegramAPIError:
                 pass
@@ -46,8 +46,8 @@ async def expire_applications(bot: Bot) -> int:
             bot=bot,
             chat_id=app["user_id"],
             text=(
-                f"Arizangiz {EXPIRE_DAYS} kun ichida ko'rib chiqilmadi va yopildi. "
-                "Xohlasangiz, guruhga qayta qo'shilish so'rovini yuborishingiz mumkin."
+                f"Kechirasiz, arizangiz {EXPIRE_DAYS} kun ichida ko'rib chiqilmadi va yopildi. "
+                "Xohlasangiz, guruhga qo'shilish so'rovini qayta yuborishingiz mumkin."
             ),
         )
     return expired

@@ -12,17 +12,17 @@ from aiogram.types import (
 logger = logging.getLogger(__name__)
 
 PRIVATE_COMMANDS = [
-    BotCommand(command="start", description="Botni ishga tushirish"),
+    BotCommand(command="start", description="Botni ishga tushirish va anketani davom ettirish"),
 ]
 
 CREATOR_COMMANDS = [
     BotCommand(command="kick_deleted", description="O'chirilgan akkauntlarni guruhdan chiqarish"),
-    BotCommand(command="ban", description="Foydalanuvchini ban qilish (reply yoki ID)"),
-    BotCommand(command="unban", description="Foydalanuvchini bandan chiqarish"),
+    BotCommand(command="ban", description="Foydalanuvchini bloklash (xabariga javob bering yoki ID yozing)"),
+    BotCommand(command="unban", description="Foydalanuvchini blokdan chiqarish"),
     BotCommand(command="mute", description="Foydalanuvchini jim qilish: /mute [daqiqa]"),
     BotCommand(command="unmute", description="Foydalanuvchini jimlikdan chiqarish"),
     BotCommand(command="stats", description="Guruh a'zolari soni"),
-    BotCommand(command="finish", description="Ovoz berishni tugatish: ovoz xabariga reply qiling"),
+    BotCommand(command="finish", description="Ovoz berishni yakunlash (ovoz xabariga javob bering)"),
 ]
 
 

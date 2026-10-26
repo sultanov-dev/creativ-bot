@@ -7,11 +7,11 @@ def creator_inline(app_id: int):
     builder = InlineKeyboardBuilder()
 
     builder.button(
-        text="✅ Qabul qilaman",
+        text="✅ Qabul qilish",
         callback_data=CreatorCB(action="accept", app_id=app_id),
     )
     builder.button(
-        text="❌ Rad qilaman",
+        text="❌ Rad etish",
         callback_data=CreatorCB(action="reject", app_id=app_id),
     )
 
@@ -23,11 +23,11 @@ def creator_confirm_inline(app_id: int):
     builder = InlineKeyboardBuilder()
 
     builder.button(
-        text="✅ Qabul",
+        text="✅ Ha, qabul qilaman",
         callback_data=CreatorCB(action="final_accept", app_id=app_id),
     )
     builder.button(
-        text="❌ Rad",
+        text="❌ Ha, rad etaman",
         callback_data=CreatorCB(action="final_reject", app_id=app_id),
     )
 
