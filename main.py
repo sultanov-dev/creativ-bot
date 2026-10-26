@@ -7,7 +7,7 @@ from aiogram import Dispatcher
 from config import ADMIN_IDS
 from database import close_db, get_known_group_ids, init_db
 from handlers import get_routers
-from utils.autodelete import AutoDeleteMiddleware
+from utils.autodelete import AutoDeleteMiddleware, restore_pending_deletes
 from utils.commands import setup_group_commands, setup_private_commands
 from utils.create_bot import bot
 from utils.expiry import run_expiry_loop
@@ -38,6 +38,7 @@ async def main():
     # yangi buyruqlar mavjud guruhlardagi admin menyusida ham chiqishi uchun
     for group_id in await get_known_group_ids():
         await setup_group_commands(bot, group_id)
+    await restore_pending_deletes(bot)
     expiry_task = asyncio.create_task(run_expiry_loop(bot))
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())

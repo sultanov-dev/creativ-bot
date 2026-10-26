@@ -90,6 +90,14 @@ async def init_db() -> None:
             PRIMARY KEY (chat_id, user_id)
         );
 
+        -- guruhdagi bot/buyruq xabarlarini keyinroq o'chirish navbati (bot qayta ishga tushsa ham saqlanadi)
+        CREATE TABLE IF NOT EXISTS pending_deletes (
+            chat_id    INTEGER NOT NULL,
+            message_id INTEGER NOT NULL,
+            delete_at  INTEGER NOT NULL,  -- unix vaqt, soniyada
+            PRIMARY KEY (chat_id, message_id)
+        );
+
         CREATE TABLE IF NOT EXISTS fsm (
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL
@@ -372,3 +380,26 @@ async def count_votes(app_id: int) -> tuple[int, int]:
 
     yes, no = row
     return yes or 0, no or 0
+
+
+async def add_pending_delete(chat_id: int, message_id: int, delete_at: int) -> None:
+    db = await get_db()
+    await db.execute(
+        "INSERT OR REPLACE INTO pending_deletes (chat_id, message_id, delete_at) VALUES (?, ?, ?)",
+        (chat_id, message_id, delete_at),
+    )
+    await db.commit()
+
+
+async def remove_pending_delete(chat_id: int, message_id: int) -> None:
+    db = await get_db()
+    await db.execute(
+        "DELETE FROM pending_deletes WHERE chat_id = ? AND message_id = ?", (chat_id, message_id)
+    )
+    await db.commit()
+
+
+async def get_pending_deletes() -> list[dict]:
+    db = await get_db()
+    cur = await db.execute("SELECT chat_id, message_id, delete_at FROM pending_deletes")
+    return [dict(r) for r in await cur.fetchall()]

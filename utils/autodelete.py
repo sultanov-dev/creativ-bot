@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any, Awaitable, Callable
@@ -15,6 +16,7 @@ from aiogram.types import InlineKeyboardMarkup, Message, TelegramObject
 
 from callbacks import VoteCB
 from config import AUTO_DELETE_SECONDS
+from database import add_pending_delete, get_pending_deletes, remove_pending_delete
 
 logger = logging.getLogger(__name__)
 
@@ -51,21 +53,42 @@ def _is_vote_message(method: SendMessage) -> bool:
     )
 
 
-async def _delete_later(bot: Bot, chat_id: int, message_id: int) -> None:
-    await asyncio.sleep(AUTO_DELETE_SECONDS)
+async def _delete_at(bot: Bot, chat_id: int, message_id: int, when: float) -> None:
+    await asyncio.sleep(max(0.0, when - time.time()))
     try:
         await bot.delete_message(chat_id=chat_id, message_id=message_id)
-    except TelegramAPIError:
-        pass  # xabar allaqachon o'chirilgan yoki o'chirish huquqi yo'q
+    except TelegramAPIError as e:
+        # xabar allaqachon o'chirilgan yoki botda "xabarlarni o'chirish" huquqi yo'q
+        logger.warning("Xabarni o'chirib bo'lmadi (chat=%s, message=%s): %s", chat_id, message_id, e)
+    # bot to'xtatilganda (CancelledError) qator qoladi: keyingi ishga tushishda davom etadi
+    await remove_pending_delete(chat_id, message_id)
 
 
-def schedule_delete(bot: Bot, chat_id: int, message_id: int) -> None:
-    """Xabarni AUTO_DELETE_SECONDS dan keyin o'chirishga qo'yadi (0 bo'lsa hech narsa qilmaydi)."""
-    if AUTO_DELETE_SECONDS <= 0:
-        return
-    task = asyncio.create_task(_delete_later(bot, chat_id, message_id))
+def _start(bot: Bot, chat_id: int, message_id: int, when: float) -> None:
+    task = asyncio.create_task(_delete_at(bot, chat_id, message_id, when))
     _tasks.add(task)
     task.add_done_callback(_tasks.discard)
+
+
+async def schedule_delete(bot: Bot, chat_id: int, message_id: int) -> None:
+    """Xabarni AUTO_DELETE_SECONDS dan keyin o'chirishga qo'yadi (0 bo'lsa hech narsa qilmaydi).
+
+    Navbat bazada saqlanadi: bot qayta ishga tushsa, restore_pending_deletes() davom ettiradi.
+    """
+    if AUTO_DELETE_SECONDS <= 0:
+        return
+    when = time.time() + AUTO_DELETE_SECONDS
+    await add_pending_delete(chat_id, message_id, int(when))
+    _start(bot, chat_id, message_id, when)
+
+
+async def restore_pending_deletes(bot: Bot) -> None:
+    """Bot ishga tushganda: o'tgan o'chirishlar darhol bajariladi, qolganlari o'z vaqtida."""
+    rows = await get_pending_deletes()
+    for row in rows:
+        _start(bot, row["chat_id"], row["message_id"], row["delete_at"])
+    if rows:
+        logger.info("Kutayotgan %s ta xabar o'chirish tiklandi", len(rows))
 
 
 class CommandCleanupMiddleware(BaseMiddleware):
@@ -84,7 +107,7 @@ class CommandCleanupMiddleware(BaseMiddleware):
             return await handler(event, data)
         finally:
             if isinstance(event, Message) and event.chat.type in GROUP_TYPES:
-                schedule_delete(data["bot"], event.chat.id, event.message_id)
+                await schedule_delete(data["bot"], event.chat.id, event.message_id)
 
 
 class AutoDeleteMiddleware(BaseRequestMiddleware):
@@ -108,5 +131,5 @@ class AutoDeleteMiddleware(BaseRequestMiddleware):
             and not _keep.get()
             and not _is_vote_message(method)
         ):
-            schedule_delete(bot, result.chat.id, result.message_id)
+            await schedule_delete(bot, result.chat.id, result.message_id)
         return result
