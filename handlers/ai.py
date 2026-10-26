@@ -1,9 +1,11 @@
+import html
 import re
 import time
 from collections import OrderedDict
 
 from aiogram import Bot, F, Router
 from aiogram.enums import MessageEntityType
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
 from aiogram.utils.chat_action import ChatActionSender
 
@@ -16,8 +18,11 @@ router.message.filter(F.chat.type.in_({"group", "supergroup"}))
 MAX_QUESTION = 2000
 TG_LIMIT = 4096
 COOLDOWN = 5
+# uzun javob guruhni xabarlar bilan to'ldirmasligi va flood-limitga urilmasligi uchun
+MAX_PARTS = 2
 
 _last_ask: dict[int, float] = {}
+_LAST_ASK_MAX = 1000
 # botning AI javoblari (chat_id, message_id): shularga reply qilinsa suhbat davom etadi
 _ai_messages: OrderedDict[tuple[int, int], None] = OrderedDict()
 _AI_MESSAGES_MAX = 1000
@@ -49,7 +54,19 @@ async def addressed(message: Message, bot: Bot) -> bool:
 
 
 def _split(text: str) -> list[str]:
-    return [text[i : i + TG_LIMIT] for i in range(0, len(text), TG_LIMIT)]
+    """4096 belgidan oshmaydigan bo'laklar; imkon bo'lsa qator oxirida bo'linadi (teg o'rtasida emas)."""
+    parts = []
+    while len(text) > TG_LIMIT:
+        cut = text.rfind("\n", 0, TG_LIMIT)
+        cut = cut if cut > 0 else TG_LIMIT
+        parts.append(text[:cut])
+        text = text[cut:].lstrip("\n")
+    parts.append(text)
+    return parts
+
+
+def _plain(text: str) -> str:
+    return html.unescape(re.sub(r"<[^>]*>", "", text))
 
 
 @router.message(F.text, ~F.text.startswith("/"), addressed)
@@ -76,6 +93,10 @@ async def on_ai_question(message: Message, bot: Bot):
     if now - _last_ask.get(message.from_user.id, -COOLDOWN) < COOLDOWN:
         await message.reply(texts.AI_COOLDOWN)
         return
+    if len(_last_ask) >= _LAST_ASK_MAX:
+        # cooldown'i o'tgan yozuvlar keraksiz: xotira o'sib ketmasin
+        for uid in [u for u, t in _last_ask.items() if now - t >= COOLDOWN]:
+            del _last_ask[uid]
     _last_ask[message.from_user.id] = now
 
     history = [{"role": "system", "content": texts.AI_SYSTEM_PROMPT}]
@@ -93,5 +114,5 @@ async def on_ai_question(message: Message, bot: Bot):
         raise
 
     # AI javobida <, & bo'lishi mumkin: HTML parse_mode o'chiriladi
-    for part in _split(answer):
+    for part in _split(answer)[:MAX_PARTS]:
         _remember(await message.reply(part, parse_mode=None))

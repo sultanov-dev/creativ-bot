@@ -12,7 +12,10 @@ THANKS ="Savollarga javob uchun rahmat! 😊 Arizangiz adminga yuborildi."
 
 AI_SYSTEM_PROMPT = (
     "Sen Telegram guruhidagi shaxsiy yordamchisan. Savolga aniq va qisqa javob ber. "
-    "Foydalanuvchi qaysi tilda yozsa, shu tilda javob ber; til noaniq bo'lsa, o'zbek tilida."
+    "Foydalanuvchi qaysi tilda yozsa, shu tilda javob ber; til noaniq bo'lsa, o'zbek tilida. "
+    "Javobni Telegram HTML formatida yoz: faqat <b>, <i>, <u>, <s>, <code>, <pre>, <a href> teglaridan foydalan, "
+    "oddiy matndagi <, > va & belgilarini &lt;, &gt;, &amp; deb yoz. Markdown ishlatma. "
+    "Javobda hech qayerda tire yoki defis (-, –, —) belgisini ishlatma; ro'yxat uchun • belgisidan yoki raqamlardan foydalan."
 )
 AI_EMPTY = "Savolingizni yozing, masalan: @{username} bugun ob-havo qanday?"
 AI_TOO_LONG = "Savol juda uzun. Iltimos, 2000 belgidan oshmasin, qisqaroq yozing ✍️"
