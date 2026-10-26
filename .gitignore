@@ -6,3 +6,4 @@ __pycache__/
 *.session-journal
 *.db-wal
 *.db-shm
+logs/
