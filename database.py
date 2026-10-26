@@ -93,6 +93,17 @@ async def get_application(app_id: int) -> dict | None:
     return dict(row) if row else None
 
 
+async def get_expired_applications(days: int) -> list[dict]:
+    """Yaratilganiga `days` kundan oshgan, hali yakunlanmagan (pending/voting) arizalar."""
+    db = await get_db()
+    cur = await db.execute(
+        "SELECT * FROM applications WHERE status IN ('pending', 'voting') "
+        "AND created_at < datetime('now', ?)",
+        (f"-{days} days",),
+    )
+    return [dict(r) for r in await cur.fetchall()]
+
+
 async def get_active_application(user_id: int, group_id: int) -> dict | None:
     """Shu guruh uchun hali ko'rib chiqilayotgan (pending/voting) ariza."""
     db = await get_db()

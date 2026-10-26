@@ -34,7 +34,7 @@ Flow across files (it spans several, so read them together):
 
 7. `handlers/ai.py` + `utils/ai.py` — AI assistant in groups. A message that mentions the bot (`@bot ...`) or replies to one of the bot's earlier AI answers is sent to an OpenAI-format `chat/completions` API (`ask_ai`, aiohttp, `API_URL` + `API_PATH`, Bearer `API_TOKEN`) and the answer is sent back as a reply (plain text, split at 4096 chars). Conversation memory is only the replied-to AI answer (Telegram gives one reply level); AI answer ids are kept in memory (`_ai_messages`, lost on restart). Per-user 5s cooldown. `AIError` replies with a generic message, then re-raises so `handlers/errors.py` DMs the developers. Never log `API_TOKEN`.
 
-Application status lifecycle: `pending` → `rejected` | `voting` → `accepted` | `rejected`.
+Application status lifecycle: `pending` → `rejected` | `voting` → `accepted` | `rejected`. Applications still `pending`/`voting` 3 days after creation become `expired` (`utils/expiry.py`, background loop started in `main.py`: declines the join request, closes the vote message, notifies the applicant), so the duplicate-application guard cannot block a user forever.
 
 Supporting pieces:
 - `handlers/__init__.py:get_routers()` — router registration order matters; add new routers there.
