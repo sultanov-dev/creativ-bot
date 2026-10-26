@@ -72,7 +72,7 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
     )
 
     # holat javob kelishidan oldin o'rnatilishi kerak
-    await private_state.set_state(Form.first_name)
+    await private_state.set_state(Form.full_name)
     await private_state.update_data(
         group_id=request.chat.id, user_id=request.user_chat_id
     )
@@ -80,4 +80,4 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
     await bot.send_message(
         chat_id=request.user_chat_id, text=welcome_text()
     )
-    await ask(bot, request.user_chat_id, Form.first_name, delay=3.0)
+    await ask(bot, request.user_chat_id, Form.full_name, delay=3.0)

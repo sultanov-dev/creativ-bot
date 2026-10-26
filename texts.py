@@ -1,5 +1,7 @@
-ASK_FIRST_NAME = "Avval tanishib olaylik. Ismingiz nima? Telegramdagi nomni emas, haqiqiy ismingizni yozing."
-ASK_LAST_NAME = "Familiyangiz-chi?"
+ASK_FULL_NAME = (
+    "Avval tanishib olaylik. Ism va familiyangizni yozing, masalan: Aziz Karimov.\n"
+    "Telegramdagi nomni emas, haqiqiy ismingizni yozing."
+)
 ASK_USERNAME = (
     "Telegram username'ingizni yozing, masalan: @username.\n"
     "Bu majburiy emas, xohlamasangiz o'tkazib yuborishingiz mumkin."
@@ -10,7 +12,10 @@ ASK_PHONE = (
 )
 SKIP_BUTTON = "⏭ O'tkazib yuborish"
 PHONE_BUTTON = "📱 Raqamni ulashish"
-WRONG_NAME = "Kechirasiz, ism to'g'ri ko'rinmadi. Faqat harflardan iborat, 2 tadan 40 tagacha belgi yozing."
+WRONG_NAME = (
+    "Kechirasiz, ism to'g'ri ko'rinmadi. Ism va familiyangizni birga, faqat harflar bilan yozing, "
+    "masalan: Aziz Karimov."
+)
 WRONG_USERNAME = (
     "Kechirasiz, username to'g'ri ko'rinmadi. U lotin harfi bilan boshlanib, "
     "5 tadan 32 tagacha harf, raqam yoki _ belgisidan iborat bo'lishi kerak. "

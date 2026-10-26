@@ -46,9 +46,9 @@ def _is_skip(text: str | None) -> bool:
 
 
 def _clean_name(text: str | None) -> str | None:
-    """Ism/familiya: 2-40 belgi, kamida bitta harf, raqamsiz, buyruq emas."""
+    """Ism va familiya: kamida 2 so'z, 5-80 belgi, kamida bitta harf, raqamsiz, buyruq emas."""
     name = " ".join((text or "").split())
-    if not 2 <= len(name) <= 40 or name.startswith("/"):
+    if not 5 <= len(name) <= 80 or len(name.split()) < 2 or name.startswith("/"):
         return None
     if any(ch.isdigit() for ch in name) or not any(ch.isalpha() for ch in name):
         return None
@@ -63,26 +63,14 @@ def _clean_phone(text: str) -> str | None:
     return ("+" if text.startswith("+") else "") + digits
 
 
-@router.message(F.text, Form.first_name)
-async def capture_first_name(message: Message, bot: Bot, state: FSMContext):
+@router.message(F.text, Form.full_name)
+async def capture_full_name(message: Message, bot: Bot, state: FSMContext):
     name = _clean_name(message.text)
     if name is None:
         await message.reply(WRONG_NAME)
         return
 
-    await state.update_data(first_name=name)
-    await state.set_state(Form.last_name)
-    await ask(bot, message.chat.id, Form.last_name)
-
-
-@router.message(F.text, Form.last_name)
-async def capture_last_name(message: Message, bot: Bot, state: FSMContext):
-    name = _clean_name(message.text)
-    if name is None:
-        await message.reply(WRONG_NAME)
-        return
-
-    await state.update_data(last_name=name)
+    await state.update_data(full_name=name)
     await state.set_state(Form.username)
     await ask(bot, message.chat.id, Form.username)
 
@@ -198,8 +186,6 @@ async def capture_join_group(message: Message, bot: Bot, state: FSMContext):
         group_id,
         full_name,
         anketa,
-        first_name=data.get("first_name"),
-        last_name=data.get("last_name"),
         tg_username=data.get("username"),
         phone=data.get("phone"),
     )

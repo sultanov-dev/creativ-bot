@@ -127,7 +127,7 @@ async def create_application(
 ) -> int | None:
     """Ariza id'si; shu guruhga faol ariza allaqachon bo'lsa None.
 
-    full_name = ism + familiya (ko'rsatish uchun); ism va familiya alohida ustunlarda ham saqlanadi.
+    full_name = ism va familiya (bitta savol); first_name/last_name faqat eski yozuvlar uchun.
     """
     db = await get_db()
     try:

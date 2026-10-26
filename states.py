@@ -2,8 +2,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class Form(StatesGroup):
-    first_name = State()
-    last_name = State()
+    full_name = State()  # ism va familiya bitta savolda
     username = State()  # ixtiyoriy
     phone = State()  # ixtiyoriy
     age = State()
