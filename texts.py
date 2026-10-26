@@ -1,7 +1,4 @@
-ASK_FULL_NAME = (
-    "Avval tanishib olaylik. Ism va familiyangizni yozing, masalan: Aziz Karimov.\n"
-    "Telegramdagi nomni emas, haqiqiy ismingizni yozing."
-)
+ASK_FULL_NAME = "Ism va familiyangizni yozing, masalan: Aziz Karimov."
 ASK_USERNAME = (
     "Telegram username'ingizni yozing, masalan: @username.\n"
     "Bu majburiy emas, xohlamasangiz o'tkazib yuborishingiz mumkin."
