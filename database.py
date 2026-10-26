@@ -19,6 +19,11 @@ async def get_db() -> aiosqlite.Connection:
             if _conn is None:
                 conn = await aiosqlite.connect(DB_PATH, timeout=30)
                 conn.row_factory = aiosqlite.Row
+                try:
+                    # anketa shaxsiy ma'lumot: faqat egasi o'qisin
+                    os.chmod(DB_PATH, 0o600)
+                except OSError:
+                    pass
                 # WAL: o'qish yozishni bloklamaydi; rejim faylda saqlanadi
                 await conn.execute("PRAGMA journal_mode=WAL")
                 await conn.execute("PRAGMA synchronous=NORMAL")
@@ -59,6 +64,10 @@ async def init_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_votes_voter ON votes (voter_id, vote);
         CREATE INDEX IF NOT EXISTS idx_applications_user
             ON applications (user_id, group_id, status);
+        -- bir vaqtda ikki xabar kelsa ham, bitta guruhga ikkita faol ariza bo'lmaydi
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_applications_active
+            ON applications (user_id, group_id)
+            WHERE status IN ('pending', 'voting');
 
         CREATE TABLE IF NOT EXISTS members (
             chat_id INTEGER NOT NULL,
@@ -76,12 +85,16 @@ async def init_db() -> None:
 
 async def create_application(
     user_id: int, group_id: int, full_name: str, anketa: str
-) -> int:
+) -> int | None:
+    """Ariza id'si; shu guruhga faol ariza allaqachon bo'lsa None."""
     db = await get_db()
-    cur = await db.execute(
-        "INSERT INTO applications (user_id, group_id, full_name, anketa) VALUES (?, ?, ?, ?)",
-        (user_id, group_id, full_name, anketa),
-    )
+    try:
+        cur = await db.execute(
+            "INSERT INTO applications (user_id, group_id, full_name, anketa) VALUES (?, ?, ?, ?)",
+            (user_id, group_id, full_name, anketa),
+        )
+    except aiosqlite.IntegrityError:
+        return None
     await db.commit()
     return cur.lastrowid  # type: ignore
 

@@ -11,8 +11,14 @@ GROUP_TYPES = ("group", "supergroup")
 _seen: set[tuple[int, int]] = set()
 
 
+_SEEN_MAX = 100_000
+
+
 async def track(chat_id: int, user_id: int) -> None:
     if (chat_id, user_id) not in _seen:
+        if len(_seen) >= _SEEN_MAX:
+            # faqat kesh: tozalansa, keyingi yozuvlar bazaga INSERT OR IGNORE bilan qayta tushadi
+            _seen.clear()
         await add_member(chat_id, user_id)
         _seen.add((chat_id, user_id))
 

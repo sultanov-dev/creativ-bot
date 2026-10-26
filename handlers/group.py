@@ -36,9 +36,19 @@ async def creator_only(message: Message, bot: Bot) -> bool:
     return status == ChatMemberStatus.CREATOR
 
 
-# avval arzon tekshiruv (buyruqmi?), keyin API chaqiruvli creator_only: har bir xabar uchun so'rov ketmasin
-router.message.filter(F.text.startswith("/"))
+# avval arzon tekshiruv (bizning buyruqmi?), keyin API chaqiruvli creator_only: har bir "/..." xabar uchun so'rov ketmasin
+router.message.filter(
+    Command("kick_deleted", "ban", "unban", "mute", "unmute", "stats")
+)
 router.message.filter(creator_only)
+
+# mute muddati chegarasi (1 yil): timedelta/Telegram'da haddan katta son xatoga olib kelmasin
+MAX_MUTE_MINUTES = 366 * 24 * 60
+
+
+def _is_number(text: str) -> bool:
+    # str.isdigit() "²" kabi belgilarni ham qabul qiladi, int() esa ularda xato beradi
+    return text.isascii() and text.isdigit()
 
 
 def _target_id(message: Message, command: CommandObject) -> int | None:
@@ -46,7 +56,7 @@ def _target_id(message: Message, command: CommandObject) -> int | None:
     reply = message.reply_to_message
     if reply and reply.from_user:
         return reply.from_user.id
-    if command.args and command.args.split()[0].lstrip("-").isdigit():
+    if command.args and _is_number(command.args.split()[0].lstrip("-")):
         return int(command.args.split()[0])
     return None
 
@@ -191,7 +201,8 @@ async def mute(message: Message, command: CommandObject, bot: Bot):
         await message.reply("Adminni mute qilib bo'lmaydi")
         return
 
-    minutes = int(command.args) if command.args and command.args.isdigit() else 60
+    minutes = int(command.args) if command.args and _is_number(command.args) else 60
+    minutes = min(max(minutes, 1), MAX_MUTE_MINUTES)
     until = datetime.now(timezone.utc) + timedelta(minutes=minutes)
     try:
         await bot.restrict_chat_member(

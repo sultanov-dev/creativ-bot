@@ -1,7 +1,6 @@
 from html import escape
 
 from aiogram import Bot, Router
-from aiogram.enums import ChatMemberStatus
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 
@@ -9,16 +8,9 @@ from callbacks import VoteCB
 from config import REQUIRED_VOTES
 from database import add_vote, change_status, count_votes, get_application
 from keyboards.vote import vote_inline
-from utils.admin import get_user_status, safe_send
+from utils.admin import is_group_member, safe_send
 
 router = Router()
-
-VOTER_STATUSES = (
-    ChatMemberStatus.MEMBER,
-    ChatMemberStatus.ADMINISTRATOR,
-    ChatMemberStatus.CREATOR,
-    ChatMemberStatus.RESTRICTED,
-)
 
 
 async def _finish(call: CallbackQuery, result: str) -> None:
@@ -49,7 +41,7 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
         await call.answer("O'zingizning arizangizga ovoz bera olmaysiz", show_alert=True)
         return
 
-    if await get_user_status(bot, group_id, voter_id) not in VOTER_STATUSES:
+    if not await is_group_member(bot, group_id, voter_id):
         await call.answer("Faqat guruh a'zolari ovoz bera oladi", show_alert=True)
         return
 

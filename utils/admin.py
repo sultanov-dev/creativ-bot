@@ -14,6 +14,21 @@ async def get_user_status(bot: Bot, chat_id: int, user_id: int):
         return None
 
 
+async def is_group_member(bot: Bot, chat_id: int, user_id: int) -> bool:
+    """Hozir guruhda turgan foydalanuvchimi (chiqib ketgan 'restricted' a'zo hisoblanmaydi)."""
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+    except (TelegramBadRequest, TelegramForbiddenError):
+        return False
+    if member.status == ChatMemberStatus.RESTRICTED:
+        return bool(member.is_member)
+    return member.status in (
+        ChatMemberStatus.MEMBER,
+        ChatMemberStatus.ADMINISTRATOR,
+        ChatMemberStatus.CREATOR,
+    )
+
+
 async def is_group_admin(bot: Bot, chat_id: int, user_id: int) -> bool:
     status = await get_user_status(bot, chat_id, user_id)
 

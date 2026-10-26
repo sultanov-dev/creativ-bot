@@ -3,6 +3,14 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
+    # bot faqat /data ga yozadi; qolgan hamma narsa o'zgarmas va imtiyozsiz
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - bot-data:/data
 

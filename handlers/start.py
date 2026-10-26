@@ -28,9 +28,8 @@ async def cmd_start(message: Message, state: FSMContext):
         await message.answer(question)
         return
 
-    await message.answer(
-        f"Salom, {message.from_user.full_name if message.from_user is not None else None}! Men Choyxona botiman ☕"
-    )
+    name = escape(message.from_user.full_name) if message.from_user is not None else ""
+    await message.answer(f"Salom, {name}! Men Choyxona botiman ☕")
 
     if message.from_user is None:
         return

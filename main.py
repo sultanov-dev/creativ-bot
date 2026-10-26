@@ -1,4 +1,5 @@
 import asyncio
+import os
 
 from aiogram import Dispatcher
 
@@ -14,6 +15,8 @@ from utils.request_log import RequestLogMiddleware, UpdateLogMiddleware
 
 
 async def main():
+    # bot.db va loglar (shaxsiy ma'lumot) faqat egasi o'qiy oladigan ruxsat bilan yaratilsin
+    os.umask(0o077)
     setup_logging()
     bot.session.middleware(RequestLogMiddleware())
 

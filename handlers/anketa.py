@@ -106,6 +106,9 @@ async def capture_join_group(message: Message, bot: Bot, state: FSMContext):
     app_id = await create_application(
         user_id, group_id, user.full_name if user else "Unknown", anketa
     )
+    if app_id is None:
+        await message.answer(ALREADY_APPLIED)
+        return
 
     results = await asyncio.gather(
         *(

@@ -76,7 +76,8 @@ def _describe_method(method: TelegramMethod) -> str:
             parts.append(f"{name}={value}")
     text = getattr(method, "text", None) or getattr(method, "caption", None)
     if text:
-        parts.append(f"text(len={len(text)})={_short(text, 40)!r}")
+        # xabar mazmuni (anketa, ism, AI javobi) shaxsiy ma'lumot: faqat uzunligi
+        parts.append(f"text(len={len(text)})")
     if getattr(method, "reply_markup", None):
         parts.append("reply_markup")
     return " ".join(parts)

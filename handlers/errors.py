@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 ALERT_COOLDOWN = 300
 _last_alert: dict[str, float] = {}
+_LAST_ALERT_MAX = 500
 
 BENIGN_MARKERS = (
     "query is too old",
@@ -75,6 +76,10 @@ async def on_error(event: ErrorEvent, bot: Bot) -> bool:
     now = time.monotonic()
     if now - _last_alert.get(alert_key, -ALERT_COOLDOWN) < ALERT_COOLDOWN:
         return True
+    if len(_last_alert) >= _LAST_ALERT_MAX:
+        # cooldown'i o'tgan yozuvlar keraksiz: xotira o'sib ketmasin
+        for key in [k for k, t in _last_alert.items() if now - t >= ALERT_COOLDOWN]:
+            del _last_alert[key]
     _last_alert[alert_key] = now
 
     text = (
