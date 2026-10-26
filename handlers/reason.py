@@ -5,7 +5,7 @@ from aiogram.filters import StateFilter
 from aiogram.types import Message
 
 from database import get_application, get_pending_reason, set_vote_reason
-from utils.reasons import send_to_admins
+from utils.reasons import send_to_creator
 
 router = Router()
 router.message.filter(F.chat.type == "private")
@@ -22,11 +22,11 @@ async def capture_reason(message: Message, bot: Bot):
 
     app_id = pending["app_id"]
     await set_vote_reason(app_id, message.from_user.id, message.text)
-    await message.answer("Rahmat, javobingiz adminlarga yetkaziladi 🙏")
+    await message.answer("Rahmat, javobingiz yetkaziladi 🙏")
 
     app = await get_application(app_id)
     if app is not None:
-        await send_to_admins(
+        await send_to_creator(
             bot,
             app["group_id"],
             f"📋 <b>{escape(app['full_name'])}</b> arizasi bo'yicha 👎 sababi\n"

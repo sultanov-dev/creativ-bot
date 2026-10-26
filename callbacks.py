@@ -9,3 +9,8 @@ class ApplicantCB(CallbackData, prefix="app"):
 class VoteCB(CallbackData, prefix="vote"):
     vote: str
     app_id: int
+
+
+class CreatorCB(CallbackData, prefix="creator"):
+    action: str
+    app_id: int

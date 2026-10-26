@@ -1,17 +1,9 @@
 from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
-from utils.admin import safe_send
-
-
-async def _group_admin_ids(bot: Bot, group_id: int) -> list[int]:
-    try:
-        admins = await bot.get_chat_administrators(chat_id=group_id)
-    except (TelegramBadRequest, TelegramForbiddenError):
-        return []
-    return [a.user.id for a in admins if not a.user.is_bot]
+from utils.admin import get_group_creator_id, safe_send
 
 
-async def send_to_admins(bot: Bot, group_id: int, text: str) -> None:
-    for admin_id in await _group_admin_ids(bot, group_id):
-        await safe_send(bot=bot, chat_id=admin_id, text=text)
+async def send_to_creator(bot: Bot, group_id: int, text: str) -> None:
+    creator_id = await get_group_creator_id(bot, group_id)
+    if creator_id is not None:
+        await safe_send(bot=bot, chat_id=creator_id, text=text)

@@ -2,13 +2,11 @@ from datetime import datetime, timezone
 from html import escape
 
 from aiogram import Bot, Router
-from aiogram.exceptions import TelegramAPIError
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery
 
 from callbacks import VoteCB
 from config import ADMIN_VOTE_WEIGHT
-from database import add_vote, count_votes, get_application
-from keyboards.vote import vote_inline
+from database import add_vote, get_application
 from utils.admin import is_group_admin, is_group_member, safe_send
 
 router = Router()
@@ -53,8 +51,6 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
         return
 
     note, alert = "Ovozingiz qabul qilindi", False
-    if weight > 1:
-        note = f"Ovozingiz qabul qilindi (admin ovozi: {weight} ta ovozga teng)"
     if callback_data.vote == "no":
         asked = await safe_send(
             bot=bot,
@@ -70,16 +66,5 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
                 "so'ng sababni yozing."
             )
             alert = True
-
-    yes, no = await count_votes(app["id"])
-
-    if isinstance(call.message, Message):
-        try:
-            await call.message.edit_reply_markup(
-                reply_markup=vote_inline(app["id"], yes=yes, no=no)
-            )
-        except TelegramAPIError:
-            # flood limit yoki o'zgarmagan markup: ovoz baribir yozilgan
-            pass
 
     await call.answer(note, show_alert=alert)

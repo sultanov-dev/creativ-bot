@@ -67,9 +67,10 @@ async def init_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_applications_user
             ON applications (user_id, group_id, status);
         -- bir vaqtda ikki xabar kelsa ham, bitta guruhga ikkita faol ariza bo'lmaydi
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_applications_active
+        DROP INDEX IF EXISTS idx_applications_active;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_applications_open
             ON applications (user_id, group_id)
-            WHERE status IN ('pending', 'voting');
+            WHERE status IN ('pending', 'voting', 'creator_review');
 
         CREATE TABLE IF NOT EXISTS members (
             chat_id INTEGER NOT NULL,
@@ -123,15 +124,17 @@ async def get_application(app_id: int) -> dict | None:
 
 
 async def get_expired_applications(days: int) -> list[dict]:
-    """Yaratilganiga `days` kundan oshgan, admin hali ko'rib chiqmagan (pending) arizalar.
+    """Admin ko'rib chiqmagan (pending) yoki ovoz berish tugaganidan beri `days` kun creator javobini
+    kutayotgan (creator_review) arizalar.
 
-    Ovoz berish bosqichidagi arizalar bu yerga kirmaydi: ularni `voting_ends_at` yopadi.
+    Ovoz berish bosqichidagi (voting) arizalar bu yerga kirmaydi: ularni `voting_ends_at` yopadi.
     """
     db = await get_db()
     cur = await db.execute(
-        "SELECT * FROM applications WHERE status = 'pending' "
-        "AND created_at < datetime('now', ?)",
-        (f"-{days} days",),
+        "SELECT * FROM applications WHERE "
+        "(status = 'pending' AND created_at < datetime('now', ?)) OR "
+        "(status = 'creator_review' AND voting_ends_at < datetime('now', ?))",
+        (f"-{days} days", f"-{days} days"),
     )
     return [dict(r) for r in await cur.fetchall()]
 
@@ -141,7 +144,7 @@ async def get_active_application(user_id: int, group_id: int) -> dict | None:
     db = await get_db()
     cur = await db.execute(
         "SELECT * FROM applications WHERE user_id = ? AND group_id = ? "
-        "AND status IN ('pending', 'voting') ORDER BY id DESC LIMIT 1",
+        "AND status IN ('pending', 'voting', 'creator_review') ORDER BY id DESC LIMIT 1",
         (user_id, group_id),
     )
     row = await cur.fetchone()
@@ -225,7 +228,7 @@ async def get_members(chat_id: int) -> list[int]:
 
 
 async def get_pending_reason(voter_id: int) -> dict | None:
-    """Oxirgi 24 soat ichidagi, sababi hali yozilmagan 'yo'q' ovozi."""
+    """Oxirgi 24 soat ichidagi, sababi hali yozilmagan 'yo'q' ovozi (faqat ovoz berish davom etayotgan arizada)."""
     db = await get_db()
     cur = await db.execute(
         """
@@ -233,6 +236,7 @@ async def get_pending_reason(voter_id: int) -> dict | None:
         FROM votes v JOIN applications a ON a.id = v.application_id
         WHERE v.voter_id = ? AND v.vote = 'no' AND v.reason IS NULL
           AND v.created_at > datetime('now', '-1 day')
+          AND a.status = 'voting' AND a.voting_ends_at > datetime('now')
         ORDER BY v.created_at DESC LIMIT 1
         """,
         (voter_id,),
@@ -248,6 +252,17 @@ async def set_vote_reason(app_id: int, voter_id: int, reason: str) -> None:
         (reason, app_id, voter_id),
     )
     await db.commit()
+
+
+async def get_no_votes(app_id: int) -> list[dict]:
+    """Arizaga 👎 bergan a'zolar (voter_id, reason), ovoz berish tartibida."""
+    db = await get_db()
+    cur = await db.execute(
+        "SELECT voter_id, reason FROM votes "
+        "WHERE application_id = ? AND vote = 'no' ORDER BY created_at",
+        (app_id,),
+    )
+    return [dict(r) for r in await cur.fetchall()]
 
 
 async def count_votes(app_id: int) -> tuple[int, int]:
