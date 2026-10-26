@@ -12,7 +12,6 @@ from database import (
     change_status,
     count_votes,
     get_due_votings,
-    get_no_votes,
 )
 from keyboards.creator import creator_inline
 from texts import APPLICATION_ACCEPTED, APPLICATION_REJECTED
@@ -20,25 +19,14 @@ from utils.admin import get_group_creator_id, safe_send
 
 logger = logging.getLogger(__name__)
 
-# creatorga boradigan xabar Telegram limiti (4096) ichida qolishi uchun
-REPORT_LIMIT = 3500
-REASON_LIMIT = 200
 HEADER = "@@HEADER@@"  # creator va adminlar uchun sarlavha almashtiriladi
-
-
-async def _voter_name(bot: Bot, group_id: int, voter_id: int) -> str:
-    try:
-        member = await bot.get_chat_member(group_id, voter_id)
-        return member.user.full_name
-    except TelegramAPIError:
-        return str(voter_id)
 
 
 SENT, UNREACHABLE, RETRY = "sent", "unreachable", "retry"
 
 
 async def _send_to_creator(bot: Bot, app: dict, yes: int, no: int) -> str:
-    """Creatorga 👎 ovozlar (sabablari bilan) yagona hisoboti va qaror tugmalarini yuboradi.
+    """Creatorga anketa, 👍/👎 soni va qaror tugmalarini yuboradi (👎 sabablari bu yerda ko'rsatilmaydi).
 
     SENT: yetkazildi. UNREACHABLE: creatorga yetkazib bo'lmaydi (/start bosmagan, bloklagan).
     RETRY: vaqtinchalik xato (flood limit, tarmoq): keyingi aylanishda qayta uriniladi.
@@ -63,21 +51,8 @@ async def _send_report(bot: Bot, app: dict, yes: int, no: int) -> str:
         f"{app['anketa']}"
         + (f"📞 <b>Telefon:</b> {escape(app['phone'])}\n" if app.get("phone") else "")
         + "\n"
-        f"Ovozlar: <b>{yes}</b> 👍 / <b>{no}</b> 👎\n\n"
-        "👎 bergan a'zolar:"
+        f"Ovozlar: <b>{yes}</b> 👍 / <b>{no}</b> 👎"
     )
-    no_votes = await get_no_votes(app["id"])
-    shown = 0
-    for v in no_votes:
-        name = escape(await _voter_name(bot, app["group_id"], v["voter_id"]))
-        reason = escape(v["reason"][:REASON_LIMIT]) if v["reason"] else "sabab yozilmagan"
-        line = f"\n• <b>{name}</b>: {reason}"
-        if len(text) + len(line) > REPORT_LIMIT:
-            break
-        text += line
-        shown += 1
-    if shown < len(no_votes):
-        text += f"\n… va yana {len(no_votes) - shown} ta"
     try:
         await bot.send_message(
             chat_id=creator_id,
