@@ -35,7 +35,8 @@ async def mark_done(
 
     if isinstance(call.message, Message):
         who = escape(call.from_user.full_name)
-        role = status.value if status else "noma'lum"
+        # aiogram status'ni ba'zan oddiy str, ba'zan enum qaytaradi
+        role = str(getattr(status, "value", status)) if status else "noma'lum"
         try:
             await call.message.edit_text(
                 f"{call.message.html_text}\n\n{result} — {who} ({role})"
