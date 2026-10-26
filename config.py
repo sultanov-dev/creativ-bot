@@ -7,16 +7,12 @@ load_dotenv(".env")
 BOT_TOKEN = str(os.getenv("BOT_TOKEN"))
 # dasturchining Telegram ID(lari): bot xatolari shu yerga yuboriladi (guruh adminlariga aloqasi yo'q)
 DEVELOPER_IDS = [int(x) for x in os.getenv("DEVELOPER_IDS", "").split(",") if x]
-# ovoz berish shuncha daqiqa davom etadi; muddat tugagach vaznli ovozlar ko'pi g'olib bo'ladi
+# ovoz berish shuncha daqiqa davom etadi; muddat tugagach natija creatorga yuboriladi
 VOTING_MINUTES = int(os.getenv("VOTING_MINUTES") or 10)
-# guruh admini ovozi oddiy a'zo ovozidan necha barobar og'ir
-ADMIN_VOTE_WEIGHT = int(os.getenv("ADMIN_VOTE_WEIGHT") or 5)
 # juda katta qiymatda SQLite datetime() NULL qaytaradi va ariza abadiy "voting" da qolib ketadi
 MAX_VOTING_MINUTES = 7 * 24 * 60
 if not 1 <= VOTING_MINUTES <= MAX_VOTING_MINUTES:
     raise ValueError(f"VOTING_MINUTES 1 dan {MAX_VOTING_MINUTES} gacha bo'lishi kerak")
-if ADMIN_VOTE_WEIGHT < 1:
-    raise ValueError("ADMIN_VOTE_WEIGHT kamida 1 bo'lishi kerak")
 
 # AI xizmati (OpenAI formatidagi chat/completions API)
 API_URL = os.getenv("API_URL", "")

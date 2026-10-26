@@ -3,7 +3,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import CallbackQuery
 
 from callbacks import ApplicantCB
-from config import ADMIN_VOTE_WEIGHT, VOTING_MINUTES
+from config import VOTING_MINUTES
 from database import change_status, get_application, set_vote_message, start_voting
 from keyboards.vote import vote_inline
 from utils.admin import is_group_admin, mark_done, safe_send
@@ -87,8 +87,7 @@ async def accept(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
                 f"{app['anketa']}\n\n"
                 f"⏳ Ovoz berish <b>{VOTING_MINUTES}</b> daqiqa davom etadi. "
                 "Muddat tugagach ovozlar guruh egasiga yuboriladi va "
-                "oxirgi qarorni guruh egasi qabul qiladi.\n"
-                f"Guruh adminining ovozi <b>{ADMIN_VOTE_WEIGHT}</b> ta ovozga teng."
+                "oxirgi qarorni guruh egasi qabul qiladi."
             ),
             reply_markup=vote_inline(app_id=app["id"]),
         )

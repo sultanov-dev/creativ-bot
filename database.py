@@ -249,12 +249,11 @@ async def set_vote_message(app_id: int, message_id: int) -> None:
     await db.commit()
 
 
-async def add_vote(app_id: int, voter_id: int, vote: str, weight: int = 1) -> bool:
+async def add_vote(app_id: int, voter_id: int, vote: str) -> bool:
     db = await get_db()
     cur = await db.execute(
-        "INSERT OR IGNORE INTO votes (application_id, voter_id, vote, weight) "
-        "VALUES (?, ?, ?, ?)",
-        (app_id, voter_id, vote, weight),
+        "INSERT OR IGNORE INTO votes (application_id, voter_id, vote) VALUES (?, ?, ?)",
+        (app_id, voter_id, vote),
     )
     await db.commit()
     return cur.rowcount == 1
@@ -333,23 +332,11 @@ async def get_no_votes(app_id: int) -> list[dict]:
     return [dict(r) for r in await cur.fetchall()]
 
 
-async def count_voters(app_id: int) -> tuple[int, int]:
-    """Ovoz bergan a'zolar soni (vaznsiz): (ha, yo'q)."""
-    db = await get_db()
-    cur = await db.execute(
-        "SELECT SUM(vote = 'yes'), SUM(vote = 'no') FROM votes WHERE application_id = ?",
-        (app_id,),
-    )
-    row = await cur.fetchone()
-    return (row[0] or 0, row[1] or 0) if row else (0, 0)
-
-
 async def count_votes(app_id: int) -> tuple[int, int]:
-    """Vaznli ovozlar yig'indisi: (ha, yo'q)."""
+    """Ovozlar soni: (ha, yo'q). Har bir a'zo (admin ham) bitta ovoz beradi."""
     db = await get_db()
     cur = await db.execute(
-        "SELECT SUM(CASE WHEN vote = 'yes' THEN weight END), "
-        "SUM(CASE WHEN vote = 'no' THEN weight END) "
+        "SELECT SUM(vote = 'yes'), SUM(vote = 'no') "
         "FROM votes WHERE application_id = ?",
         (app_id,),
     )

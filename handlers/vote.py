@@ -5,9 +5,8 @@ from aiogram import Bot, Router
 from aiogram.types import CallbackQuery
 
 from callbacks import VoteCB
-from config import ADMIN_VOTE_WEIGHT
 from database import add_vote, get_application, get_vote
-from utils.admin import is_group_admin, is_group_member, safe_send
+from utils.admin import is_group_member, safe_send
 
 router = Router()
 
@@ -47,8 +46,7 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
         await call.answer("Faqat guruh a'zolari ovoz bera oladi", show_alert=True)
         return
 
-    weight = ADMIN_VOTE_WEIGHT if await is_group_admin(bot, group_id, voter_id) else 1
-    if not await add_vote(app["id"], voter_id, callback_data.vote, weight):
+    if not await add_vote(app["id"], voter_id, callback_data.vote):
         previous = await get_vote(app["id"], voter_id)
         await call.answer(
             f"Siz allaqachon «{VOTE_LABELS.get(previous, '?')}» deb ovoz bergansiz. "
