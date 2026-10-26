@@ -54,7 +54,7 @@ async def _show_confirm(call: CallbackQuery, app: dict, accepted: bool, yes: int
     """Ko'pchilikka qarshi qaror oldidan tasdiqlash oynasi.
 
     Qabul qilinsa (👎 ko'p yoki teng): 👎 bergan a'zolar sabablarining AI xulosasi ko'rsatiladi.
-    Rad etilsa (👍 ko'p): faqat ovoz sonlari va savol.
+    Rad etilsa (👍 ko'p yoki teng): faqat ovoz sonlari va savol.
     """
     counts = f"Ovozlar: <b>{yes}</b> 👍 / <b>{no}</b> 👎"
     name = f"№{app['id']} <b>{escape(app['full_name'])}</b>"
@@ -62,20 +62,25 @@ async def _show_confirm(call: CallbackQuery, app: dict, accepted: bool, yes: int
     if accepted:
         # AI uzoq javob berishi mumkin: ikki marta bosilmasligi uchun avval tugmasiz holat
         await _edit(call, f"⏳ {name}: 👎 sabablari umumlashtirilmoqda…")
+        head = "Ovozlar teng" if yes == no else "Ko'pchilik qarshi"
         reasons = [v["reason"] for v in await get_no_votes(app["id"])]
         summary, _ = await summarize_reasons(reasons)
         text = (
-            "⚠️ <b>Ko'pchilik qarshi</b>\n\n"
+            f"⚠️ <b>{head}</b>\n\n"
             f"{name}\n{counts}\n\n"
             "👎 bergan a'zolar fikri (qisqacha xulosa):\n"
             f"{escape(summary)}\n\n"
             "Shunday bo'lsa-da, arizani qabul qilasizmi? Yakuniy qarorni tanlang."
         )
     else:
+        if yes == no:
+            head, note = "Ovozlar teng", "Ovozlar teng bo'lindi."
+        else:
+            head, note = "Ko'pchilik rozi", "A'zolarning ko'pchiligi 👍 bergan."
         text = (
-            "⚠️ <b>Ko'pchilik rozi</b>\n\n"
+            f"⚠️ <b>{head}</b>\n\n"
             f"{name}\n{counts}\n\n"
-            "A'zolarning ko'pchiligi 👍 bergan. Shunday bo'lsa-da, arizani rad etasizmi? Yakuniy qarorni tanlang."
+            f"{note} Arizani rad etasizmi? Yakuniy qarorni tanlang."
         )
 
     await _edit(call, text, reply_markup=creator_confirm_inline(app["id"]))
@@ -85,7 +90,7 @@ async def _show_confirm(call: CallbackQuery, app: dict, accepted: bool, yes: int
 async def on_creator_decision(call: CallbackQuery, callback_data: CreatorCB, bot: Bot):
     """Ovoz berish tugagach oxirgi qaror: faqat guruh creatori hal qiladi (ovoz natijasidan qat'i nazar).
 
-    Ko'pchilik fikriga qarshi qaror (👎 ko'p/teng bo'lganda "Qabul", 👍 ko'p bo'lganda "Rad") avval
+    Ko'pchilik fikriga qarshi qaror (👎 ko'p/teng bo'lganda "Qabul", 👍 ko'p/teng bo'lganda "Rad") avval
     tasdiqlash oynasini ochadi; oynadagi "Qabul"/"Rad" tugmalari (final_*) yakuniy qaror beradi.
     """
     action = callback_data.action
@@ -109,7 +114,8 @@ async def on_creator_decision(call: CallbackQuery, callback_data: CreatorCB, bot
     accepted = action.endswith("accept")
     if action in ("accept", "reject"):
         yes, no = await count_votes(app["id"])
-        against_majority = (accepted and no >= yes) or (not accepted and yes > no)
+        # teng ovozda ikkala tugma ham tasdiqlash oynasini ochadi
+        against_majority = (accepted and no >= yes) or (not accepted and yes >= no)
         if against_majority:
             await call.answer()
             await _show_confirm(call, app, accepted, yes, no)
