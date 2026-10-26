@@ -1,0 +1,97 @@
+import re
+import time
+from collections import OrderedDict
+
+from aiogram import Bot, F, Router
+from aiogram.enums import MessageEntityType
+from aiogram.types import Message
+from aiogram.utils.chat_action import ChatActionSender
+
+import texts
+from utils.ai import AIError, ask_ai
+
+router = Router()
+router.message.filter(F.chat.type.in_({"group", "supergroup"}))
+
+MAX_QUESTION = 2000
+TG_LIMIT = 4096
+COOLDOWN = 5
+
+_last_ask: dict[int, float] = {}
+# botning AI javoblari (chat_id, message_id): shularga reply qilinsa suhbat davom etadi
+_ai_messages: OrderedDict[tuple[int, int], None] = OrderedDict()
+_AI_MESSAGES_MAX = 1000
+
+
+def _remember(message: Message) -> None:
+    _ai_messages[(message.chat.id, message.message_id)] = None
+    if len(_ai_messages) > _AI_MESSAGES_MAX:
+        _ai_messages.popitem(last=False)
+
+
+def _is_mentioned(message: Message, username: str) -> bool:
+    text = message.text or ""
+    return any(
+        e.type == MessageEntityType.MENTION
+        and e.extract_from(text).lower() == f"@{username.lower()}"
+        for e in message.entities or []
+    )
+
+
+def _is_ai_reply(message: Message) -> bool:
+    reply = message.reply_to_message
+    return reply is not None and (reply.chat.id, reply.message_id) in _ai_messages
+
+
+async def addressed(message: Message, bot: Bot) -> bool:
+    me = await bot.me()
+    return _is_mentioned(message, me.username or "") or _is_ai_reply(message)
+
+
+def _split(text: str) -> list[str]:
+    return [text[i : i + TG_LIMIT] for i in range(0, len(text), TG_LIMIT)]
+
+
+@router.message(F.text, ~F.text.startswith("/"), addressed)
+async def on_ai_question(message: Message, bot: Bot):
+    if message.from_user is None or message.text is None:
+        return
+    me = await bot.me()
+    username = me.username or ""
+
+    question = re.sub(
+        rf"@{re.escape(username)}", "", message.text, flags=re.IGNORECASE
+    ).strip()
+    reply = message.reply_to_message
+    quoted = (reply.text or reply.caption) if reply else None
+
+    if not question:
+        await message.reply(texts.AI_EMPTY.format(username=username))
+        return
+    if len(question) > MAX_QUESTION:
+        await message.reply(texts.AI_TOO_LONG)
+        return
+
+    now = time.monotonic()
+    if now - _last_ask.get(message.from_user.id, -COOLDOWN) < COOLDOWN:
+        await message.reply(texts.AI_COOLDOWN)
+        return
+    _last_ask[message.from_user.id] = now
+
+    history = [{"role": "system", "content": texts.AI_SYSTEM_PROMPT}]
+    if quoted and _is_ai_reply(message):
+        history.append({"role": "assistant", "content": quoted})
+    elif quoted:
+        question = f"Xabar: {quoted[:MAX_QUESTION]}\n\nSavol: {question}"
+    history.append({"role": "user", "content": question})
+
+    try:
+        async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
+            answer = await ask_ai(history)
+    except AIError:
+        await message.reply(texts.AI_ERROR)
+        raise
+
+    # AI javobida <, & bo'lishi mumkin: HTML parse_mode o'chiriladi
+    for part in _split(answer):
+        _remember(await message.reply(part, parse_mode=None))

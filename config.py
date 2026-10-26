@@ -9,5 +9,10 @@ BOT_TOKEN = str(os.getenv("BOT_TOKEN"))
 DEVELOPER_IDS = [int(x) for x in os.getenv("DEVELOPER_IDS", "").split(",") if x]
 REQUIRED_VOTES = int(os.getenv("REQUIRED_VOTES") or 100)
 
+# AI xizmati (OpenAI formatidagi chat/completions API)
+API_URL = os.getenv("API_URL", "")
+API_TOKEN = os.getenv("API_TOKEN", "")
+API_MODEL = os.getenv("API_MODEL", "")
+
 # bot.db saqlanadigan papka (Docker'da /data volume)
 DATA_DIR = os.getenv("DATA_DIR", ".")
