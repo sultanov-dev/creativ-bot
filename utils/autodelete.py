@@ -1,5 +1,7 @@
 import asyncio
 import logging
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any
 
 from aiogram import Bot
@@ -20,6 +22,20 @@ GROUP_TYPES = {"group", "supergroup"}
 
 # asyncio vazifalarga faqat zaif havola saqlaydi: ular tugamasdan yig'ib olinmasligi uchun
 _tasks: set[asyncio.Task] = set()
+
+
+# True bo'lsa, shu kontekstda yuborilgan xabar o'chirilmaydi (masalan, AI javobi)
+_keep = ContextVar("autodelete_keep", default=False)
+
+
+@contextmanager
+def keep_messages():
+    """with bloki ichida yuborilgan guruh xabarlari avto-o'chirilmaydi."""
+    token = _keep.set(True)
+    try:
+        yield
+    finally:
+        _keep.reset(token)
 
 
 def _is_vote_message(method: SendMessage) -> bool:
@@ -46,7 +62,7 @@ async def _delete_later(bot: Bot, chat_id: int, message_id: int) -> None:
 class AutoDeleteMiddleware(BaseRequestMiddleware):
     """Botning guruhga yozgan xabarlarini AUTO_DELETE_SECONDS dan keyin o'chiradi (guruh to'lib ketmasin).
 
-    Istisno: ovoz berish xabari. Bot qayta ishga tushsa, o'sha paytda kutayotgan o'chirishlar yo'qoladi.
+    Istisno: ovoz berish xabari va `keep_messages()` ichida yuborilganlar (AI javoblari). Bot qayta ishga tushsa, o'sha paytda kutayotgan o'chirishlar yo'qoladi.
     """
 
     async def __call__(
@@ -61,6 +77,7 @@ class AutoDeleteMiddleware(BaseRequestMiddleware):
             and isinstance(method, SendMessage)
             and isinstance(result, Message)
             and result.chat.type in GROUP_TYPES
+            and not _keep.get()
             and not _is_vote_message(method)
         ):
             task = asyncio.create_task(_delete_later(bot, result.chat.id, result.message_id))

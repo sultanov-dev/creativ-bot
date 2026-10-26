@@ -11,6 +11,7 @@ from aiogram.utils.chat_action import ChatActionSender
 import texts
 from utils.ai import AIError, ask_ai
 from utils.ai_html import plain_text, sanitize_html
+from utils.autodelete import keep_messages
 
 router = Router()
 router.message.filter(F.chat.type.in_({"group", "supergroup"}))
@@ -67,10 +68,11 @@ def _split(text: str) -> list[str]:
 
 async def _reply_part(message: Message, part: str) -> Message:
     """Xavfsizlashtirilgan HTML bilan; Telegram qabul qilmasa, oddiy matn bilan."""
-    try:
-        return await message.reply(sanitize_html(part))
-    except TelegramBadRequest:
-        return await message.reply(plain_text(part), parse_mode=None)
+    with keep_messages():  # AI javobi o'chmaydi: unga reply qilib suhbatni davom ettirish mumkin
+        try:
+            return await message.reply(sanitize_html(part))
+        except TelegramBadRequest:
+            return await message.reply(plain_text(part), parse_mode=None)
 
 
 @router.message(F.text, ~F.text.startswith("/"), addressed)
