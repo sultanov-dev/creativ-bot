@@ -1,6 +1,9 @@
 import html
+import logging
 import re
 from urllib.parse import urlsplit
+
+logger = logging.getLogger(__name__)
 
 # Telegram HTML'dan faqat shu teglar o'tadi; qolgani matn sifatida escape qilinadi
 ALLOWED_TAGS = {"b", "i", "u", "s", "code", "pre", "a"}
@@ -11,9 +14,15 @@ _HREF = re.compile(r"""\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')""", re.IGNORECASE)
 _URL_SPLIT = re.compile(r"(https?://\S+)")
 _BULLET = re.compile(r"^([ \t]*)[-*•–—][ \t]+", re.MULTILINE)
 _DASHES = re.compile(r"[-–—‑]")
-# model ba'zan ruxsat etilgan teglarni ham escape qiladi (&lt;b&gt;): haqiqiy tegga qaytaramiz,
-# lekin keyin baribir allowlist va havola tekshiruvidan o'tadi
-_ESCAPED_TAG = re.compile(r"&lt;(/?(?:b|i|u|s|code|pre|a)(?:\s[^<>&]*)?)&gt;", re.IGNORECASE)
+# model ba'zan ruxsat etilgan teglarni ham escape qiladi (&lt;b&gt;, &#60;b&#62;, &amp;lt;b&amp;gt;, \u003cb\u003e):
+# haqiqiy tegga qaytaramiz, lekin keyin baribir allowlist va havola tekshiruvidan o'tadi
+_LT = r"(?:&(?:amp;)*(?:lt|#0*60|#x0*3c);|\\u003c)"
+_GT = r"(?:&(?:amp;)*(?:gt|#0*62|#x0*3e);|\\u003e)"
+_ESCAPED_TAG = re.compile(
+    _LT + r"(/?(?:b|i|u|s|code|pre|a)(?:\s[^<>&]*)?)" + _GT, re.IGNORECASE
+)
+# sanitize'dan keyin ham ko'rinib qoladigan escape qilingan teg: modelning kutilmagan formati
+_LEAKED_TAG = re.compile(r"&lt;/?(?:b|i|u|s|code|pre|a)\b", re.IGNORECASE)
 
 
 def _safe_href(attrs: str) -> str | None:
@@ -100,7 +109,10 @@ def sanitize_html(text: str) -> str:
 
     emit(text[pos:])
     out.extend(f"</{t}>" for t in reversed(stack))
-    return "".join(out).strip()
+    result = "".join(out).strip()
+    if _LEAKED_TAG.search(result):
+        logger.warning("AI javobida teg matn bo'lib qoldi, xom javob: %r", text[:300])
+    return result
 
 
 def plain_text(text: str) -> str:
