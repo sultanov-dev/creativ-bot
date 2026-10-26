@@ -21,10 +21,13 @@ _LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 _TAG = re.compile(r"(<[^>]*>)")
 _BULLET = re.compile(r"^([ \t]*)[-*•–—][ \t]+", re.MULTILINE)
 _DASHES = re.compile(r"[-–—‑]")
+# AI ba'zan ruxsat etilgan teglarni ham escape qiladi (&lt;b&gt;): ularni haqiqiy tegga qaytaramiz
+_ESCAPED_TAG = re.compile(r"&lt;(/?(?:b|i|u|s|code|pre|a)(?:\s[^<>&]*)?)&gt;", re.IGNORECASE)
 
 
 def clean_answer(text: str) -> str:
     """Javobda tire/defis qolmasin: ro'yxat belgisi "•" ga, qolganlari probelga almashadi (HTML teglar tegilmaydi)."""
+    text = _ESCAPED_TAG.sub(r"<\1>", text)
     text = _BULLET.sub(r"\1• ", text)
     return "".join(
         part if _TAG.fullmatch(part) else _DASHES.sub(" ", part)
