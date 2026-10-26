@@ -1,5 +1,4 @@
 import asyncio
-import re
 from urllib.parse import urlsplit
 
 import aiohttp
@@ -16,23 +15,6 @@ class AIError(Exception):
 # javob uzunligi (va xarajat) chegarasi
 MAX_TOKENS = 1500
 _LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
-
-
-_TAG = re.compile(r"(<[^>]*>)")
-_BULLET = re.compile(r"^([ \t]*)[-*•–—][ \t]+", re.MULTILINE)
-_DASHES = re.compile(r"[-–—‑]")
-# AI ba'zan ruxsat etilgan teglarni ham escape qiladi (&lt;b&gt;): ularni haqiqiy tegga qaytaramiz
-_ESCAPED_TAG = re.compile(r"&lt;(/?(?:b|i|u|s|code|pre|a)(?:\s[^<>&]*)?)&gt;", re.IGNORECASE)
-
-
-def clean_answer(text: str) -> str:
-    """Javobda tire/defis qolmasin: ro'yxat belgisi "•" ga, qolganlari probelga almashadi (HTML teglar tegilmaydi)."""
-    text = _ESCAPED_TAG.sub(r"<\1>", text)
-    text = _BULLET.sub(r"\1• ", text)
-    return "".join(
-        part if _TAG.fullmatch(part) else _DASHES.sub(" ", part)
-        for part in _TAG.split(text)
-    )
 
 
 def _endpoint() -> str:
@@ -67,7 +49,6 @@ async def ask_ai(messages: list[dict[str, str]]) -> str:
         text = (data["choices"][0]["message"]["content"] or "").strip()
     except (KeyError, IndexError, TypeError) as e:
         raise AIError(f"AI API kutilmagan javob: {str(data)[:200]}") from e
-    text = clean_answer(text)
     if not text:
         raise AIError("AI API bo'sh javob qaytardi")
     return text

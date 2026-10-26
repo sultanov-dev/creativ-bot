@@ -1,4 +1,3 @@
-import html
 import re
 import time
 from collections import OrderedDict
@@ -11,6 +10,7 @@ from aiogram.utils.chat_action import ChatActionSender
 
 import texts
 from utils.ai import AIError, ask_ai
+from utils.ai_html import plain_text, sanitize_html
 
 router = Router()
 router.message.filter(F.chat.type.in_({"group", "supergroup"}))
@@ -65,8 +65,12 @@ def _split(text: str) -> list[str]:
     return parts
 
 
-def _plain(text: str) -> str:
-    return html.unescape(re.sub(r"<[^>]*>", "", text))
+async def _reply_part(message: Message, part: str) -> Message:
+    """Xavfsizlashtirilgan HTML bilan; Telegram qabul qilmasa, oddiy matn bilan."""
+    try:
+        return await message.reply(sanitize_html(part))
+    except TelegramBadRequest:
+        return await message.reply(plain_text(part), parse_mode=None)
 
 
 @router.message(F.text, ~F.text.startswith("/"), addressed)
@@ -113,6 +117,5 @@ async def on_ai_question(message: Message, bot: Bot):
         await message.reply(texts.AI_ERROR)
         raise
 
-    # AI javobida <, & bo'lishi mumkin: HTML parse_mode o'chiriladi
     for part in _split(answer)[:MAX_PARTS]:
-        _remember(await message.reply(part, parse_mode=None))
+        _remember(await _reply_part(message, part))
