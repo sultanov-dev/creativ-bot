@@ -33,6 +33,6 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
     )
 
     await bot.send_message(
-        chat_id=request.user_chat_id, text=welcome_text(request.from_user.full_name)
+        chat_id=request.user_chat_id, text=welcome_text()
     )
     await ask(bot, request.user_chat_id, Form.first_name, delay=3.0)
