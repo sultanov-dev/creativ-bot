@@ -1,18 +1,15 @@
-from html import escape
-
-from aiogram import Bot, F, Router
+from aiogram import F, Router
 from aiogram.filters import StateFilter
 from aiogram.types import Message
 
-from database import get_application, get_pending_reason, set_vote_reason
-from utils.reasons import send_to_creator
+from database import get_pending_reason, set_vote_reason
 
 router = Router()
 router.message.filter(F.chat.type == "private")
 
 
 @router.message(F.text, ~F.text.startswith("/"), StateFilter(None))
-async def capture_reason(message: Message, bot: Bot):
+async def capture_reason(message: Message):
     if message.from_user is None or message.text is None:
         return
 
@@ -22,13 +19,7 @@ async def capture_reason(message: Message, bot: Bot):
 
     app_id = pending["app_id"]
     await set_vote_reason(app_id, message.from_user.id, message.text)
-    await message.answer("Rahmat, javobingiz yetkaziladi 🙏")
-
-    app = await get_application(app_id)
-    if app is not None:
-        await send_to_creator(
-            bot,
-            app["group_id"],
-            f"📋 <b>{escape(app['full_name'])}</b> arizasi bo'yicha 👎 sababi\n"
-            f"• <b>{escape(message.from_user.full_name)}</b>: {escape(message.text[:1000])}",
-        )
+    # sabablar creatorga alohida yuborilmaydi: ovoz berish tugagach yagona hisobotga kiradi (utils/voting.py)
+    await message.answer(
+        "Rahmat, sababingiz saqlandi 🙏 Ovoz berish tugagach guruh egasiga yagona hisobotda yuboriladi."
+    )

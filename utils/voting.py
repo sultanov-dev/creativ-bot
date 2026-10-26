@@ -2,7 +2,11 @@ import logging
 from html import escape
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import (
+    TelegramAPIError,
+    TelegramBadRequest,
+    TelegramForbiddenError,
+)
 
 from database import change_status, count_votes, get_due_votings, get_no_votes
 from keyboards.creator import creator_inline
@@ -23,11 +27,29 @@ async def _voter_name(bot: Bot, group_id: int, voter_id: int) -> str:
         return str(voter_id)
 
 
-async def _send_to_creator(bot: Bot, app: dict, yes: int, no: int) -> bool:
-    """Creatorga 👎 ovozlar hisoboti va qaror tugmalarini yuboradi; yetkazilsa True."""
+SENT, UNREACHABLE, RETRY = "sent", "unreachable", "retry"
+
+
+async def _send_to_creator(bot: Bot, app: dict, yes: int, no: int) -> str:
+    """Creatorga 👎 ovozlar (sabablari bilan) yagona hisoboti va qaror tugmalarini yuboradi.
+
+    SENT: yetkazildi. UNREACHABLE: creatorga yetkazib bo'lmaydi (/start bosmagan, bloklagan).
+    RETRY: vaqtinchalik xato (flood limit, tarmoq): keyingi aylanishda qayta uriniladi.
+    """
+    try:
+        return await _send_report(bot, app, yes, no)
+    except TelegramAPIError as e:
+        logger.warning("Ariza %s: creatorga yuborishda vaqtinchalik xato: %r", app["id"], e)
+        return RETRY
+    except Exception:
+        logger.exception("Ariza %s: creator hisobotini tayyorlashda xatolik", app["id"])
+        return RETRY
+
+
+async def _send_report(bot: Bot, app: dict, yes: int, no: int) -> str:
     creator_id = await get_group_creator_id(bot, app["group_id"])
     if creator_id is None:
-        return False
+        return UNREACHABLE
 
     text = (
         "⚖️ <b>Oxirgi qaror sizda</b>\n\n"
@@ -49,9 +71,13 @@ async def _send_to_creator(bot: Bot, app: dict, yes: int, no: int) -> bool:
         text += f"\n… va yana {len(no_votes) - shown} ta"
     text += "\n\nQabul qilasizmi yoki rad qilasizmi?"
 
-    return await safe_send(
-        bot=bot, chat_id=creator_id, text=text, reply_markup=creator_inline(app["id"])
-    )
+    try:
+        await bot.send_message(
+            chat_id=creator_id, text=text, reply_markup=creator_inline(app["id"])
+        )
+    except (TelegramBadRequest, TelegramForbiddenError):
+        return UNREACHABLE
+    return SENT
 
 
 async def finalize_due_votings(bot: Bot) -> int:
@@ -76,14 +102,21 @@ async def finalize_due_votings(bot: Bot) -> int:
         # ayni paytda holat o'zgargan bo'lsa, change_status False qaytaradi
         if not await change_status(app["id"], old="voting", new=new):
             continue
-        done += 1
 
-        if new == "creator_review" and not await _send_to_creator(bot, app, yes, no):
-            # creatorga yetkazib bo'lmasa (/start bosmagan), ariza osilib qolmasligi uchun rad etiladi
-            logger.warning("Ariza %s: creatorga yuborib bo'lmadi, rad etildi", app["id"])
-            await change_status(app["id"], old="creator_review", new="rejected")
-            new, result = "rejected", "❌ Rad etildi"
-            note = "Afsuski, guruh a'zolari arizangizni rad etishdi."
+        if new == "creator_review":
+            outcome = await _send_to_creator(bot, app, yes, no)
+            if outcome == RETRY:
+                # vaqtinchalik xato: ariza "voting" da qoladi (muddat tugagan, ovoz qabul qilinmaydi)
+                # va keyingi aylanishda hisobot qayta yuboriladi
+                await change_status(app["id"], old="creator_review", new="voting")
+                continue
+            if outcome == UNREACHABLE:
+                # creatorga yetkazib bo'lmasa (/start bosmagan), ariza osilib qolmasligi uchun rad etiladi
+                logger.warning("Ariza %s: creatorga yuborib bo'lmadi, rad etildi", app["id"])
+                await change_status(app["id"], old="creator_review", new="rejected")
+                new, result = "rejected", "❌ Rad etildi"
+                note = "Afsuski, guruh a'zolari arizangizni rad etishdi."
+        done += 1
         logger.info("Ovoz berish yakunlandi: ariza %s -> %s (%s/%s)", app["id"], new, yes, no)
 
         if new != "creator_review":
@@ -111,5 +144,9 @@ async def finalize_due_votings(bot: Bot) -> int:
                 except TelegramAPIError:
                     pass
 
-        await safe_send(bot=bot, chat_id=app["user_id"], text=note)
+        try:
+            await safe_send(bot=bot, chat_id=app["user_id"], text=note)
+        except TelegramAPIError:
+            # flood limit/tarmoq: holat allaqachon yozilgan, qolgan arizalar to'xtab qolmasin
+            logger.warning("Ariza %s: foydalanuvchiga xabar yuborib bo'lmadi", app["id"])
     return done

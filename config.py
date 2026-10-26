@@ -11,8 +11,12 @@ DEVELOPER_IDS = [int(x) for x in os.getenv("DEVELOPER_IDS", "").split(",") if x]
 VOTING_MINUTES = int(os.getenv("VOTING_MINUTES") or 10)
 # guruh admini ovozi oddiy a'zo ovozidan necha barobar og'ir
 ADMIN_VOTE_WEIGHT = int(os.getenv("ADMIN_VOTE_WEIGHT") or 5)
-if VOTING_MINUTES < 1 or ADMIN_VOTE_WEIGHT < 1:
-    raise ValueError("VOTING_MINUTES va ADMIN_VOTE_WEIGHT kamida 1 bo'lishi kerak")
+# juda katta qiymatda SQLite datetime() NULL qaytaradi va ariza abadiy "voting" da qolib ketadi
+MAX_VOTING_MINUTES = 7 * 24 * 60
+if not 1 <= VOTING_MINUTES <= MAX_VOTING_MINUTES:
+    raise ValueError(f"VOTING_MINUTES 1 dan {MAX_VOTING_MINUTES} gacha bo'lishi kerak")
+if ADMIN_VOTE_WEIGHT < 1:
+    raise ValueError("ADMIN_VOTE_WEIGHT kamida 1 bo'lishi kerak")
 
 # AI xizmati (OpenAI formatidagi chat/completions API)
 API_URL = os.getenv("API_URL", "")
