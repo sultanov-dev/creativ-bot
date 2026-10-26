@@ -33,6 +33,12 @@ ERROR_GENERIC = "Kechirasiz, xatolik yuz berdi. Iltimos, birozdan keyin qayta ur
 ALREADY_APPLIED = "Arizangiz allaqachon ko'rib chiqilmoqda. Natijani kutib turing ⏳"
 THANKS = "Javoblaringiz uchun rahmat! 😊 Arizangiz guruh adminlariga yuborildi."
 
+REPEAT_APPLICATION_SENT = (
+    "Siz avval bizga o'zingiz haqingizda ma'lumot bergansiz, shuning uchun savollarni qayta so'ramaymiz 😊\n"
+    "Arizangiz guruh a'zolari ovoziga qo'yildi 🗳\n"
+    "Natijani shu yerda xabar qilamiz, sabr qiling ⏳"
+)
+
 APPLICATION_ACCEPTED = "Tabriklaymiz, arizangiz qabul qilindi! Guruhga xush kelibsiz 🎉"
 APPLICATION_REJECTED = (
     "Qiziqishingiz uchun rahmat. Afsuski, arizangiz bu safar rad etildi. "

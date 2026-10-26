@@ -8,7 +8,7 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
-from database import change_status, create_application, get_active_application
+from database import change_status, create_application, get_active_application, save_profile
 from keyboards.action import action_inline
 from states import Form
 from texts import (
@@ -25,7 +25,7 @@ from texts import (
     WRONG_USERNAME,
 )
 from utils.admin import safe_send
-from utils.form_anketa import format_anketa, full_name_of
+from utils.form_anketa import PROFILE_FIELDS, format_anketa, full_name_of
 from utils.num_matcher import extract_number
 from utils.questions import ask
 
@@ -169,6 +169,9 @@ async def capture_join_group(message: Message, bot: Bot, state: FSMContext):
     group_id = data.get("group_id")
     user_id = message.chat.id
     await state.clear()
+
+    # birinchi anketa saqlanadi: shu foydalanuvchi qayta qo'shilsa, savollar takrorlanmaydi
+    await save_profile(user_id, {k: data.get(k) for k in PROFILE_FIELDS})
 
     full_name = full_name_of(data)
     # guruhga (ovoz berish xabari) ketadigan variant telefonsiz; adminlar va arizachi telefonni ko'radi
