@@ -19,7 +19,7 @@ async def capture_reason(message: Message):
 
     app_id = pending["app_id"]
     await set_vote_reason(app_id, message.from_user.id, message.text)
-    # sabablar adminlarga alohida yuborilmaydi: ovoz berish tugagach yagona hisobotga kiradi (utils/voting.py)
+    # sabab saqlanadi: ovoz berish tugagach AI uni boshqalar bilan umumlashtirib, rad etilgan arizachiga yuboradi (utils/voting.py)
     await message.answer(
-        "Rahmat, fikringiz qabul qilindi 🙏 Ovoz berish yakunlangach, u adminlarga umumiy xulosa sifatida yetkaziladi."
+        "Rahmat, fikringiz qabul qilindi 🙏 Ariza rad etilsa, sabablar umumlashtirilib, ismingiz aytilmagan holda arizachiga yumshoq tarzda tushuntiriladi."
     )

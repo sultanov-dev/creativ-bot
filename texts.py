@@ -51,6 +51,7 @@ REPEAT_APPLICATION_SENT = (
 )
 
 APPLICATION_ACCEPTED = "Tabriklaymiz, arizangiz qabul qilindi! Guruhga xush kelibsiz 🎉"
+FEEDBACK_INTRO = "Guruh a'zolarining umumiy fikri haqida qisqacha:"
 APPLICATION_REJECTED = (
     "Qiziqishingiz uchun rahmat. Afsuski, arizangiz bu safar rad etildi. "
     "Sizga omad tilaymiz!"

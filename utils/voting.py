@@ -4,9 +4,10 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 
 from config import VOTE_ACCEPT_PERCENT
-from database import change_status, count_votes, get_due_votings
-from texts import APPLICATION_ACCEPTED, APPLICATION_REJECTED
+from database import change_status, count_votes, get_due_votings, get_no_votes
+from texts import APPLICATION_ACCEPTED, APPLICATION_REJECTED, FEEDBACK_INTRO
 from utils.admin import safe_send
+from utils.summary import feedback_for_applicant
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,8 @@ async def finalize_due_votings(bot: Bot) -> int:
     """Muddati tugagan ovoz berishlarni yakunlaydi: adminlarsiz, faqat ovoz natijasi bo'yicha.
 
     Hech kim ovoz bermagan bo'lsa ariza yopiladi (expired). Aks holda "ha" ovozlari kamida
-    VOTE_ACCEPT_PERCENT foiz bo'lsa so'rov tasdiqlanadi, bo'lmasa rad etiladi.
+    VOTE_ACCEPT_PERCENT foiz bo'lsa so'rov tasdiqlanadi, bo'lmasa rad etiladi; rad etilganda "yo'q"
+    ovoz bergan a'zolarning sabablari AI orqali umumiy xulosaga aylanib arizachiga yuboriladi.
     """
     done = 0
     for app in await get_due_votings():
@@ -40,6 +42,13 @@ async def finalize_due_votings(bot: Bot) -> int:
         # ayni paytda holat o'zgargan bo'lsa, change_status False qaytaradi
         if not await change_status(app["id"], old="voting", new=new):
             continue
+
+        if new == "rejected":
+            # a'zolar yozgan sabablar AI orqali yumshoq umumiy xulosaga aylanib, arizachiga yuboriladi
+            reasons = [v["reason"] for v in await get_no_votes(app["id"])]
+            feedback = await feedback_for_applicant(reasons)
+            if feedback:
+                note = f"{APPLICATION_REJECTED}\n\n{FEEDBACK_INTRO}\n{feedback}"
 
         done += 1
         logger.info("Ovoz berish yakunlandi: ariza %s -> %s (%s/%s)", app["id"], new, yes, no)
