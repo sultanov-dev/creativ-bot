@@ -254,14 +254,16 @@ async def stats(message: Message, bot: Bot):
 
 FINISH_RESULTS = {
     "accepted": "✅ qabul qilindi",
+    "creator_review": "🔎 qaror adminlarga yuborildi (ikkala tomon ham kerakli foizga yetmadi)",
     "rejected": "❌ rad etildi",
     "expired": "⌛ hech kim ovoz bermadi, ariza yopildi",
+    "voting": "⏳ vaqtincha xatolik, birozdan keyin o'zi yakunlanadi",
 }
 
 
 @router.message(Command("finish"))
 async def finish(message: Message, bot: Bot):
-    """Reply qilingan ovoz berish xabaridagi ovozni darhol tugatadi; natija ovozlar bo'yicha darhol e'lon qilinadi (qabul/rad), buyruq bergan adminga lichkada qisqa hisobot yuboriladi.
+    """Reply qilingan ovoz berish xabaridagi ovozni darhol tugatadi; natija ovozlar bo'yicha chiqadi (60% qoidasi; ikkala tomon yetmasa adminlarga hisobot ketadi), buyruq bergan adminga lichkada qisqa natija yuboriladi.
 
     Reply bo'lmasa hech narsa tugatilmaydi: guruhdagi boshqa faol ovozlar tegilmaydi.
     """

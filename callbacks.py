@@ -14,3 +14,8 @@ class VoteCB(CallbackData, prefix="vote"):
 class ProfileCB(CallbackData, prefix="prof"):
     action: str  # keep | edit | back | field
     field: str = ""
+
+
+class CreatorCB(CallbackData, prefix="creator"):
+    action: str  # accept | reject | final_accept | final_reject | back
+    app_id: int
