@@ -6,16 +6,17 @@ from aiogram.exceptions import TelegramAPIError
 
 from database import change_status, get_expired_applications
 from utils.admin import safe_send
+from utils.voting import finalize_due_votings
 
 logger = logging.getLogger(__name__)
 
-# ariza yaratilganidan boshlab shuncha kunda yakunlanmasa, muddati tugaydi (admin ko'rib chiqishi + ovoz berish)
+# admin shuncha kun ichida ko'rib chiqmasa, ariza muddati tugaydi (ovoz berish muddati alohida: VOTING_MINUTES)
 EXPIRE_DAYS = 3
-CHECK_INTERVAL = 600
+CHECK_INTERVAL = 60
 
 
 async def expire_applications(bot: Bot) -> int:
-    """Muddati o'tgan arizalarni yopadi: so'rov rad etiladi, ovoz xabari yopiladi, foydalanuvchiga xabar ketadi."""
+    """Admin ko'rib chiqmagan muddati o'tgan arizalarni yopadi: so'rov rad etiladi, ovoz xabari yopiladi, foydalanuvchiga xabar ketadi."""
     expired = 0
     for app in await get_expired_applications(EXPIRE_DAYS):
         # holat o'zgargan bo'lsa (masalan, ayni paytda ovoz yakunlangan), change_status False qaytaradi
@@ -53,10 +54,11 @@ async def expire_applications(bot: Bot) -> int:
 
 
 async def run_expiry_loop(bot: Bot) -> None:
-    """Fon vazifasi: ishga tushganda va keyin har 10 daqiqada tekshiradi; xato bo'lsa ham to'xtamaydi."""
+    """Fon vazifasi: ishga tushganda va keyin har daqiqada tekshiradi; xato bo'lsa ham to'xtamaydi."""
     while True:
         try:
             await expire_applications(bot)
+            await finalize_due_votings(bot)
         except Exception:
             logger.exception("Arizalar muddatini tekshirishda xatolik")
         await asyncio.sleep(CHECK_INTERVAL)

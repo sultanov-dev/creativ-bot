@@ -3,7 +3,7 @@ import os
 
 import aiosqlite
 
-from config import DATA_DIR
+from config import DATA_DIR, VOTING_MINUTES
 
 DB_PATH = os.path.join(DATA_DIR, "bot.db")
 
@@ -49,7 +49,8 @@ async def init_db() -> None:
             anketa          TEXT NOT NULL,
             status          TEXT NOT NULL DEFAULT 'pending',
             vote_message_id INTEGER,
-            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            voting_ends_at  TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS votes (
@@ -57,6 +58,7 @@ async def init_db() -> None:
             voter_id       INTEGER NOT NULL,
             vote           TEXT NOT NULL CHECK (vote IN ('yes', 'no')),
             reason         TEXT,
+            weight         INTEGER NOT NULL DEFAULT 1,
             created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (application_id, voter_id)
         );
@@ -80,7 +82,21 @@ async def init_db() -> None:
             value TEXT NOT NULL
         );
     """)
+    # eski bazalar uchun: CREATE TABLE IF NOT EXISTS mavjud jadvalga ustun qo'shmaydi
+    await _add_column(db, "applications", "voting_ends_at", "TIMESTAMP")
+    await _add_column(db, "votes", "weight", "INTEGER NOT NULL DEFAULT 1")
+    await db.execute(
+        "UPDATE applications SET voting_ends_at = datetime('now', ?) "
+        "WHERE status = 'voting' AND voting_ends_at IS NULL",
+        (f"+{VOTING_MINUTES} minutes",),
+    )
     await db.commit()
+
+
+async def _add_column(db: aiosqlite.Connection, table: str, column: str, ddl: str) -> None:
+    cur = await db.execute(f"PRAGMA table_info({table})")
+    if column not in {r["name"] for r in await cur.fetchall()}:
+        await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
 
 async def create_application(
@@ -107,10 +123,13 @@ async def get_application(app_id: int) -> dict | None:
 
 
 async def get_expired_applications(days: int) -> list[dict]:
-    """Yaratilganiga `days` kundan oshgan, hali yakunlanmagan (pending/voting) arizalar."""
+    """Yaratilganiga `days` kundan oshgan, admin hali ko'rib chiqmagan (pending) arizalar.
+
+    Ovoz berish bosqichidagi arizalar bu yerga kirmaydi: ularni `voting_ends_at` yopadi.
+    """
     db = await get_db()
     cur = await db.execute(
-        "SELECT * FROM applications WHERE status IN ('pending', 'voting') "
+        "SELECT * FROM applications WHERE status = 'pending' "
         "AND created_at < datetime('now', ?)",
         (f"-{days} days",),
     )
@@ -139,6 +158,28 @@ async def change_status(app_id: int, old: str, new: str) -> bool:
     return cur.rowcount == 1
 
 
+async def start_voting(app_id: int, minutes: int) -> bool:
+    """pending -> voting va ovoz berish muddatini belgilaydi (bitta atomik UPDATE)."""
+    db = await get_db()
+    cur = await db.execute(
+        "UPDATE applications SET status = 'voting', voting_ends_at = datetime('now', ?) "
+        "WHERE id = ? AND status = 'pending'",
+        (f"+{minutes} minutes", app_id),
+    )
+    await db.commit()
+    return cur.rowcount == 1
+
+
+async def get_due_votings() -> list[dict]:
+    """Ovoz berish muddati tugagan, hali yakunlanmagan arizalar."""
+    db = await get_db()
+    cur = await db.execute(
+        "SELECT * FROM applications WHERE status = 'voting' "
+        "AND voting_ends_at <= datetime('now')"
+    )
+    return [dict(r) for r in await cur.fetchall()]
+
+
 async def set_vote_message(app_id: int, message_id: int) -> None:
     db = await get_db()
     await db.execute(
@@ -148,11 +189,12 @@ async def set_vote_message(app_id: int, message_id: int) -> None:
     await db.commit()
 
 
-async def add_vote(app_id: int, voter_id: int, vote: str) -> bool:
+async def add_vote(app_id: int, voter_id: int, vote: str, weight: int = 1) -> bool:
     db = await get_db()
     cur = await db.execute(
-        "INSERT OR IGNORE INTO votes (application_id, voter_id, vote) VALUES (?, ?, ?)",
-        (app_id, voter_id, vote),
+        "INSERT OR IGNORE INTO votes (application_id, voter_id, vote, weight) "
+        "VALUES (?, ?, ?, ?)",
+        (app_id, voter_id, vote, weight),
     )
     await db.commit()
     return cur.rowcount == 1
@@ -209,9 +251,12 @@ async def set_vote_reason(app_id: int, voter_id: int, reason: str) -> None:
 
 
 async def count_votes(app_id: int) -> tuple[int, int]:
+    """Vaznli ovozlar yig'indisi: (ha, yo'q)."""
     db = await get_db()
     cur = await db.execute(
-        "SELECT SUM(vote = 'yes'), SUM(vote = 'no') FROM votes WHERE application_id = ?",
+        "SELECT SUM(CASE WHEN vote = 'yes' THEN weight END), "
+        "SUM(CASE WHEN vote = 'no' THEN weight END) "
+        "FROM votes WHERE application_id = ?",
         (app_id,),
     )
     row = await cur.fetchone()
