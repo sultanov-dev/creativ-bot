@@ -7,6 +7,7 @@ from aiogram import Dispatcher
 from config import ADMIN_IDS
 from database import close_db, get_known_group_ids, init_db
 from handlers import get_routers
+from utils.autodelete import AutoDeleteMiddleware
 from utils.commands import setup_group_commands, setup_private_commands
 from utils.create_bot import bot
 from utils.expiry import run_expiry_loop
@@ -23,6 +24,7 @@ async def main():
     os.umask(0o077)
     setup_logging()
     bot.session.middleware(RequestLogMiddleware())
+    bot.session.middleware(AutoDeleteMiddleware())
     if not ADMIN_IDS:
         logger.error("ADMIN_IDS bo'sh: anketalarni ko'rib chiqadigan va buyruq beradigan admin yo'q (.env ni tekshiring)")
 
