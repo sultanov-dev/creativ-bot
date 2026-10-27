@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 from urllib.parse import urlsplit
 
 import aiohttp
@@ -87,36 +88,68 @@ async def ask_ai(messages: list[dict[str, str]], *, max_tokens: int | None = Non
     return text
 
 
+TOOL_PROTOCOL = (
+    "Respond with ONE JSON object and nothing else (no Markdown, no code fence): "
+    '{{"reply": "<text for the user, or an empty string>", "tool": "<tool name, or null>", "arguments": {{...}}}}. '
+    "Use \"tool\" only when a tool below must be called, otherwise set it to null. Escape double quotes inside strings. "
+    "Available tools:\n{tools}"
+)
+_PARTIAL_REPLY = re.compile(r'"reply"\s*:\s*"((?:[^"\\]|\\.)*)')
+
+
+def _tools_text(tools: list[dict]) -> str:
+    lines = []
+    for tool in tools:
+        function = tool["function"]
+        params = json.dumps(function.get("parameters", {}), ensure_ascii=False)
+        lines.append(f"- {function['name']}: {function['description']} Arguments (JSON schema): {params}")
+    return "\n".join(lines)
+
+
+def _parse_tool_reply(content: str, names: set[str]) -> tuple[str, list[tuple[str, dict]]]:
+    """JSON protokoldagi javobni (matn, [(tool, argumentlar)]) ga ajratadi; JSON bo'lmasa, butun matn javob hisoblanadi."""
+    start = content.find("{")
+    data = None
+    if start != -1:
+        try:
+            data, _ = json.JSONDecoder().raw_decode(content[start:])
+        except ValueError:
+            data = None
+    if not isinstance(data, dict):
+        partial = _PARTIAL_REPLY.search(content) if content.lstrip().startswith(("{", "`")) else None
+        if partial:  # JSON uzilib qolgan (max_tokens): hech bo'lmasa reply qismini olamiz
+            try:
+                return json.loads(f'"{partial.group(1)}"').strip(), []
+            except ValueError:
+                pass
+        return content.strip(), []
+
+    reply = data.get("reply")
+    text = reply.strip() if isinstance(reply, str) else ""
+    name = data.get("tool")
+    args = data.get("arguments")
+    calls = [(name, args if isinstance(args, dict) else {})] if isinstance(name, str) and name in names else []
+    return text, calls
+
+
 async def ask_ai_tools(
     messages: list[dict[str, str]],
     tools: list[dict],
     *,
-    tool_choice: dict | None = None,
     max_tokens: int | None = None,
 ) -> tuple[str, list[tuple[str, dict]]]:
-    """Tool calling: (javob matni, [(tool nomi, argumentlar), ...]); matn ham, tool ham bo'lmasa AIError."""
-    payload = {"messages": messages, "tools": tools, "max_tokens": max_tokens or MAX_TOKENS}
-    if tool_choice:
-        payload["tool_choice"] = tool_choice
-    message = _message(await _post(payload))
+    """Tool calling JSON protokol orqali: (javob matni, [(tool nomi, argumentlar), ...]).
 
-    calls: list[tuple[str, dict]] = []
-    for call in message.get("tool_calls") or []:
-        function = call.get("function") if isinstance(call, dict) else None
-        if not isinstance(function, dict) or not function.get("name"):
-            continue
-        args = function.get("arguments")
-        if isinstance(args, str):
-            try:
-                args = json.loads(args) if args.strip() else {}
-            except ValueError:
-                args = {}
-        calls.append((function["name"], args if isinstance(args, dict) else {}))
-
-    text = (message.get("content") or "").strip()
-    # tool'lar berilgan, lekin AI chaqirmadimi, yoki API `tools` ni umuman qo'llamadimi: shu qator ko'rsatadi
+    API'ning `tools` parametri ishlatilmaydi (gateway unda 503 qaytaradi): tool'lar tizim ko'rsatmasida
+    tasvirlanadi va AI JSON obyekt bilan javob beradi. Matn ham, tool ham bo'lmasa AIError.
+    """
+    protocol = {"role": "system", "content": TOOL_PROTOCOL.format(tools=_tools_text(tools))}
+    data = await _post({"messages": [*messages, protocol], "max_tokens": max_tokens or MAX_TOKENS})
+    content = (_message(data).get("content") or "").strip()
+    text, calls = _parse_tool_reply(content, {t["function"]["name"] for t in tools})
+    # tool'lar berilgan, lekin AI chaqirmadimi: shu qator ko'rsatadi
     logger.info(
-        "AI tool calling: yuborilgan tool'lar=%s, chaqirilgan=%s, matn=%s belgi",
+        "AI tool calling: tool'lar=%s, chaqirilgan=%s, matn=%s belgi",
         [t["function"]["name"] for t in tools], [n for n, _ in calls], len(text),
     )
     if not text and not calls:
