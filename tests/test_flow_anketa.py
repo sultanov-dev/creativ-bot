@@ -313,3 +313,11 @@ class TestStartCommand:
         await feed(dp, bot, tf.private_message(tf.ADMIN_ID, "/start"))
         assert len(session.texts_to(tf.ADMIN_ID)) == 1
         assert_no_errors(session)
+
+
+class TestAdminAnketaButtons:
+    async def test_admin_gets_vote_and_reject_buttons_with_clear_texts(self, dp, bot, session):
+        await start_application(dp, bot)
+        markup = session.sent_to(tf.ADMIN_ID)[0].reply_markup
+        buttons = [(b.text, b.callback_data.split(":")[1]) for row in markup.inline_keyboard for b in row]
+        assert buttons == [("🗳 Ovozga qo'yish", "accept"), ("❌ Rad etish", "reject")]

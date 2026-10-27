@@ -7,7 +7,7 @@ def action_inline(app_id: int):
     builder = InlineKeyboardBuilder()
 
     builder.button(
-        text="✅ Qabul qilish",
+        text="🗳 Ovozga qo'yish",
         callback_data=ApplicantCB(action="accept", app_id=app_id),
     )
 
