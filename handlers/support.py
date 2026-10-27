@@ -25,7 +25,7 @@ from database import (
     set_support_status,
 )
 from utils.admin import is_admin, safe_send
-from utils.autodelete import schedule_delete
+from utils.autodelete import keep_messages, schedule_delete
 from utils.ai import AIError, ask_ai, ask_ai_tools
 from utils.ai_html import plain_text, sanitize_html
 from utils.lang import detect_lang
@@ -276,11 +276,16 @@ async def run_turn(bot: Bot, chat: dict) -> None:
         await set_support_status(chat["id"], "active", "resolved")
 
 
-async def _reply_in_group(bot: Bot, message: Message, text: str) -> None:
-    """Guruhga qisqa javob: botning javobi ham, foydalanuvchining xabari ham AUTO_DELETE_SECONDS dan keyin o'chadi."""
+async def _reply_in_group(bot: Bot, message: Message, text: str, *, keep: bool = False) -> None:
+    """Guruhga qisqa javob. keep=True: javob ham, foydalanuvchi xabari ham qoladi; aks holda ikkalasi AUTO_DELETE_SECONDS dan keyin o'chadi."""
     with suppress(TelegramAPIError):  # xabar o'chirilgan bo'lsa ham, lichkaga yuborilgan suhbat buzilmasin
-        await message.reply(text)
-    await schedule_delete(bot, message.chat.id, message.message_id)
+        if keep:
+            with keep_messages():
+                await message.reply(text)
+        else:
+            await message.reply(text)
+    if not keep:
+        await schedule_delete(bot, message.chat.id, message.message_id)
 
 
 async def open_chat(bot: Bot, message: Message, text: str, reason: str = "") -> None:
@@ -294,7 +299,7 @@ async def open_chat(bot: Bot, message: Message, text: str, reason: str = "") -> 
         logger.info("Support: foydalanuvchi bloklangan (chat_id=%s, kategoriya=%s), AI chaqirilmadi", blocked["id"], blocked["category"])
         lang = detect_lang(text)
         if await safe_send(bot, user.id, texts.SUPPORT_DECLINED[lang]):
-            await _reply_in_group(bot, message, texts.SUPPORT_DM_SENT[lang])
+            await _reply_in_group(bot, message, texts.SUPPORT_DM_SENT[lang], keep=True)
         return
     chat = await get_support_chat(user.id, "active", SUPPORT_TTL_HOURS)
     if chat is None:
@@ -319,7 +324,7 @@ async def open_chat(bot: Bot, message: Message, text: str, reason: str = "") -> 
             await set_support_status(chat["id"], "active", "awaiting_start")
         else:
             # guruhdagi "yozmoqda..." kimga ekani noma'lum: qisqa xabar (guruh xabarlari kabi o'zi o'chadi)
-            await _reply_in_group(bot, message, texts.SUPPORT_DM_SENT[detect_lang(text)])
+            await _reply_in_group(bot, message, texts.SUPPORT_DM_SENT[detect_lang(text)], keep=True)
             return
     me = await bot.me()
     lang = detect_lang(text)

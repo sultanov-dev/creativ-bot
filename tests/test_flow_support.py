@@ -54,7 +54,7 @@ class TestContactAdmin:
 
 
 class TestUserMessageCleanup:
-    """Botning guruhdagi qisqa javobi bilan birga foydalanuvchining o'z xabari ham o'chadi."""
+    """\"Lichkaga yozdim\" xabari va foydalanuvchi xabari qoladi; \"/start bosing\" xabari esa foydalanuvchi xabari bilan birga o'chadi."""
 
     async def _pending(self, message_id: int) -> bool:
         import database
@@ -62,13 +62,19 @@ class TestUserMessageCleanup:
         rows = await database.get_pending_deletes()
         return any(r["chat_id"] == tf.GROUP_ID and r["message_id"] == message_id for r in rows)
 
+    async def _pending_any(self) -> bool:
+        import database
+
+        return bool(await database.get_pending_deletes())
+
     async def _ask(self, dp, bot, text: str, message_id: int) -> None:
         entities = [tf.mention(text)]
         await feed(dp, bot, tf.group_message(USER, text, entities=entities, message_id=message_id))
 
-    async def test_user_message_is_deleted_after_dm_notice(self, dp, bot, session, group_ai, dm_ai):
+    async def test_dm_notice_and_user_message_stay(self, dp, bot, session, group_ai, dm_ai):
         await self._ask(dp, bot, f"{BOT} admin bilan gaplashmoqchiman", 4242)
-        assert await self._pending(4242)
+        assert not await self._pending(4242)
+        assert not await self._pending_any()
 
     async def test_user_message_is_deleted_after_start_first_notice(self, dp, bot, session, group_ai, dm_ai):
         session.errors[SendChatAction] = tf.forbidden()
