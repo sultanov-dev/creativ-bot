@@ -15,5 +15,7 @@ COPY . .
 RUN useradd --create-home app && mkdir /data && chown app:app /data
 USER app
 VOLUME /data
+# webhook rejimida bot shu portda tinglaydi (polling rejimida ishlatilmaydi)
+EXPOSE 8080
 
 CMD ["python", "main.py"]

@@ -1,4 +1,5 @@
 import os
+import re
 
 from dotenv import load_dotenv
 
@@ -34,6 +35,23 @@ AUTO_DELETE_SECONDS = int(os.getenv("AUTO_DELETE_SECONDS") or 120)
 API_URL = os.getenv("API_URL", "")
 API_TOKEN = os.getenv("API_TOKEN", "")
 API_MODEL = os.getenv("API_MODEL", "")
+
+# Webhook rejimi: WEBHOOK_URL berilsa (ochiq https manzil, masalan https://bot.example.uz), Telegram
+# yangilanishlarni shu manzilga yuboradi; berilmasa, bot long polling bilan ishlaydi.
+# TLS (https) ni oldidagi reverse proxy/ingress qiladi, bot ichkarida oddiy HTTP da WEB_HOST:WEB_PORT da tinglaydi.
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").strip().rstrip("/")
+WEBHOOK_PATH = os.getenv("WEBHOOK_PATH") or "/webhook"
+# Telegram har so'rovda shu maxfiy qiymatni yuboradi; mos kelmasa, so'rov rad etiladi (harf, raqam, _ va -)
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
+WEB_HOST = os.getenv("WEB_HOST") or "0.0.0.0"
+WEB_PORT = int(os.getenv("WEB_PORT") or 8080)
+if WEBHOOK_URL:
+    if not WEBHOOK_URL.startswith("https://"):
+        raise ValueError("WEBHOOK_URL https:// bilan boshlanishi kerak")
+    if not WEBHOOK_PATH.startswith("/"):
+        raise ValueError("WEBHOOK_PATH / bilan boshlanishi kerak")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{16,256}", WEBHOOK_SECRET):
+        raise ValueError("WEBHOOK_SECRET kerak: 16 dan 256 gacha harf, raqam, _ yoki - (masalan: openssl rand -hex 32)")
 
 # bot.db saqlanadigan papka (Docker'da /data volume)
 DATA_DIR = os.getenv("DATA_DIR", ".")

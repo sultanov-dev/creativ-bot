@@ -11,6 +11,9 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    # faqat webhook rejimida kerak: reverse proxy (nginx/ingress) https ni qabul qilib, shu portga uzatadi
+    ports:
+      - "127.0.0.1:8080:8080"
     volumes:
       - bot-data:/data
     # konsol (stdout) loglari Docker'da cheksiz o'sadi: eng ko'pi bilan 3 x 10 MB

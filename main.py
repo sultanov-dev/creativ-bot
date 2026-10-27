@@ -1,10 +1,13 @@
 import asyncio
 import logging
 import os
+import signal
 
 from aiogram import Dispatcher
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiohttp import web
 
-from config import ADMIN_IDS
+from config import ADMIN_IDS, WEB_HOST, WEB_PORT, WEBHOOK_PATH, WEBHOOK_SECRET, WEBHOOK_URL
 from database import close_db, get_known_group_ids, init_db
 from handlers import get_routers
 from utils.autodelete import AutoDeleteMiddleware, restore_pending_deletes
@@ -17,6 +20,43 @@ from utils.members import TrackMembersMiddleware
 from utils.request_log import RequestLogMiddleware, UpdateLogMiddleware
 
 logger = logging.getLogger(__name__)
+
+
+def build_web_app(dp: Dispatcher) -> web.Application:
+    """Webhook rejimi uchun aiohttp ilovasi: /webhook (maxfiy token bilan) va /health."""
+    app = web.Application()
+    SimpleRequestHandler(dispatcher=dp, bot=bot, secret_token=WEBHOOK_SECRET).register(
+        app, path=WEBHOOK_PATH
+    )
+    setup_application(app, dp, bot=bot)
+
+    async def health(_: web.Request) -> web.Response:
+        return web.json_response({"ok": True})
+
+    app.router.add_get("/health", health)
+    return app
+
+
+async def run_webhook(dp: Dispatcher) -> None:
+    runner = web.AppRunner(build_web_app(dp))
+    await runner.setup()
+    await web.TCPSite(runner, WEB_HOST, WEB_PORT).start()
+    await bot.set_webhook(
+        url=f"{WEBHOOK_URL}{WEBHOOK_PATH}",
+        secret_token=WEBHOOK_SECRET,
+        allowed_updates=dp.resolve_used_update_types(),
+    )
+    logger.info("Webhook rejimi: %s%s (tinglanmoqda %s:%s)", WEBHOOK_URL, WEBHOOK_PATH, WEB_HOST, WEB_PORT)
+
+    # Docker/systemd to'xtatganda (SIGTERM) tartibli yopilish
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, stop.set)
+    try:
+        await stop.wait()
+    finally:
+        await runner.cleanup()
 
 
 async def main():
@@ -41,7 +81,11 @@ async def main():
     await restore_pending_deletes(bot)
     expiry_task = asyncio.create_task(run_expiry_loop(bot))
     try:
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+        if WEBHOOK_URL:
+            await run_webhook(dp)
+        else:
+            # polling o'zi eski webhook'ni o'chiradi
+            await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         expiry_task.cancel()
         await close_db()
