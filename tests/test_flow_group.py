@@ -309,29 +309,32 @@ class TestFinish:
         await cmd(dp, bot, "/finish", reply=self._vote_message(msg_a))
         assert await status_of(a) == "accepted" and await status_of(b) == "voting"
 
-    async def test_report_goes_to_admin_by_dm(self, dp, bot, session):
+    async def test_tie_sends_only_the_decision_report_to_admin_no_summary(self, dp, bot, session):
         app_id, msg = await self._voting(dp, bot)
         await cast(dp, bot, 200, "yes", app_id)
         await cast(dp, bot, 201, "no", app_id)
         session.clear()
         await cmd(dp, bot, "/finish", reply=self._vote_message(msg))
-        report = session.texts_to(A)
-        assert report and "1 👍 / 1 👎" in report[-1] and "qaror adminlarga yuborildi" in report[-1]
-        assert "shaxsiy xabaringizga" in replies(session)[-1]
+        dm = session.sent_to(A)
+        assert len(dm) == 1 and dm[0].reply_markup is not None  # faqat qaror tugmali hisobot
+        assert not any("🏁" in t or "Ovoz berish yakunlandi" in t for t in session.texts_to(A))
+        assert replies(session) == ["🏁 Ovoz berish yakunlandi."]
         assert await status_of(app_id) == "creator_review"
 
-    async def test_accepted_result_text(self, dp, bot, session):
+    async def test_accepted_finish_sends_nothing_to_admin_dm(self, dp, bot, session):
         app_id, msg = await self._voting(dp, bot)
         await cast(dp, bot, 200, "yes", app_id)
         session.clear()
         await cmd(dp, bot, "/finish", reply=self._vote_message(msg))
-        assert "qabul qilindi" in session.texts_to(A)[-1]
+        assert await status_of(app_id) == "accepted"
+        assert session.texts_to(A) == []
+        assert replies(session) == ["🏁 Ovoz berish yakunlandi."]
 
-    async def test_no_votes_result_text(self, dp, bot, session):
+    async def test_no_votes_finish_sends_nothing_to_admin_dm(self, dp, bot, session):
         app_id, msg = await self._voting(dp, bot)
         session.clear()
         await cmd(dp, bot, "/finish", reply=self._vote_message(msg))
-        assert await status_of(app_id) == "expired" and "hech kim ovoz bermadi" in session.texts_to(A)[-1]
+        assert await status_of(app_id) == "expired" and session.texts_to(A) == []
 
     async def test_second_finish_says_already_finished(self, dp, bot, session):
         app_id, msg = await self._voting(dp, bot)
@@ -341,22 +344,6 @@ class TestFinish:
         await cmd(dp, bot, "/finish", reply=self._vote_message(msg))
         # xabar o'chirilgan bo'lsa ham baza yozuvi bor: "yakunlangan" deyiladi
         assert "allaqachon yakunlangan" in replies(session)[0]
-
-    async def test_dm_failure_gives_start_hint(self, dp, bot, session):
-        app_id, msg = await self._voting(dp, bot)
-        session.errors[SendMessage] = lambda m: TelegramForbiddenError(method=m, message="Forbidden") \
-            if m.chat_id == A else None
-        await cmd(dp, bot, "/finish", reply=self._vote_message(msg))
-        assert "/start" in replies(session)[-1]
-
-    async def test_name_in_report_is_escaped(self, dp, bot, session):
-        app_id, msg = await self._voting(dp, bot)
-        d = await dbm.get_db()
-        await d.execute("UPDATE applications SET full_name = '<b>X</b> Y' WHERE id = ?", (app_id,))
-        await d.commit()
-        session.clear()
-        await cmd(dp, bot, "/finish", reply=self._vote_message(msg))
-        assert "<b>X</b>" not in session.texts_to(A)[-1]
 
     async def test_vote_message_from_other_group_does_not_match(self, dp, bot, session):
         app_id, msg = await self._voting(dp, bot)

@@ -15,13 +15,11 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import ChatMemberUpdated, ChatPermissions, Message
 
 from database import (
-    count_votes,
     end_voting_now,
-    get_application,
     get_application_by_vote_message,
     get_members,
 )
-from utils.admin import get_user_status, is_admin, safe_send
+from utils.admin import get_user_status, is_admin
 from utils.autodelete import CommandCleanupMiddleware, schedule_delete
 from utils.commands import setup_group_commands
 from utils.members import track, untrack
@@ -269,18 +267,9 @@ async def stats(message: Message, bot: Bot):
     await message.reply(f"👥 Guruhda a'zolar soni: <b>{count}</b>")
 
 
-FINISH_RESULTS = {
-    "accepted": "✅ qabul qilindi",
-    "creator_review": "🔎 qaror adminlarga yuborildi (ikkala tomon ham kerakli foizga yetmadi)",
-    "rejected": "❌ rad etildi",
-    "expired": "⌛ hech kim ovoz bermadi, ariza yopildi",
-    "voting": "⏳ vaqtincha xatolik, birozdan keyin o'zi yakunlanadi",
-}
-
-
 @router.message(Command("finish"))
 async def finish(message: Message, bot: Bot):
-    """Reply qilingan ovoz berish xabaridagi ovozni darhol tugatadi; natija ovozlar bo'yicha chiqadi (60% qoidasi; ikkala tomon yetmasa adminlarga hisobot ketadi), buyruq bergan adminga lichkada qisqa natija yuboriladi.
+    """Reply qilingan ovoz berish xabaridagi ovozni darhol tugatadi; natija ovozlar bo'yicha chiqadi (60% qoidasi; ikkala tomon yetmasa adminlarga hisobot ketadi). Guruhga faqat qisqa javob yoziladi.
 
     Reply bo'lmasa hech narsa tugatilmaydi: guruhdagi boshqa faol ovozlar tegilmaydi.
     """
@@ -303,19 +292,6 @@ async def finish(message: Message, bot: Bot):
     await end_voting_now(message.chat.id, app["id"])
     await finalize_due_votings(bot)
 
-    app = await get_application(app["id"]) or app
-    yes, no = await count_votes(app["id"])
-    report = (
-        "🏁 <b>Ovoz berish yakunlandi</b>\n\n"
-        f"№{app['id']} <b>{escape(app['full_name'])}</b>: {yes} 👍 / {no} 👎, "
-        f"{FINISH_RESULTS.get(app['status'], app['status'])}"
-    )
-
-    delivered = await safe_send(bot=bot, chat_id=message.from_user.id, text=report)
-    if delivered:
-        await message.reply("🏁 Ovoz berish yakunlandi, hisobot shaxsiy xabaringizga yuborildi.")
-    else:
-        await message.reply(
-            "🏁 Ovoz berish yakunlandi, lekin hisobotni shaxsiy xabar sifatida yubora olmadim. "
-            "Botning shaxsiy chatida /start bosing."
-        )
+    # natija adminlarga alohida xabar bilan yuborilmaydi (kerak bo'lsa, qaror hisoboti o'zi keladi);
+    # guruhdagi qisqa javob 2 daqiqada o'chadi
+    await message.reply("🏁 Ovoz berish yakunlandi.")
