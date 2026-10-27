@@ -1,4 +1,5 @@
 .git
+.pytest_cache
 .claude
 venv
 __pycache__

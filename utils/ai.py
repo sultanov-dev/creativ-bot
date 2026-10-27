@@ -42,7 +42,7 @@ async def ask_ai(messages: list[dict[str, str]]) -> str:
                 if resp.status != 200:
                     raise AIError(f"AI API {resp.status}: {(await resp.text())[:200]}")
                 data = await resp.json(content_type=None)
-    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+    except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:  # ValueError: JSON emas
         raise AIError(f"AI API ulanish xatosi: {e!r}") from e
 
     try:

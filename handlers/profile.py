@@ -74,7 +74,8 @@ async def on_keep(message: Message, bot: Bot, state: FSMContext):
         logger.warning("group_id topilmadi, user_id=%s", message.chat.id)
         await message.answer(PROFILE_SAVED, reply_markup=ReplyKeyboardRemove())
         return
-    profile = {k: data.get(k) for k in PROFILE_FIELDS}
+    # eski profillarda ism first_name/last_name'da: full_name_of shularga tayanadi
+    profile = {k: data.get(k) for k in (*PROFILE_FIELDS, "first_name", "last_name")}
     await apply_from_profile(bot, message.chat.id, group_id, message.chat.id, profile)
 
 

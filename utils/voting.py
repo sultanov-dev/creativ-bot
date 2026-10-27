@@ -31,12 +31,13 @@ def _share_at_least(count: int, total: int) -> bool:
 
 def is_accepted(yes: int, no: int) -> bool:
     """Ovozlarning kamida VOTE_ACCEPT_PERCENT foizi "ha" bo'lsa, a'zo avtomatik qabul qilinadi."""
-    return _share_at_least(yes, yes + no)
+    # yes > no: VOTE_ACCEPT_PERCENT <= 50 bo'lsa ham "yo'q" ko'pchilik bo'lganda qabul qilinmaydi
+    return yes > no and _share_at_least(yes, yes + no)
 
 
 def is_rejected(yes: int, no: int) -> bool:
     """Ovozlarning kamida VOTE_ACCEPT_PERCENT foizi "yo'q" bo'lsa, ariza avtomatik rad etiladi."""
-    return _share_at_least(no, yes + no)
+    return no > yes and _share_at_least(no, yes + no)
 
 
 async def rejection_note(app_id: int) -> str:
