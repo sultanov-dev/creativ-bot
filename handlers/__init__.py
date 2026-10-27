@@ -15,5 +15,6 @@ def get_routers() -> list[Router]:
         creator.router,
         reason.router,
         group.router,
+        group.strangers,
         ai.router,
     ]

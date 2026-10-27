@@ -372,9 +372,28 @@ class TestCommandCleanup:
         rows = await dbm.get_pending_deletes()
         assert any(r["chat_id"] == G and r["message_id"] == 555 for r in rows)
 
-    async def test_non_admin_command_is_not_touched(self, dp, bot, session):
+    async def test_non_admin_command_is_ignored_but_deleted_from_chat(self, dp, bot, session):
         await feed(dp, bot, tf.group_message(555, "/stats", message_id=556))
-        assert all(r["message_id"] != 556 for r in await dbm.get_pending_deletes())
+        assert session.requests == []  # bot javob bermaydi
+        assert any(r["chat_id"] == G and r["message_id"] == 556 for r in await dbm.get_pending_deletes())
+
+    @pytest.mark.parametrize("command", ["/ban", "/unban", "/mute", "/unmute", "/stats", "/finish", "/kick_deleted"])
+    async def test_every_non_admin_command_is_queued_for_deletion(self, dp, bot, session, command):
+        await feed(dp, bot, tf.group_message(555, command, message_id=600))
+        assert any(r["message_id"] == 600 for r in await dbm.get_pending_deletes())
+
+    async def test_non_admin_command_for_another_bot_is_not_touched(self, dp, bot, session):
+        await feed(dp, bot, tf.group_message(555, "/stats@some_other_bot", message_id=601))
+        assert all(r["message_id"] != 601 for r in await dbm.get_pending_deletes())
+
+    async def test_non_admin_plain_text_is_not_touched(self, dp, bot, session):
+        await feed(dp, bot, tf.group_message(555, "salom", message_id=602))
+        assert all(r["message_id"] != 602 for r in await dbm.get_pending_deletes())
+
+    async def test_unrelated_command_of_a_non_admin_is_not_touched(self, dp, bot, session):
+        # boshqa botlarning buyruqlari (/weather va h.k.) bizniki emas
+        await feed(dp, bot, tf.group_message(555, "/weather", message_id=603))
+        assert all(r["message_id"] != 603 for r in await dbm.get_pending_deletes())
 
     async def test_bot_replies_in_group_are_queued_too(self, dp, bot, session):
         await feed(dp, bot, tf.group_message(A, "/stats", message_id=557))

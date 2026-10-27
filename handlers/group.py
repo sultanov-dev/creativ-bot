@@ -22,7 +22,7 @@ from database import (
     get_members,
 )
 from utils.admin import get_user_status, is_admin, safe_send
-from utils.autodelete import CommandCleanupMiddleware
+from utils.autodelete import CommandCleanupMiddleware, schedule_delete
 from utils.commands import setup_group_commands
 from utils.members import track, untrack
 from utils.voting import finalize_due_votings
@@ -47,12 +47,23 @@ async def _is_protected(bot: Bot, chat_id: int, user_id: int) -> bool:
     return is_admin(user_id) or await get_user_status(bot, chat_id, user_id) in PRIVILEGED
 
 
-router.message.filter(
-    Command("kick_deleted", "ban", "unban", "mute", "unmute", "stats", "finish")
-)
+COMMANDS = ("kick_deleted", "ban", "unban", "mute", "unmute", "stats", "finish")
+router.message.filter(Command(*COMMANDS))
 router.message.filter(admin_only)
 # adminning buyruq xabari ham (bot javobi kabi) AUTO_DELETE_SECONDS dan keyin o'chadi
 router.message.middleware(CommandCleanupMiddleware())
+
+# admin bo'lmaganlarning shu buyruqlari: bot javob bermaydi, lekin buyruq xabari chatdan avto-o'chadi.
+# group.router dan keyin ulanadi, shuning uchun bu yerga faqat adminlik huquqi yo'qlar tushadi.
+strangers = Router()
+strangers.message.filter(F.chat.type.in_({"group", "supergroup"}))
+strangers.message.filter(Command(*COMMANDS))
+
+
+@strangers.message()
+async def stranger_command(message: Message, bot: Bot):
+    await schedule_delete(bot, message.chat.id, message.message_id)
+
 
 # mute muddati chegarasi (1 yil): timedelta/Telegram'da haddan katta son xatoga olib kelmasin
 MAX_MUTE_MINUTES = 366 * 24 * 60
