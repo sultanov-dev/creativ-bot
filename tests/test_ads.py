@@ -56,7 +56,7 @@ class FakeAI:
         self.answer = answer
         self.calls: list[list[dict[str, str]]] = []
 
-    async def __call__(self, messages: list[dict[str, str]], *, max_tokens: int | None = None) -> str:
+    async def __call__(self, messages: list[dict[str, str]], *, max_tokens: int | None = None, attempts: int | None = None) -> str:
         self.calls.append(messages)
         if isinstance(self.answer, Exception):
             raise self.answer
@@ -80,7 +80,7 @@ class TestAiVerdict:
         assert await ads.ai_says_ad("matn") is expected
 
     async def test_slow_ai_keeps_the_message_quickly(self, monkeypatch):
-        async def slow(messages: list[dict[str, str]], *, max_tokens: int | None = None) -> None:
+        async def slow(messages: list[dict[str, str]], *, max_tokens: int | None = None, attempts: int | None = None) -> None:
             await asyncio.sleep(5)
 
         monkeypatch.setattr(ads, "ask_ai", slow)

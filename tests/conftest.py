@@ -95,6 +95,14 @@ def bot(session):
     return make_bot(session)
 
 
+@pytest.fixture(autouse=True)
+def _no_ai_retry_delays(monkeypatch):
+    """AI qayta urinishlari orasida kutilmaydi (haqiqiy kutish utils/ai.py da, testda sekinlashtirmasin)."""
+    import utils.ai
+
+    monkeypatch.setattr(utils.ai, "RETRY_DELAYS", (0.0, 0.0, 0.0, 0.0))
+
+
 @pytest_asyncio.fixture
 async def dp(db):
     """To'liq dispatcher: haqiqiy routerlar, SQLite FSM, a'zolarni kuzatuvchi middleware."""

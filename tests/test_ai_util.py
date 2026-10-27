@@ -24,6 +24,7 @@ class Fake:
         self.body: object = {"choices": [{"message": {"content": "javob"}}]}
         self.raw: str | None = None
         self.delay = 0.0
+        self.fail_first = 0  # birinchi shuncha so'rovga 503 qaytaradi (vaqtinchalik xato)
 
     def reply(self, content: object) -> None:
         self.body = {"choices": [{"message": {"content": content}}]}
@@ -36,6 +37,9 @@ class Fake:
             self.requests.append({})
         if self.delay:
             await asyncio.sleep(self.delay)
+        if self.fail_first > 0:
+            self.fail_first -= 1
+            return web.Response(status=503, text="temporarily unavailable")
         if self.raw is not None:
             return web.Response(status=self.status, text=self.raw, content_type="text/plain")
         return web.json_response(self.body, status=self.status)
@@ -58,6 +62,102 @@ async def fake_ai(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[Fake]:
 
 
 MSGS = [{"role": "user", "content": "salom"}]
+
+
+class FlakySession:
+    """aiohttp sessiyasi o'rnida: birinchi `fail` ta so'rov ulanish xatosi bilan tugaydi, keyin haqiqiy javob."""
+
+    def __init__(self, fail: int) -> None:
+        self.fail = fail
+        self.calls = 0
+
+    def post(self, url, **kw):
+        self.calls += 1
+        if self.calls <= self.fail:
+            raise aiohttp.ClientConnectionError("connect failed")
+        outer = self
+
+        class Resp:
+            status = 200
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def json(self, content_type=None):
+                return {"choices": [{"message": {"content": f"javob {outer.calls}"}}]}
+
+            async def text(self):
+                return ""
+
+        return Resp()
+
+
+class TestRetry:
+    @pytest.fixture
+    def flaky(self, monkeypatch):
+        def make(fail: int) -> FlakySession:
+            session = FlakySession(fail)
+            monkeypatch.setattr(ai_mod, "_get_session", lambda: session)
+            return session
+
+        return make
+
+    async def test_succeeds_on_the_fifth_attempt(self, flaky):
+        session = flaky(4)
+        assert await ask_ai(MSGS) == "javob 5" and session.calls == 5
+
+    async def test_gives_up_after_five_attempts(self, flaky):
+        session = flaky(99)
+        with pytest.raises(AIError, match="5 urinishdan keyin"):
+            await ask_ai(MSGS)
+        assert session.calls == 5
+
+    async def test_attempts_can_be_lowered_for_fast_checks(self, flaky):
+        session = flaky(99)
+        with pytest.raises(AIError, match="2 urinishdan keyin"):
+            await ask_ai(MSGS, attempts=2)
+        assert session.calls == 2
+
+    async def test_waits_between_attempts(self, flaky, monkeypatch):
+        sleeps: list[float] = []
+
+        async def fake_sleep(d: float) -> None:
+            sleeps.append(d)
+
+        monkeypatch.setattr(ai_mod.asyncio, "sleep", fake_sleep)
+        monkeypatch.setattr(ai_mod, "RETRY_DELAYS", (0.3, 0.6, 1.2, 2.0))
+        flaky(99)
+        with pytest.raises(AIError):
+            await ask_ai(MSGS)
+        assert sleeps == [0.3, 0.6, 1.2, 2.0]  # oxirgi urinishdan keyin kutilmaydi
+
+    async def test_temporary_server_error_is_retried(self, fake_ai):
+        fake_ai.fail_first = 2
+        assert await ask_ai(MSGS) == "javob" and len(fake_ai.requests) == 3
+
+    @pytest.mark.parametrize("status", [400, 401, 403, 404])
+    async def test_config_errors_are_not_retried(self, fake_ai, status):
+        fake_ai.status = status
+        with pytest.raises(AIError, match=str(status)):
+            await ask_ai(MSGS)
+        assert len(fake_ai.requests) == 1
+
+    @pytest.mark.parametrize("status", [429, 500, 503])
+    async def test_persistent_server_error_tries_five_times(self, fake_ai, status):
+        fake_ai.status = status
+        with pytest.raises(AIError, match="5 urinishdan keyin"):
+            await ask_ai(MSGS)
+        assert len(fake_ai.requests) == 5
+
+    async def test_slow_response_is_not_retried(self, fake_ai, monkeypatch):
+        monkeypatch.setattr(ai_mod, "TIMEOUT", aiohttp.ClientTimeout(total=0.2))
+        fake_ai.delay = 1.0
+        with pytest.raises(AIError):
+            await ask_ai(MSGS)
+        assert len(fake_ai.requests) == 1
 
 
 class TestAskAi:
@@ -105,7 +205,7 @@ class TestAskAi:
 
     async def test_connection_refused_raises_ai_error(self, monkeypatch):
         monkeypatch.setattr(ai_mod, "API_URL", "http://127.0.0.1:1/x")
-        with pytest.raises(AIError, match="ulanish"):
+        with pytest.raises(AIError, match="5 urinishdan keyin"):
             await ask_ai(MSGS)
 
     async def test_timeout_raises_ai_error(self, fake_ai, monkeypatch):

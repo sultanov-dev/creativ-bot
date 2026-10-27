@@ -21,7 +21,7 @@ class FakeAI:
         self.answer = answer
         self.calls = []
 
-    async def __call__(self, messages, *, max_tokens=None):
+    async def __call__(self, messages, *, max_tokens=None, attempts=None):
         self.calls.append((messages, max_tokens))
         if isinstance(self.answer, Exception):
             raise self.answer

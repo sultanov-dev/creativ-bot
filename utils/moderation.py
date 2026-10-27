@@ -45,6 +45,7 @@ async def is_abusive(text: str) -> bool:
                     {"role": "user", "content": f"<<<\n{text[:MAX_TEXT]}\n>>>"},
                 ],
                 max_tokens=10,
+                attempts=2,  # 6 soniyalik chegarada: AI ishlamasa, foydalanuvchi uzoq kutmasin (fail-open)
             ),
             WAIT_SECONDS,
         )

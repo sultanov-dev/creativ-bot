@@ -9,7 +9,13 @@ from config import API_MODEL, API_TOKEN, API_URL
 
 logger = logging.getLogger(__name__)
 
-TIMEOUT = aiohttp.ClientTimeout(total=60)
+# sock_connect: ulanish osilib qolsa, qayta urinishga tez o'tish uchun (butun so'rov uchun total)
+TIMEOUT = aiohttp.ClientTimeout(total=60, sock_connect=8)
+# ulanish xatosi, vaqtinchalik server xatosi (5xx) yoki 429 bo'lsa, shuncha marta urinadi; faqat hammasi muvaffaqiyatsiz
+# bo'lsa AIError ko'tariladi (guruhga xato xabari va dasturchiga ogohlantirish shundan keyingina ketadi)
+ATTEMPTS = 5
+RETRY_DELAYS = (0.3, 0.6, 1.2, 2.0)  # urinishlar orasidagi kutish (soniya)
+RETRY_STATUSES = (429, 500, 502, 503, 504)
 
 
 class AIError(Exception):
@@ -52,20 +58,34 @@ async def close_session() -> None:
     _session = None
 
 
-async def _post(payload: dict) -> dict:
-    """chat/completions so'rovi; javobning JSON'ini qaytaradi."""
-    try:
-        url = _endpoint()  # sessiyadan oldin: noto'g'ri URL bo'lsa, ortiqcha sessiya ochilmasin
-        async with _get_session().post(
-            url,
-            json={**payload, **({"model": API_MODEL} if API_MODEL else {})},
-            headers={"Authorization": f"Bearer {API_TOKEN}"},
-        ) as resp:
-            if resp.status != 200:
-                raise AIError(f"AI API {resp.status}: {(await resp.text())[:200]}")
-            return await resp.json(content_type=None)
-    except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:  # ValueError: JSON emas
-        raise AIError(f"AI API ulanish xatosi: {e!r}") from e
+class _Retryable(Exception):
+    """Vaqtinchalik server xatosi (5xx, 429): qayta uriniladi."""
+
+
+async def _post(payload: dict, attempts: int | None = None) -> dict:
+    """chat/completions so'rovi; javobning JSON'ini qaytaradi. Vaqtinchalik xatolarda ATTEMPTS martagacha urinadi."""
+    url = _endpoint()  # sessiyadan oldin: noto'g'ri URL bo'lsa, ortiqcha sessiya ochilmasin
+    body = {**payload, **({"model": API_MODEL} if API_MODEL else {})}
+    total = attempts or ATTEMPTS
+    last: Exception | None = None
+    for attempt in range(1, total + 1):
+        try:
+            async with _get_session().post(
+                url, json=body, headers={"Authorization": f"Bearer {API_TOKEN}"}
+            ) as resp:
+                if resp.status in RETRY_STATUSES:
+                    raise _Retryable(f"AI API {resp.status}: {(await resp.text())[:200]}")
+                if resp.status != 200:
+                    raise AIError(f"AI API {resp.status}: {(await resp.text())[:200]}")  # sozlama xatosi: qayta urinish befoyda
+                return await resp.json(content_type=None)
+        except (_Retryable, aiohttp.ClientConnectionError, aiohttp.ConnectionTimeoutError) as e:
+            last = e
+            if attempt < total:
+                logger.warning("AI API urinish %s/%s muvaffaqiyatsiz: %r", attempt, total, e)
+                await asyncio.sleep(RETRY_DELAYS[min(attempt, len(RETRY_DELAYS)) - 1])
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:  # ValueError: JSON emas
+            raise AIError(f"AI API ulanish xatosi: {e!r}") from e
+    raise AIError(f"AI API {total} urinishdan keyin ham javob bermadi: {last!r}") from last
 
 
 def _message(data: dict) -> dict:
@@ -78,9 +98,9 @@ def _message(data: dict) -> dict:
     return message
 
 
-async def ask_ai(messages: list[dict[str, str]], *, max_tokens: int | None = None) -> str:
-    """OpenAI formatidagi chat/completions so'rovi; javob matnini qaytaradi."""
-    data = await _post({"messages": messages, "max_tokens": max_tokens or MAX_TOKENS})
+async def ask_ai(messages: list[dict[str, str]], *, max_tokens: int | None = None, attempts: int | None = None) -> str:
+    """OpenAI formatidagi chat/completions so'rovi; javob matnini qaytaradi (attempts: urinishlar soni, standart ATTEMPTS)."""
+    data = await _post({"messages": messages, "max_tokens": max_tokens or MAX_TOKENS}, attempts)
     text = (_message(data).get("content") or "").strip()
     if not text:
         raise AIError("AI API bo'sh javob qaytardi")
