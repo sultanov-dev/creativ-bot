@@ -1,8 +1,5 @@
 ASK_FULL_NAME = "Ism va familiyangizni yozing, masalan: Aziz Karimov."
-ASK_PHONE = (
-    "Telefon raqamingizni yozing yoki pastdagi tugma orqali yuboring.\n"
-    "Bu ham majburiy emas, o'tkazib yuborishingiz mumkin."
-)
+ASK_PHONE = "Telefon raqamingiz?"
 SKIP_BUTTON = "⏭ O'tkazib yuborish"
 PHONE_BUTTON = "📱 Raqamni ulashish"
 WRONG_NAME = (
