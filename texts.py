@@ -141,6 +141,12 @@ SUPPORT_START_FIRST = {
     "ru": "Сначала нажмите /start в боте: {link} 👈",
     "en": "Please press /start in the bot first: {link} 👈",
 }
+SUPPORT_DM_SENT = {
+    "uz": "Lichkangizga yozdim 👋",
+    "uz_cyr": "Шахсий хабарингизга ёздим 👋",
+    "ru": "Написал вам в личные сообщения 👋",
+    "en": "I messaged you privately 👋",
+}
 SUPPORT_ESCALATED = {
     "uz": "Masalangizni adminga yubordim 🙏 Admin imkon qadar tezroq siz bilan o'zi bog'lanadi.",
     "uz_cyr": "Масалангизни админга юбордим 🙏 Админ имкон қадар тезроқ сиз билан ўзи боғланади.",
