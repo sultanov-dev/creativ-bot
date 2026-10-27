@@ -103,17 +103,18 @@ async def on_ai_question(message: Message, bot: Bot):
     ).strip()
     reply = message.reply_to_message
     quoted = (reply.text or reply.caption) if reply else None
+    lang = detect_lang(question)  # tizim xabarlari savol tilida
 
     if not question:
         await message.reply(texts.AI_EMPTY.format(username=username))
         return
     if len(question) > MAX_QUESTION:
-        await message.reply(texts.AI_TOO_LONG)
+        await message.reply(texts.AI_TOO_LONG[lang])
         return
 
     now = time.monotonic()
     if now - _last_ask.get(message.from_user.id, -COOLDOWN) < COOLDOWN:
-        await message.reply(texts.AI_COOLDOWN)
+        await message.reply(texts.AI_COOLDOWN[lang])
         return
     if len(_last_ask) >= _LAST_ASK_MAX:
         # cooldown'i o'tgan yozuvlar keraksiz: xotira o'sib ketmasin
@@ -129,13 +130,13 @@ async def on_ai_question(message: Message, bot: Bot):
     history.append({"role": "user", "content": question})
 
     # "yuklanmoqda" xabari AI so'rovi bilan parallel yuboriladi: javobni kechiktirmaydi
-    loading = asyncio.create_task(_send_loading(message, detect_lang(question)))
+    loading = asyncio.create_task(_send_loading(message, lang))
     try:
         async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
             answer = await ask_ai(history)
     except AIError:
         await _remove_loading(loading)
-        await message.reply(texts.AI_ERROR)
+        await message.reply(texts.AI_ERROR[lang])
         raise
     except BaseException:
         loading.cancel()

@@ -91,7 +91,7 @@ class TestTriggering:
 
     async def test_too_long_question(self, dp, bot, session, fake_ai):
         await say(dp, bot, f"{BOT} " + "x" * 2001)
-        assert not fake_ai.calls and bot_replies(session)[0].text == texts.AI_TOO_LONG
+        assert not fake_ai.calls and bot_replies(session)[0].text == texts.AI_TOO_LONG["uz"]
 
     async def test_question_of_exactly_limit_is_accepted(self, dp, bot, session, fake_ai):
         await say(dp, bot, f"{BOT} " + "x" * 2000)
@@ -103,7 +103,7 @@ class TestCooldown:
         await say(dp, bot, f"{BOT} bir")
         await say(dp, bot, f"{BOT} ikki")
         assert len(fake_ai.calls) == 1
-        assert bot_replies(session)[-1].text == texts.AI_COOLDOWN
+        assert bot_replies(session)[-1].text == texts.AI_COOLDOWN["uz"]
 
     async def test_other_users_are_not_blocked(self, dp, bot, session, fake_ai):
         await say(dp, bot, f"{BOT} bir", user=1)
@@ -229,7 +229,7 @@ class TestFailures:
     async def test_ai_error_replies_generic_and_alerts_developer(self, dp, bot, session, fake_ai):
         fake_ai.state["error"] = AIError("AI API 500: boom")
         await say(dp, bot, f"{BOT} savol")
-        assert bot_replies(session)[0].text == texts.AI_ERROR
+        assert bot_replies(session)[0].text == texts.AI_ERROR["uz"]
         dev = session.texts_to(tf.DEVELOPER_ID)
         assert len(dev) == 1 and "AIError" in dev[0]
 
@@ -287,7 +287,7 @@ class TestLoadingState:
         fake_ai.state["error"] = AIError("down")
         await say(dp, bot, f"{BOT} salom")
         assert len([m for m in session.of(DeleteMessage) if m.chat_id == G]) == 1
-        assert bot_replies(session)[0].text == texts.AI_ERROR
+        assert bot_replies(session)[0].text == texts.AI_ERROR["uz"]
 
     async def test_failed_loading_message_does_not_break_the_answer(self, dp, bot, session, fake_ai):
         def only_loading_fails(m):
@@ -316,3 +316,37 @@ class TestDetectLang:
         from utils.lang import detect_lang
 
         assert detect_lang(text) == lang
+
+
+QUESTIONS = [
+    ("uz", "bugun ob-havo qanday?"),
+    ("uz_cyr", "Бугун об-ҳаво қандай?"),
+    ("ru", "Привет, как дела? Расскажи про Python"),
+    ("en", "What is the weather today?"),
+]
+
+
+class TestSystemMessagesInQuestionLanguage:
+    @pytest.mark.parametrize("lang,question", QUESTIONS)
+    async def test_error_message(self, dp, bot, session, fake_ai, lang, question):
+        fake_ai.state["error"] = AIError("down")
+        await say(dp, bot, f"{BOT} {question}")
+        assert bot_replies(session)[0].text == texts.AI_ERROR[lang]
+
+    @pytest.mark.parametrize("lang,question", QUESTIONS)
+    async def test_cooldown_message(self, dp, bot, session, fake_ai, lang, question):
+        await say(dp, bot, f"{BOT} {question}")
+        await say(dp, bot, f"{BOT} {question}")
+        assert bot_replies(session)[-1].text == texts.AI_COOLDOWN[lang]
+
+    @pytest.mark.parametrize("lang,question", QUESTIONS)
+    async def test_too_long_message(self, dp, bot, session, fake_ai, lang, question):
+        padding = {"uz": "nima ", "uz_cyr": "қандай ", "ru": "как ", "en": "the "}[lang]
+        await say(dp, bot, f"{BOT} {question} " + padding * 600)
+        assert not fake_ai.calls
+        expected = texts.AI_TOO_LONG[lang]
+        assert bot_replies(session)[0].text == expected
+
+    def test_every_language_has_every_message(self):
+        for table in (texts.AI_LOADING, texts.AI_TOO_LONG, texts.AI_COOLDOWN, texts.AI_ERROR):
+            assert set(table) == {"uz", "uz_cyr", "ru", "en"}

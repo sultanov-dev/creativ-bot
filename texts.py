@@ -84,8 +84,19 @@ AI_SYSTEM_PROMPT = (
     "for lists use the • character or numbers."
 )
 AI_EMPTY = "Savolingizni yozing, masalan: @{username} bugun ob-havo qanday?"
-AI_TOO_LONG = "Kechirasiz, savol juda uzun. Iltimos, 2000 belgidan oshirmay, qisqaroq yozing ✍️"
-AI_COOLDOWN = "Biroz sabr qiling, oldingi savolingiz hali ishlanmoqda ⏳"
+AI_TOO_LONG = {
+    "uz": "Kechirasiz, savol juda uzun. Iltimos, 2000 belgidan oshirmay, qisqaroq yozing ✍️",
+    "uz_cyr": "Кечирасиз, савол жуда узун. Илтимос, 2000 белгидан оширмай, қисқароқ ёзинг ✍️",
+    "ru": "Извините, вопрос слишком длинный. Пожалуйста, напишите короче, не более 2000 символов ✍️",
+    "en": "Sorry, the question is too long. Please keep it under 2000 characters ✍️",
+}
+AI_COOLDOWN = {
+    "uz": "Biroz sabr qiling, oldingi savolingiz hali ishlanmoqda ⏳",
+    "uz_cyr": "Бироз сабр қилинг, олдинги саволингиз ҳали ишланмоқда ⏳",
+    "ru": "Подождите немного, предыдущий вопрос ещё обрабатывается ⏳",
+    "en": "Please wait a moment, your previous question is still being processed ⏳",
+}
+# AI xabarlari savol tilida (utils/lang.detect_lang): AI_LOADING, AI_TOO_LONG, AI_COOLDOWN, AI_ERROR.
 # AI javobi kelguncha ko'rsatiladigan xabar: savol qaysi tilda bo'lsa, shu tilda (utils/lang.detect_lang)
 AI_LOADING = {
     "uz": "⏳ Javob tayyorlanmoqda…",
@@ -93,4 +104,9 @@ AI_LOADING = {
     "ru": "⏳ Готовлю ответ…",
     "en": "⏳ Preparing the answer…",
 }
-AI_ERROR = "Kechirasiz, hozir javob bera olmayapman. Iltimos, birozdan keyin qayta urinib ko'ring."
+AI_ERROR = {
+    "uz": "Kechirasiz, hozir javob bera olmayapman. Iltimos, birozdan keyin qayta urinib ko'ring.",
+    "uz_cyr": "Кечирасиз, ҳозир жавоб бера олмаяпман. Илтимос, бироздан кейин қайта уриниб кўринг.",
+    "ru": "Извините, сейчас я не могу ответить. Пожалуйста, попробуйте ещё раз чуть позже.",
+    "en": "Sorry, I can't answer right now. Please try again in a little while.",
+}
