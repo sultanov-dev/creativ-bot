@@ -24,6 +24,7 @@ class Fake:
         self.body: object = {"choices": [{"message": {"content": "javob"}}]}
         self.raw: str | None = None
         self.delay = 0.0
+        self.delay_first: int | None = None  # berilsa, faqat birinchi shuncha so'rov kechikadi
         self.fail_first = 0  # birinchi shuncha so'rovga 503 qaytaradi (vaqtinchalik xato)
 
     def reply(self, content: object) -> None:
@@ -35,7 +36,9 @@ class Fake:
             self.requests.append(await request.json())
         except Exception:
             self.requests.append({})
-        if self.delay:
+        if self.delay and (self.delay_first is None or self.delay_first > 0):
+            if self.delay_first is not None:
+                self.delay_first -= 1
             await asyncio.sleep(self.delay)
         if self.fail_first > 0:
             self.fail_first -= 1
@@ -152,11 +155,24 @@ class TestRetry:
             await ask_ai(MSGS)
         assert len(fake_ai.requests) == 5
 
-    async def test_slow_response_is_not_retried(self, fake_ai, monkeypatch):
-        monkeypatch.setattr(ai_mod, "TIMEOUT", aiohttp.ClientTimeout(total=0.2))
+    async def test_hung_request_is_resent_once_then_gives_up(self, fake_ai, monkeypatch):
+        monkeypatch.setattr(ai_mod, "ATTEMPT_TIMEOUT", 0.2)
+        fake_ai.delay = 1.0
+        with pytest.raises(AIError, match="javob bermadi"):
+            await ask_ai(MSGS)
+        assert len(fake_ai.requests) == 2  # 1 + TIMEOUT_RETRIES
+
+    async def test_hung_first_request_succeeds_on_resend(self, fake_ai, monkeypatch):
+        monkeypatch.setattr(ai_mod, "ATTEMPT_TIMEOUT", 0.3)
+        fake_ai.delay_first = 1
+        fake_ai.delay = 1.0
+        assert await ask_ai(MSGS) == "javob" and len(fake_ai.requests) == 2
+
+    async def test_hang_on_the_last_allowed_attempt_is_not_resent(self, fake_ai, monkeypatch):
+        monkeypatch.setattr(ai_mod, "ATTEMPT_TIMEOUT", 0.2)
         fake_ai.delay = 1.0
         with pytest.raises(AIError):
-            await ask_ai(MSGS)
+            await ask_ai(MSGS, attempts=1)
         assert len(fake_ai.requests) == 1
 
 
@@ -209,7 +225,7 @@ class TestAskAi:
             await ask_ai(MSGS)
 
     async def test_timeout_raises_ai_error(self, fake_ai, monkeypatch):
-        monkeypatch.setattr(ai_mod, "TIMEOUT", aiohttp.ClientTimeout(total=0.2))
+        monkeypatch.setattr(ai_mod, "ATTEMPT_TIMEOUT", 0.2)
         fake_ai.delay = 1.0
         with pytest.raises(AIError):
             await ask_ai(MSGS)
