@@ -19,6 +19,7 @@ REJOIN_NOTES = {
     "failed": REJOIN_AFTER_FAILED,
     "removed": REJOIN_AFTER_REMOVED,
 }
+NOT_ADMIN = "Kechirasiz, bu buyruq faqat adminlar uchun 🚫"
 AD_NOTICE = "⚠️ {name}, guruhda reklama taqiqlangan. Xabaringiz o'chirildi."
 MODERATION_WARNING = "Kechirasiz, matnda nomaqbul so'zlar bor. Iltimos, hurmat bilan qayta yozing."
 SKIP_BUTTON = "⏭ O'tkazib yuborish"
