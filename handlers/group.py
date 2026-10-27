@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import re
-import time
 from datetime import datetime, timedelta, timezone
 from html import escape
 
@@ -21,7 +20,6 @@ from database import (
     get_members,
     mark_removed,
 )
-from texts import NOT_ADMIN
 from utils.admin import get_user_status, is_admin
 from utils.autodelete import CommandCleanupMiddleware, schedule_delete
 from utils.commands import setup_group_commands
@@ -54,35 +52,28 @@ router.message.filter(admin_only)
 # adminning buyruq xabari ham (bot javobi kabi) AUTO_DELETE_SECONDS dan keyin o'chadi
 router.message.middleware(CommandCleanupMiddleware())
 
-# admin bo'lmaganlarning shu buyruqlari: bot "faqat adminlar uchun" deb javob beradi, javob ham, buyruq xabari ham avto-o'chadi.
-# group.router dan keyin ulanadi, shuning uchun bu yerga faqat adminlik huquqi yo'qlar tushadi.
+# admin bo'lmaganlarning "/..." xabarlari (bot buyrug'i bo'lsin yoki oddiy matn): bot javob bermaydi, e'tibor bermaydi
+# (foydalanuvchilar qanday buyruqlar borligini bilmasligi kerak), xabar esa STRANGER_DELETE_SECONDS dan keyin o'chadi.
+# Boshqa botga yo'naltirilgan buyruqlarga (/cmd@boshqa_bot) tegilmaydi.
+STRANGER_DELETE_SECONDS = 15  # ataylab .env dan olinmaydi
 strangers = Router()
 strangers.message.filter(F.chat.type.in_({"group", "supergroup"}))
-strangers.message.filter(Command(*COMMANDS))
 
 
-# bir foydalanuvchi ketma-ket buyruq yozsa, javoblar guruhni to'ldirmasligi uchun (buyruq xabari baribir o'chadi)
-DENIED_REPLY_GAP = 10
-_denied_at: dict[int, float] = {}
+async def stranger_slash(message: Message, bot: Bot) -> bool:
+    user = message.from_user
+    if user is None or user.is_bot or is_admin(user.id):
+        return False
+    text = message.text or ""
+    if not text.startswith("/"):
+        return False
+    _, _, mention = text.split(maxsplit=1)[0].partition("@")
+    return not mention or mention.lower() == (await bot.me()).username.lower()  # type: ignore[union-attr]
 
 
-@strangers.message()
+@strangers.message(stranger_slash)
 async def stranger_command(message: Message, bot: Bot):
-    """Admin bo'lmagan foydalanuvchining buyrug'i: darhol rad javobi; javob ham, buyruq ham AUTO_DELETE_SECONDS dan keyin o'chadi."""
-    await schedule_delete(bot, message.chat.id, message.message_id)
-    if message.from_user is None:
-        return
-    now = time.monotonic()
-    if now - _denied_at.get(message.from_user.id, -DENIED_REPLY_GAP) < DENIED_REPLY_GAP:
-        return
-    if len(_denied_at) >= 1000:
-        for uid in [u for u, t in _denied_at.items() if now - t >= DENIED_REPLY_GAP]:
-            del _denied_at[uid]
-    _denied_at[message.from_user.id] = now
-    try:
-        await message.reply(NOT_ADMIN)
-    except (TelegramBadRequest, TelegramForbiddenError):
-        pass  # buyruq xabari allaqachon o'chgan yoki botga yozish taqiqlangan
+    await schedule_delete(bot, message.chat.id, message.message_id, delay=STRANGER_DELETE_SECONDS)
 
 
 # mute muddati chegarasi (1 yil): timedelta/Telegram'da haddan katta son xatoga olib kelmasin

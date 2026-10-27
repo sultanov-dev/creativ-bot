@@ -70,14 +70,15 @@ def _start(bot: Bot, chat_id: int, message_id: int, when: float) -> None:
     task.add_done_callback(_tasks.discard)
 
 
-async def schedule_delete(bot: Bot, chat_id: int, message_id: int) -> None:
-    """Xabarni AUTO_DELETE_SECONDS dan keyin o'chirishga qo'yadi (0 bo'lsa hech narsa qilmaydi).
+async def schedule_delete(bot: Bot, chat_id: int, message_id: int, delay: int | None = None) -> None:
+    """Xabarni `delay` soniyadan keyin o'chirishga qo'yadi; delay berilmasa AUTO_DELETE_SECONDS (0 bo'lsa hech narsa qilmaydi).
 
     Navbat bazada saqlanadi: bot qayta ishga tushsa, restore_pending_deletes() davom ettiradi.
     """
-    if AUTO_DELETE_SECONDS <= 0:
+    seconds = AUTO_DELETE_SECONDS if delay is None else delay
+    if seconds <= 0:
         return
-    when = time.time() + AUTO_DELETE_SECONDS
+    when = time.time() + seconds
     await add_pending_delete(chat_id, message_id, int(when))
     _start(bot, chat_id, message_id, when)
 

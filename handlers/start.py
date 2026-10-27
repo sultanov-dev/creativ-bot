@@ -1,6 +1,6 @@
 from html import escape
 
-from aiogram import Bot, Router
+from aiogram import Bot, F, Router
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
@@ -14,6 +14,7 @@ from states import Form
 from utils.questions import question_for
 
 router = Router()
+router.message.filter(F.chat.type == "private")  # guruhdagi "/start" ham begona buyruq: group.strangers e'tiborsiz qoldirib o'chiradi
 
 
 @router.message(CommandStart())

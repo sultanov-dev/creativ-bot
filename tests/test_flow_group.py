@@ -1,17 +1,17 @@
 """handlers/group.py: faqat ADMIN_IDS buyruqlari, /finish, /kick_deleted, a'zolarni kuzatish."""
 import datetime as dt
+import time
 from typing import Any
 
 import pytest
 from aiogram import Bot, Dispatcher
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.methods import (
-    BanChatMember, EditMessageText, GetChatMember, RestrictChatMember, SendMessage, SetMyCommands, UnbanChatMember,
+    BanChatMember, EditMessageText, GetChatMember, GetMe, RestrictChatMember, SendMessage, SetMyCommands, UnbanChatMember,
 )
 from aiogram.types import ChatPermissions, Message, Update
 
 import database as dbm
-import handlers.group as group_handlers
 import texts
 from tests import telegram_fakes as tf
 from tests.flow import admin_accept, assert_no_errors, cast, feed, get_app, start_application, status_of
@@ -19,12 +19,6 @@ from tests.telegram_fakes import FakeSession
 
 A = tf.ADMIN_ID
 
-
-@pytest.fixture(autouse=True)
-def _reset_denial_throttle():
-    group_handlers._denied_at.clear()
-    yield
-    group_handlers._denied_at.clear()
 
 G = tf.GROUP_ID
 VICTIM = 777
@@ -39,6 +33,11 @@ async def cmd(dp: Dispatcher, bot: Bot, text: str, *, user: int = A, reply: Mess
     await feed(dp, bot, tf.group_message(user, text, reply_to=reply))
 
 
+def api_calls(session: FakeSession) -> list:
+    """Bot API so'rovlari (bot haqida ma'lumot olish GetMe hisobga olinmaydi)."""
+    return [r for r in session.requests if not isinstance(r, GetMe)]
+
+
 def replies(session: FakeSession) -> list[str]:
     return session.texts_to(G)
 
@@ -48,34 +47,40 @@ def edits_text(session: FakeSession) -> str:
 
 
 class TestAccessControl:
-    @pytest.mark.parametrize("command", ALL_COMMANDS)
-    async def test_non_admin_command_gets_denial_and_both_are_deleted_later(self, dp, bot, session, command):
+    @pytest.mark.parametrize("command", ALL_COMMANDS + ["/", "/qwerty", "/start", "/ban@" + tf.BOT_USERNAME, "/ ban"])
+    async def test_non_admin_slash_message_is_ignored_and_deleted_in_15_seconds(self, dp, bot, session, command):
+        before = int(time.time())
         await feed(dp, bot, tf.group_message(555, command, message_id=600, reply_to=reply_to()))
-        sent = session.of(SendMessage)
-        assert [m.text for m in sent] == [texts.NOT_ADMIN]  # darhol javob, boshqa hech narsa qilinmadi
-        assert sent[0].reply_parameters.message_id == 600
-        pending = await dbm.get_pending_deletes()
-        assert any(r["chat_id"] == G and r["message_id"] == 600 for r in pending)  # foydalanuvchi buyrug'i
-        # botning rad javobi AutoDeleteMiddleware orqali o'chadi (har qanday guruh xabari kabi, test_autodelete.py)
-        assert not session.of(BanChatMember) and not session.of(RestrictChatMember)
+        assert not api_calls(session)  # bot javob bermaydi, hech narsa qilmaydi
+        rows = [r for r in await dbm.get_pending_deletes() if r["message_id"] == 600]
+        assert len(rows) == 1 and 14 <= rows[0]["delete_at"] - before <= 16
 
-    async def test_denial_is_throttled_per_user_but_command_still_deleted(self, dp, bot, session):
-        await feed(dp, bot, tf.group_message(555, "/ban", message_id=601, reply_to=reply_to()))
-        await feed(dp, bot, tf.group_message(555, "/stats", message_id=602))
-        await feed(dp, bot, tf.group_message(556, "/stats", message_id=603))
-        assert len(session.of(SendMessage)) == 2  # 555 uchun bitta, 556 uchun bitta
-        ids = {r["message_id"] for r in await dbm.get_pending_deletes()}
-        assert {601, 602, 603} <= ids
+    async def test_delete_delay_is_fixed_not_from_auto_delete_setting(self, dp, bot, session, monkeypatch):
+        import utils.autodelete as autodelete
 
-    async def test_denial_survives_deleted_command_message(self, dp, bot, session):
-        session.errors[SendMessage] = lambda m: TelegramBadRequest(method=m, message="message to be replied not found")
-        await feed(dp, bot, tf.group_message(557, "/ban", message_id=604))
-        assert not session.sent_to(tf.DEVELOPER_ID)
+        monkeypatch.setattr(autodelete, "AUTO_DELETE_SECONDS", 0)  # umumiy avto-o'chirish o'chiq bo'lsa ham
+        await feed(dp, bot, tf.group_message(555, "/qwerty", message_id=601))
+        assert [r["message_id"] for r in await dbm.get_pending_deletes()] == [601]
+
+    async def test_telegram_group_admin_who_is_not_bot_admin_is_treated_as_stranger(self, dp, bot, session):
+        session.statuses[(G, 555)] = "administrator"
+        await feed(dp, bot, tf.group_message(555, "/ban", message_id=602, reply_to=reply_to()))
+        assert not session.of(BanChatMember) and not api_calls(session)
+        assert [r["message_id"] for r in await dbm.get_pending_deletes()] == [602]
+
+    async def test_other_bots_commands_and_plain_text_are_untouched(self, dp, bot, session):
+        await feed(dp, bot, tf.group_message(555, "/rules@some_other_bot", message_id=603))
+        await feed(dp, bot, tf.group_message(555, "salom / dunyo", message_id=604))
+        await feed(dp, bot, tf.group_message(555, "yo'l /usr/bin", message_id=605))
+        assert await dbm.get_pending_deletes() == [] and not api_calls(session)
+
+    async def test_bot_admin_unknown_slash_message_is_not_deleted_by_strangers_rule(self, dp, bot, session):
+        await feed(dp, bot, tf.group_message(A, "/qwerty", message_id=606))
+        assert await dbm.get_pending_deletes() == []
 
     async def test_telegram_admin_private_chat_and_missing_sender_are_not_handled(self, dp, bot, session):
         session.statuses[(G, 555)] = "administrator"  # Telegram admini bot admini emas
         await cmd(dp, bot, "/ban", user=555, reply=reply_to())
-        session.clear()  # 555 ga rad javobi ketdi; qolgan holatlarda hech narsa yuborilmasligi kerak
         await feed(dp, bot, tf.private_message(A, "/stats"))  # shaxsiy chatda guruh buyruqlari yo'q
         raw = tf.group_message(A, "/stats").model_dump(mode="json", by_alias=True, exclude_none=True)
         del raw["message"]["from"]
@@ -86,7 +91,7 @@ class TestAccessControl:
         await cmd(dp, bot, "/stats@some_other_bot")
         assert not session.of(SendMessage)
         await cmd(dp, bot, "/stats@some_other_bot", user=555)  # boshqa botning buyrug'iga tegilmaydi
-        assert not session.of(SendMessage)
+        assert not session.of(SendMessage) and await dbm.get_pending_deletes() == []
         session.member_count = 1234
         await cmd(dp, bot, f"/stats@{tf.BOT_USERNAME}")
         assert "1234" in replies(session)[0]
@@ -308,7 +313,7 @@ class TestCommandCleanup:
         assert any(r["chat_id"] == G and r["message_id"] == 555 for r in rows)
         assert session.of(SendMessage)  # javob ham yuborilgan (navbat middleware'i main.py da ulanadi)
 
-    @pytest.mark.parametrize("text", ["/stats@some_other_bot", "salom", "/weather"])  # boshqa botlarniki bizniki emas
+    @pytest.mark.parametrize("text", ["/stats@some_other_bot", "salom"])  # boshqa botga yo'naltirilgan buyruq va oddiy matn
     async def test_foreign_text_and_commands_are_not_touched(self, dp, bot, session, text):
         await feed(dp, bot, tf.group_message(555, text, message_id=601))
         assert all(r["message_id"] != 601 for r in await dbm.get_pending_deletes())
