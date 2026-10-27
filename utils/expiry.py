@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # admin shuncha kun ichida ko'rib chiqmasa, ariza muddati tugaydi (ovoz berish muddati alohida: VOTING_MINUTES)
 EXPIRE_DAYS = 3
-CHECK_INTERVAL = 60
+CHECK_INTERVAL = 15  # ovoz muddati tugagach xabar ko'pi bilan shuncha soniyadan keyin o'chadi
 
 
 async def expire_applications(bot: Bot) -> int:

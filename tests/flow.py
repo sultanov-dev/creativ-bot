@@ -56,8 +56,12 @@ async def admin_accept(dp, bot, app_id, admin=tf.ADMIN_ID):
     await feed(dp, bot, tf.callback(admin, applicant_cb("accept", app_id)))
 
 
-async def cast(dp, bot, user_id, vote, app_id):
-    await feed(dp, bot, tf.callback(user_id, vote_cb(vote, app_id), chat_id=tf.GROUP_ID))
+async def cast(dp, bot, user_id, vote, app_id, *, message_id=None):
+    """Ovoz tugmasini bosadi; xabar id'si standart bo'yicha arizaning haqiqiy ovoz xabari id'si."""
+    if message_id is None:
+        app = await dbm.get_application(app_id)
+        message_id = (app or {}).get("vote_message_id") or 777
+    await feed(dp, bot, tf.callback(user_id, vote_cb(vote, app_id), chat_id=tf.GROUP_ID, message_id=message_id))
 
 
 async def status_of(app_id):

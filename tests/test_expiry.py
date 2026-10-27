@@ -183,4 +183,4 @@ class TestLoop:
         assert await status(a) == "accepted"
 
     async def test_check_interval_is_one_minute(self):
-        assert expiry.CHECK_INTERVAL == 60 and expiry.EXPIRE_DAYS == 3
+        assert expiry.CHECK_INTERVAL == 15 and expiry.EXPIRE_DAYS == 3

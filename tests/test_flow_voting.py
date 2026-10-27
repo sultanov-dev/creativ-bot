@@ -227,6 +227,31 @@ class TestVoting:
         assert "yakunlangan" in last_alert(session).text
         assert await dbm.count_votes(app_id) == (1, 0)
 
+    async def test_stale_vote_message_of_unknown_application_is_deleted(self, dp, bot, session):
+        # baza tozalangan/ariza yo'q: eski ovoz xabari guruhda qolib ketmasin
+        await cast(dp, bot, M[0], "yes", 999, message_id=4242)
+        assert "yakunlangan" in last_alert(session).text
+        assert [m.message_id for m in session.of(DeleteMessage)] == [4242]
+
+    async def test_vote_on_another_applications_old_message_is_not_counted_and_message_is_deleted(
+        self, dp, bot, session
+    ):
+        # app id takrorlangan bo'lishi mumkin: ovoz faqat arizaning o'z xabaridan qabul qilinadi
+        app_id = await voting_app(dp, bot)
+        real = (await dbm.get_application(app_id))["vote_message_id"]
+        await cast(dp, bot, M[0], "yes", app_id, message_id=real + 1000)
+        assert "yakunlangan" in last_alert(session).text
+        assert await dbm.count_votes(app_id) == (0, 0)
+        assert real + 1000 in [m.message_id for m in session.of(DeleteMessage)]
+
+    async def test_vote_message_of_finished_application_is_deleted_on_click(self, dp, bot, session):
+        app_id = await voting_app(dp, bot)
+        real = (await dbm.get_application(app_id))["vote_message_id"]
+        await dbm.change_status(app_id, "voting", "rejected")
+        session.clear()
+        await cast(dp, bot, M[0], "yes", app_id)
+        assert [m.message_id for m in session.of(DeleteMessage)] == [real]
+
     async def test_admin_no_vote_counts_as_one_and_reason_is_asked_with_skip_button(self, dp, bot, session):
         app_id = await voting_app(dp, bot)
         await cast(dp, bot, tf.ADMIN_ID, "no", app_id)

@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 
 from aiogram import Bot, Router
-from aiogram.types import CallbackQuery
+from aiogram.exceptions import TelegramAPIError
+from aiogram.types import CallbackQuery, Message
 
 from callbacks import VoteCB
 from database import add_vote, get_application, get_vote
@@ -23,8 +24,18 @@ def utcnow_str() -> str:
 async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
     app = await get_application(callback_data.app_id)
 
-    if app is None or app["status"] != "voting":
+    # yakunlangan/yo'q ariza yoki boshqa arizaning (masalan, baza tozalangandan keyin id takrorlangan) eski xabari:
+    # ovoz qabul qilinmaydi, eskirgan xabar guruhdan o'chiriladi
+    stale = app is None or app["status"] != "voting"
+    if not stale and isinstance(call.message, Message) and app["vote_message_id"]:
+        stale = app["vote_message_id"] != call.message.message_id
+    if stale:
         await call.answer(text="Bu ariza bo'yicha ovoz berish yakunlangan.", show_alert=True)
+        if isinstance(call.message, Message):
+            try:
+                await call.message.delete()
+            except TelegramAPIError:
+                pass  # allaqachon o'chgan yoki o'chirish huquqi yo'q
         return
 
     if callback_data.vote not in ("yes", "no"):
