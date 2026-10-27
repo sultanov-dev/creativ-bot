@@ -2,12 +2,13 @@
 import asyncio
 
 import pytest
+from aiogram import Bot, Dispatcher
 
 import database as dbm
 import texts
 from states import Form
 from tests import telegram_fakes as tf
-from tests.flow import ANSWERS, feed, start_application
+from tests.flow import ANSWERS, feed, start_application, state_of
 from utils import moderation
 from utils.ai import AIError
 from utils.profanity import has_profanity, normalize
@@ -37,29 +38,20 @@ def ai(monkeypatch):
 
 
 class TestIsAbusive:
-    @pytest.mark.parametrize("answer,expected", [("BAD", True), ("bad", True), (" Bad.\n", True),
-                                                 ("OK", False), ("ok", False), ("", False), ("yo'q", False)])
+    @pytest.mark.parametrize("answer,expected", [
+        ("BAD", True), ("bad", True), (" Bad.\n", True), ("**BAD**", True), ("The text is BAD", True),
+        ("bad - obscene", True),
+        ("OK", False), ("ok.", False), ("", False), ("yo'q", False), ("BADGE", False), ("fine", False),
+        ("abadon", False),
+    ])
     async def test_answer_parsing(self, ai, answer, expected):
         ai.answer = answer
         assert await moderation.is_abusive("matn") is expected
 
-    @pytest.mark.parametrize("answer", ["BAD", "**BAD**", "Bad.", "The text is BAD", "bad - obscene"])
-    async def test_bad_answer_variants_are_recognised(self, ai, answer):
-        ai.answer = answer
-        assert await moderation.is_abusive("matn") is True
-
-    @pytest.mark.parametrize("answer", ["OK", "ok.", "BADGE", "NOT BAD"[:0] + "fine", "abadon"])
-    async def test_non_bad_answers_pass(self, ai, answer):
-        ai.answer = answer
-        assert await moderation.is_abusive("matn") is False
-
-    async def test_obvious_profanity_is_caught_locally_without_ai(self, ai):
+    async def test_obvious_profanity_is_caught_locally_even_when_ai_is_down(self, ai):
+        ai.answer = AIError("503")
         assert await moderation.is_abusive("nega ... siktir, sizga nima") is True
         assert ai.calls == []
-
-    async def test_obvious_profanity_is_caught_even_when_ai_is_down(self, ai):
-        ai.answer = AIError("503")
-        assert await moderation.is_abusive("fuck") is True
 
     async def test_empty_text_makes_no_ai_call(self, ai):
         assert await moderation.is_abusive("   ") is False and await moderation.is_abusive("") is False
@@ -83,14 +75,12 @@ class TestIsAbusive:
         assert max_tokens == 10
         assert messages[0]["role"] == "system" and "untrusted" in messages[0]["content"]
         assert messages[1]["content"].startswith("<<<\n") and messages[1]["content"].endswith("\n>>>")
+        p = moderation.SYSTEM_PROMPT
+        assert all(w in p for w in ("Uzbek", "Russian", "English", "masked"))
 
     async def test_very_long_text_is_truncated(self, ai):
         await moderation.is_abusive("x" * 10_000)
         assert len(ai.calls[0][0][1]["content"]) < moderation.MAX_TEXT + 20
-
-    async def test_prompt_mentions_all_three_languages_and_masked_forms(self):
-        p = moderation.SYSTEM_PROMPT
-        assert "Uzbek" in p and "Russian" in p and "English" in p and "masked" in p
 
 
 @pytest.fixture
@@ -104,34 +94,25 @@ def block(monkeypatch):
     monkeypatch.setattr("handlers.reason.is_abusive", fake)
 
 
-async def at(dp, bot, step):
+async def at(dp: Dispatcher, bot: Bot, step: int) -> None:
     await feed(dp, bot, tf.join_request(U))
     for a in ANSWERS[:step]:
         await feed(dp, bot, tf.private_message(U, a))
-
-
-async def state_of(dp, bot):
-    ctx = dp.fsm.get_context(bot, chat_id=U, user_id=U)
-    return await ctx.get_state(), await ctx.get_data()
 
 
 class TestAnketaChecksFreeText:
     @pytest.mark.parametrize("step,state", [
         (0, Form.full_name), (3, Form.job), (4, Form.about), (5, Form.join_group),
     ])
-    async def test_abusive_text_is_refused_and_state_does_not_advance(self, dp, bot, session, block, step, state):
+    async def test_abusive_text_is_refused_then_clean_retry_advances(self, dp, bot, session, block, step, state):
         await at(dp, bot, step)
         session.clear()
         await feed(dp, bot, tf.private_message(U, "SOKINISH Karimov" if step == 0 else "SOKINISH"))
         assert session.texts_to(U) == [texts.MODERATION_WARNING]
-        assert (await state_of(dp, bot))[0] == state.state
-        assert await dbm.get_active_application(U, tf.GROUP_ID) is None
-
-    async def test_user_can_retry_with_clean_text(self, dp, bot, session, block):
-        await at(dp, bot, 3)
-        await feed(dp, bot, tf.private_message(U, "SOKINISH"))
-        await feed(dp, bot, tf.private_message(U, "Dasturchi"))
-        assert (await state_of(dp, bot))[0] == Form.about.state
+        assert (await state_of(dp, bot, U))[0] == state.state
+        assert await dbm.get_active_application(U, tf.GROUP_ID) is None and await dbm.get_profile(U) is None
+        await feed(dp, bot, tf.private_message(U, "Toza Matn"))  # toza matn bilan qayta urinish o'tadi
+        assert (await state_of(dp, bot, U))[0] != state.state
 
     async def test_phone_and_age_are_not_sent_to_ai(self, dp, bot, session, monkeypatch):
         calls = []
@@ -144,12 +125,6 @@ class TestAnketaChecksFreeText:
         await start_application(dp, bot, answers=["Aziz Karimov", "+998901234567", "25", "Dasturchi", "Haqida", "Sabab"])
         assert calls == ["Aziz Karimov", "Dasturchi", "Haqida", "Sabab"]
 
-    async def test_abusive_final_answer_creates_no_application(self, dp, bot, session, block):
-        await at(dp, bot, 5)
-        await feed(dp, bot, tf.private_message(U, "SOKINISH"))
-        assert await dbm.get_active_application(U, tf.GROUP_ID) is None
-        assert await dbm.get_profile(U) is None
-
     async def test_edit_mode_also_checks_text(self, dp, bot, session, block):
         first = await start_application(dp, bot)
         await dbm.change_status(first, "pending", "accepted")
@@ -160,27 +135,27 @@ class TestAnketaChecksFreeText:
         session.clear()
         await feed(dp, bot, tf.private_message(U, "SOKINISH"))
         assert session.texts_to(U) == [texts.MODERATION_WARNING]
-        assert (await dbm.get_profile(U))["job"] == "Dasturchi"  # eski qiymat saqlanib qoldi
+        profile = await dbm.get_profile(U)
+        assert profile is not None and profile["job"] == "Dasturchi"  # eski qiymat saqlanib qoldi
 
 
 class TestLocalProfanityFilter:
     @pytest.mark.parametrize("text", [
-        "fuck you", "f*ck", "fuuuck", "FUCK", "f u c k", "motherfucker", "shit", "bitch", "asshole",
-        "блять", "БЛЯДЬ", "хуй", "хуйня", "пизда", "сука", "ебать",
-        "siktir", "Sikaman seni", "qo'toq", "qotoq", "ko'tak", "jalab", "yeban", "dalbayob", "gandon", "amingni",
-        "Siz juda qotoq ekansiz", "nega ... siktir",
-        "om", "OM", "Om", "omm", "ом", "sen om", "nega om!", "om.", "o'm"[:0] + "om, nima",
+        *"fuck you|f*ck|fuuuck|FUCK|f u c k|motherfucker|shit|bitch|asshole".split("|"),
+        *"блять|БЛЯДЬ|хуй|хуйня|пизда|сука|ебать".split("|"),
+        *"siktir|Sikaman seni|qo'toq|qotoq|ko'tak|jalab|yeban|dalbayob|gandon|amingni".split("|"),
+        "Siz juda qotoq ekansiz", "nega ... siktir", *"om|OM|omm|ом|sen om|nega om!|om, nima".split("|"),
     ])
     def test_profanity_is_caught(self, text):
         assert has_profanity(text), text
 
     @pytest.mark.parametrize("text", [
-        "Aziz Karimov", "dasturchi", "sikl bilan ishlash", "for sikli", "harom emas", "Nigeria", "assistant",
-        "class", "salom", "Python va Django", "men 25 yoshdaman", "skala", "Scunthorpe", "analysis", "passion",
-        "hello", "Husan", "Xushnud", "pedagog", "kotib", "Kotlin", "kot", "2024", "Men Django bilan ishlayman",
-        "guruhga qo'shilmoqchiman, chunki o'rganishni xohlayman", "", "   ",
+        *"Aziz Karimov|dasturchi|sikl bilan ishlash|for sikli|harom emas|Nigeria|assistant|class|salom".split("|"),
+        *"Python va Django|men 25 yoshdaman|skala|Scunthorpe|analysis|passion|hello|Husan|Xushnud|pedagog".split("|"),
+        *"kotib|Kotlin|kot|2024|Men Django bilan ishlayman||   ".split("|"),
+        "guruhga qo'shilmoqchiman, chunki o'rganishni xohlayman",
         # "om" faqat butun so'z sifatida belgilanadi: uning ichida/boshida kelgan oddiy so'zlar toza
-        "omad", "omon", "omborxona", "Omar", "Omonov", "tom", "dom", "Rom", "kompyuter", "komil", "somsa", "omma",
+        *"omad|omon|omborxona|Omar|Omonov|tom|dom|Rom|kompyuter|komil|somsa|omma".split("|"),
     ])
     def test_normal_text_is_not_flagged(self, text):
         assert not has_profanity(text), text
@@ -191,4 +166,4 @@ class TestLocalProfanityFilter:
         assert normalize("2024") == "2024"  # raqamlar o'zgarmaydi
 
     def test_none_is_safe(self):
-        assert has_profanity(None) is False
+        assert has_profanity(None) is False  # pyright: ignore[reportArgumentType]

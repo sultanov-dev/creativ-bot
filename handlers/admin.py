@@ -19,7 +19,6 @@ async def reject(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
         await call.answer("Kechirasiz, bu ariza topilmadi", show_alert=True)
         return
 
-    group_id = app["group_id"]
     user_id = app["user_id"]
 
     if not is_admin(call.from_user.id):
@@ -46,7 +45,6 @@ async def accept(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
         await call.answer("Kechirasiz, bu ariza topilmadi", show_alert=True)
         return
 
-    group_id = app["group_id"]
     user_id = app["user_id"]
 
     if not is_admin(call.from_user.id):

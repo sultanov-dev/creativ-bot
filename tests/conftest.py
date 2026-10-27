@@ -68,6 +68,24 @@ def _reset_module_state():
 
 
 @pytest.fixture
+def summary_ai(monkeypatch):
+    """`utils.summary.ask_ai` (sabab xulosasi) o'rniga tayyor javob: `calls = summary_ai("matn")`; calls — AI'ga ketgan so'rovlar."""
+    import utils.summary as summary
+
+    def install(reply: str | None) -> list:
+        calls: list = []
+
+        async def fake(messages):
+            calls.append(messages)
+            return reply
+
+        monkeypatch.setattr(summary, "ask_ai", fake)
+        return calls
+
+    return install
+
+
+@pytest.fixture
 def session() -> FakeSession:
     return FakeSession()
 

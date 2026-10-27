@@ -1,4 +1,6 @@
 """Dispatcher orqali to'liq oqim: update yuboriladi, soxta Telegram sessiyasida natija tekshiriladi."""
+from collections.abc import Sequence
+
 from aiogram import Bot, Dispatcher
 from aiogram.methods import AnswerCallbackQuery, DeclineChatJoinRequest, EditMessageText
 from aiogram.types import Update
@@ -7,6 +9,7 @@ import database as dbm
 import texts
 from callbacks import ApplicantCB, DecisionCB, VoteCB
 from tests import telegram_fakes as tf
+from tests.conftest import expire_voting
 from tests.telegram_fakes import FakeSession
 
 
@@ -31,13 +34,23 @@ def assert_no_errors(session: FakeSession) -> None:
 ANSWERS = ["Aziz Karimov", texts.SKIP_BUTTON, "25", "Dasturchi", "O'zim haqimda", "Qiziq"]
 
 
-async def start_application(dp, bot, user_id=1, answers=None, *, group_id=tf.GROUP_ID):
-    """Join request + butun anketa; ariza id'sini qaytaradi (yoki None)."""
+async def fill_form(
+    dp: Dispatcher, bot: Bot, user_id: int = 1, answers: Sequence[str] | None = None, *, group_id: int = tf.GROUP_ID
+) -> None:
+    """Join request + butun anketa (ariza yaratilishi shart emas: xato yo'llarini sinash uchun)."""
     await feed(dp, bot, tf.join_request(user_id, group_id))
     for a in answers or ANSWERS:
         await feed(dp, bot, tf.private_message(user_id, a))
+
+
+async def start_application(
+    dp: Dispatcher, bot: Bot, user_id: int = 1, answers: Sequence[str] | None = None, *, group_id: int = tf.GROUP_ID
+) -> int:
+    """fill_form + yaratilgan arizaning id'si."""
+    await fill_form(dp, bot, user_id, answers, group_id=group_id)
     app = await dbm.get_active_application(user_id, group_id)
-    return app["id"] if app else None
+    assert app is not None, "anketadan keyin ariza yaratilmagan"
+    return app["id"]
 
 
 def applicant_cb(action, app_id):
@@ -59,18 +72,58 @@ async def admin_accept(dp, bot, app_id, admin=tf.ADMIN_ID):
 async def cast(dp, bot, user_id, vote, app_id, *, message_id=None):
     """Ovoz tugmasini bosadi; xabar id'si standart bo'yicha arizaning haqiqiy ovoz xabari id'si."""
     if message_id is None:
-        app = await dbm.get_application(app_id)
-        message_id = (app or {}).get("vote_message_id") or 777
+        app = await dbm.get_application(app_id)  # noma'lum ariza ham bo'lishi mumkin
+        message_id = (app["vote_message_id"] if app else None) or 777
     await feed(dp, bot, tf.callback(user_id, vote_cb(vote, app_id), chat_id=tf.GROUP_ID, message_id=message_id))
 
 
-async def status_of(app_id):
-    return (await dbm.get_application(app_id))["status"]
+async def get_app(app_id: int) -> dict:
+    """Mavjud ariza qatori (yo'q bo'lsa test yiqiladi)."""
+    app = await dbm.get_application(app_id)
+    assert app is not None, f"ariza {app_id} topilmadi"
+    return app
 
 
-def declined(session):
+async def status_of(app_id: int) -> str:
+    return (await get_app(app_id))["status"]
+
+
+async def state_of(dp: Dispatcher, bot: Bot, user: int = 1) -> tuple[str | None, dict]:
+    """Foydalanuvchining shaxsiy chatdagi FSM holati va ma'lumotlari."""
+    ctx = dp.fsm.get_context(bot, chat_id=user, user_id=user)
+    return await ctx.get_state(), await ctx.get_data()
+
+
+async def set_full_name(app_id: int, name: str) -> None:
+    db = await dbm.get_db()
+    await db.execute("UPDATE applications SET full_name = ? WHERE id = ?", (name, app_id))
+    await db.commit()
+
+
+async def make_voting_app(
+    user_id: int = 1,
+    group_id: int = tf.GROUP_ID,
+    vote_message_id: int | None = 500,
+    votes: Sequence[str] = (),
+    *,
+    expired: bool = True,
+) -> int:
+    """Bazada to'g'ridan-to'g'ri ovoz berish bosqichidagi ariza; voter id'lari 100, 101, ...; standart bo'yicha muddati o'tgan."""
+    app_id = await dbm.create_application(user_id, group_id, "Aziz Karimov", "ANKETA\n", phone="+998901234567")
+    assert app_id is not None
+    await dbm.start_voting(app_id, 10)
+    if vote_message_id:
+        await dbm.set_vote_message(app_id, vote_message_id)
+    for i, v in enumerate(votes):
+        await dbm.add_vote(app_id, 100 + i, v)
+    if expired:
+        await expire_voting(app_id)
+    return app_id
+
+
+def declined(session: FakeSession) -> list[DeclineChatJoinRequest]:
     return session.of(DeclineChatJoinRequest)
 
 
-def edits(session):
+def edits(session: FakeSession) -> list[EditMessageText]:
     return session.of(EditMessageText)

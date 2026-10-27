@@ -1,8 +1,9 @@
 """utils/voting.py: ovoz berish natijasini hisoblash va yakunlash (finalize_due_votings)."""
 import asyncio
+from typing import Callable
 
 import pytest
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramNetworkError, TelegramRetryAfter
+from aiogram import Bot
 from aiogram.methods import (
     ApproveChatJoinRequest,
     DeclineChatJoinRequest,
@@ -13,26 +14,33 @@ from aiogram.methods import (
 
 import database as dbm
 import texts
-from tests.conftest import expire_voting
-from tests.telegram_fakes import ADMIN2_ID, ADMIN_ID, GROUP_ID
+from tests.flow import make_voting_app, set_full_name, status_of
+from tests.telegram_fakes import (
+    ADMIN2_ID,
+    ADMIN_ID,
+    GROUP_ID,
+    FakeSession,
+    bad_request,
+    forbidden,
+    network_error,
+    retry_after,
+)
 from utils import voting
 from utils.voting import is_accepted, is_rejected
 
-
-def bad_request(msg="Bad Request: x"):
-    return TelegramBadRequest(method=None, message=msg)
-
-
-def forbidden():
-    return TelegramForbiddenError(method=None, message="Forbidden: bot was blocked by the user")
+ADMINS = (ADMIN_ID, ADMIN2_ID)
+PHONE = "+998901234567"
 
 
-def retry_after():
-    return TelegramRetryAfter(method=None, message="Flood", retry_after=1)
+def fail_for(session: FakeSession, make: Callable[[SendMessage], BaseException], *chat_ids: int) -> None:
+    """Berilgan chatlarga SendMessage `make(m)` xatosi bilan yiqiladi (qolganlariga yetib boradi)."""
+    session.errors[SendMessage] = lambda m: make(m) if m.chat_id in chat_ids else None
 
 
-def network_error():
-    return TelegramNetworkError(method=None, message="boom")
+@pytest.fixture
+def no_ai(summary_ai) -> None:
+    """AI chaqirilmasin: rad etishda sabab xulosasi bo'sh."""
+    summary_ai(None)
 
 
 class TestThresholds:
@@ -44,15 +52,15 @@ class TestThresholds:
             (0, 0, False, False),
             (1, 0, True, False),
             (0, 1, False, True),
-            (3, 2, True, False),  # 60% aniq chegarada qabul
-            (2, 3, False, True),  # 40% / 60%: "yo'q" 60% ga yetdi -> rad
+            (3, 2, True, False),  # 60% aniq chegarada qabul (butun son hisobi)
+            (2, 3, False, True),  # "yo'q" 60% ga yetdi -> rad
             (1, 1, False, False),
             (59, 41, False, False),
             (60, 40, True, False),
             (40, 60, False, True),
             (41, 59, False, False),
-            (6, 4, True, False),
-            (4, 6, False, True),
+            (299, 201, False, False),  # 59.8%
+            (300, 200, True, False),
             (100, 0, True, False),
             (0, 100, False, True),
         ],
@@ -61,172 +69,90 @@ class TestThresholds:
         assert is_accepted(yes, no) is accepted
         assert is_rejected(yes, no) is rejected
 
-    def test_exact_boundary_uses_integer_math(self):
-        # 3/5 = 60% aniq: floating point xatosi bo'lmasligi kerak
-        assert is_accepted(3, 2)
-        assert not is_accepted(299, 201)  # 59.8%
-        assert is_accepted(300, 200)
-
-    def test_zero_total_never_accepts_or_rejects(self):
-        assert not is_accepted(0, 0) and not is_rejected(0, 0)
-
-    def test_gap_between_thresholds_exists_with_default_percent(self):
-        # 50/50 ikkala tomon ham yetmaydi -> admin qarori
-        assert not is_accepted(5, 5) and not is_rejected(5, 5)
-
     @pytest.mark.parametrize("percent", [1, 20, 40, 50])
-    def test_low_percent_tie_is_neither_accepted_nor_rejected(self, monkeypatch, percent):
-        """VOTE_ACCEPT_PERCENT <= 50 bo'lsa ham ikki tomon bir vaqtda "yetmaydi": durang adminlarga ketadi."""
+    def test_low_percent(self, monkeypatch, percent):
+        """Past foizda ham: durang hech kimga yetmaydi (adminlarga), ozchilik hech qachon qabul qilinmaydi."""
         monkeypatch.setattr(voting, "VOTE_ACCEPT_PERCENT", percent)
         assert not is_accepted(5, 5) and not is_rejected(5, 5)
-
-    @pytest.mark.parametrize("percent", [1, 20, 40, 50])
-    @pytest.mark.parametrize("yes,no", [(1, 2), (2, 3), (4, 5), (0, 1)])
-    def test_low_percent_minority_is_never_accepted(self, monkeypatch, percent, yes, no):
-        monkeypatch.setattr(voting, "VOTE_ACCEPT_PERCENT", percent)
-        assert not is_accepted(yes, no)
-        assert is_rejected(yes, no)
-
-    @pytest.mark.parametrize("yes,no", [(2, 1), (3, 2), (5, 4)])
-    def test_low_percent_majority_yes_is_accepted(self, monkeypatch, yes, no):
-        monkeypatch.setattr(voting, "VOTE_ACCEPT_PERCENT", 40)
-        assert is_accepted(yes, no) and not is_rejected(yes, no)
-
-    def test_majority_no_should_never_be_auto_accepted(self, monkeypatch):
-        monkeypatch.setattr(voting, "VOTE_ACCEPT_PERCENT", 40)
-        yes, no = 2, 3  # yes ulushi 40%
-        assert not (is_accepted(yes, no) and no > yes)
+        for yes, no in [(1, 2), (2, 3), (4, 5), (0, 1)]:
+            assert not is_accepted(yes, no) and is_rejected(yes, no)
+        for yes, no in [(2, 1), (3, 2), (5, 4)]:
+            assert is_accepted(yes, no) and not is_rejected(yes, no)
 
 
-class TestReportText:
-    APP = {"anketa": "👤 <b>Ism:</b> A B\n", "phone": None}
-
-    def test_without_phone(self):
-        t = voting.report_text(self.APP)
-        assert t == self.APP["anketa"]  # ortiqcha sarlavha, foiz yoki ovoz soni yo'q
-
-    def test_phone_is_html_escaped(self):
-        t = voting.report_text({**self.APP, "phone": "<b>x</b>"})
-        assert "&lt;b&gt;x&lt;/b&gt;" in t and "<b>x</b>" not in t.split("Telefon:</b>")[1].split("\n")[0]
-
-
-# ---------------------------------------------------------------- finalize_due_votings
-
-
-async def make_voting_app(user_id=1, group_id=GROUP_ID, vote_message_id=500, votes=()):
-    app_id = await dbm.create_application(user_id, group_id, "Aziz Karimov", "ANKETA\n", phone="+998901234567")
-    await dbm.start_voting(app_id, 10)
-    if vote_message_id:
-        await dbm.set_vote_message(app_id, vote_message_id)
-    for i, v in enumerate(votes):
-        await dbm.add_vote(app_id, 100 + i, v)
-    await expire_voting(app_id)
-    return app_id
-
-
-async def status_of(app_id):
-    return (await dbm.get_application(app_id))["status"]
-
-
-@pytest.fixture
-def no_ai(monkeypatch):
-    """AI chaqirilmasin: rad etishda sabab xulosasi bo'sh."""
-
-    async def fake(reasons):
-        return None
-
-    monkeypatch.setattr(voting, "feedback_for_applicant", fake)
+def test_report_text_is_anketa_plus_escaped_phone():
+    app = {"anketa": "👤 <b>Ism:</b> A B\n", "phone": None}
+    assert voting.report_text(app) == app["anketa"]  # ortiqcha sarlavha, foiz yoki ovoz soni yo'q
+    t = voting.report_text({**app, "phone": "<b>x</b>"})
+    assert "&lt;b&gt;x&lt;/b&gt;" in t and "<b>x</b>" not in t.split("Telefon:</b>")[1].split("\n")[0]
 
 
 class TestFinalize:
-    async def test_nothing_due(self, db, bot):
-        assert await voting.finalize_due_votings(bot) == 0
-
-    async def test_voting_still_running_is_untouched(self, db, bot, session):
-        app_id = await dbm.create_application(1, GROUP_ID, "A B", "x\n")
-        await dbm.start_voting(app_id, 10)
+    async def test_still_running_is_untouched(self, db, bot, session):
+        app_id = await make_voting_app(expired=False)
         assert await voting.finalize_due_votings(bot) == 0
         assert await status_of(app_id) == "voting" and session.requests == []
 
-    async def test_zero_votes_expires_and_declines(self, db, bot, session):
-        app_id = await make_voting_app()
+    @pytest.mark.parametrize(
+        "votes,status,user_note,admin_text",
+        [
+            ([], "expired", "hech kim ovoz bermadi", "❌ <b>Aziz Karimov</b> guruhga qabul qilinmadi: hech kim ovoz bermadi"),
+            (["yes"] * 3 + ["no"] * 2, "accepted", texts.APPLICATION_ACCEPTED, "✅ <b>Aziz Karimov</b> guruhga qabul qilindi"),
+            (["no"] * 3 + ["yes"], "rejected", texts.APPLICATION_REJECTED, "❌ <b>Aziz Karimov</b> guruhga qabul qilinmadi"),
+        ],
+    )
+    async def test_final_outcome(self, db, bot, session, no_ai, votes, status, user_note, admin_text):
+        """Yakun: join request hal qilinadi, ovoz xabari o'chadi, arizachiga va har bir adminga status boradi."""
+        app_id = await make_voting_app(votes=votes)
         assert await voting.finalize_due_votings(bot) == 1
-        assert await status_of(app_id) == "expired"
-        assert session.of(DeclineChatJoinRequest) and not session.of(ApproveChatJoinRequest)
-        assert "hech kim ovoz bermadi" in session.texts_to(1)[0]
+        assert await status_of(app_id) == status
+        approve = session.of(ApproveChatJoinRequest)
+        assert [(m.chat_id, m.user_id) for m in approve] == ([(GROUP_ID, 1)] if status == "accepted" else [])
+        assert bool(session.of(DeclineChatJoinRequest)) == (status != "accepted")
+        assert user_note in session.texts_to(1)[0]
         assert session.of(DeleteMessage)[0].message_id == 500
+        for admin in ADMINS:
+            assert session.texts_to(admin) == [admin_text]
 
-    async def test_accepted_approves_join_request_and_notifies(self, db, bot, session):
-        app_id = await make_voting_app(votes=["yes", "yes", "yes", "no", "no"])
-        await voting.finalize_due_votings(bot)
-        assert await status_of(app_id) == "accepted"
-        approve = session.of(ApproveChatJoinRequest)[0]
-        assert (approve.chat_id, approve.user_id) == (GROUP_ID, 1)
-        assert session.texts_to(1) == [texts.APPLICATION_ACCEPTED]
-
-    async def test_rejected_declines_and_sends_soft_note(self, db, bot, session, no_ai):
-        app_id = await make_voting_app(votes=["no", "no", "no", "yes"])
-        await voting.finalize_due_votings(bot)
-        assert await status_of(app_id) == "rejected"
-        assert session.of(DeclineChatJoinRequest)
-        assert session.texts_to(1) == [texts.APPLICATION_REJECTED]
-
-    async def test_rejection_note_never_contains_raw_reasons(self, db, bot, session, monkeypatch):
+    async def test_rejection_note_never_contains_raw_reasons(self, db, bot, session, summary_ai):
         app_id = await make_voting_app(votes=["no", "no", "no"])
         await dbm.set_vote_reason(app_id, 100, "SIRLI-SABAB-12345")
-
-        async def fake_ai(messages):
-            return "Umumiy fikr: anketa batafsilroq bo'lsin."
-
-        import utils.summary as summary
-
-        monkeypatch.setattr(summary, "ask_ai", fake_ai)
+        summary_ai("Umumiy fikr: anketa batafsilroq bo'lsin.")
         await voting.finalize_due_votings(bot)
         text = session.texts_to(1)[0]
         assert "SIRLI-SABAB" not in text
         assert texts.FEEDBACK_INTRO in text and "batafsilroq" in text
 
-    async def test_tie_goes_to_admins_with_buttons(self, db, bot, session):
+    async def test_tie_goes_to_admins_with_phone_but_group_never_sees_it(self, db, bot, session):
         app_id = await make_voting_app(votes=["yes", "yes", "no", "no"])
         await voting.finalize_due_votings(bot)
         assert await status_of(app_id) == "admin_decision"
         assert not session.of(ApproveChatJoinRequest) and not session.of(DeclineChatJoinRequest)
-        for admin in (ADMIN_ID, ADMIN2_ID):
-            sent = session.sent_to(admin)
+        for admin in ADMINS:
+            sent = session.sent_to(admin)  # status emas, faqat qaror hisoboti
             assert len(sent) == 1 and sent[0].reply_markup is not None
-            assert "+998901234567" in sent[0].text  # adminlar telefonni ko'radi
+            assert PHONE in sent[0].text
         assert "adminlar qabul qiladi" in session.texts_to(1)[0]
+        assert all(PHONE not in m.text for m in session.sent_to(GROUP_ID))
 
-    async def test_group_message_never_contains_phone(self, db, bot, session):
-        await make_voting_app(votes=["yes", "no"])
-        await voting.finalize_due_votings(bot)
-        assert all("+998901234567" not in m.text for m in session.sent_to(GROUP_ID))
-
-    async def test_vote_message_deleted_after_finish(self, db, bot, session):
-        await make_voting_app(vote_message_id=777, votes=["yes"])
-        await voting.finalize_due_votings(bot)
-        d = session.of(DeleteMessage)
-        assert d and (d[0].chat_id, d[0].message_id) == (GROUP_ID, 777)
-        assert not session.of(EditMessageText)
-
-    async def test_if_delete_fails_message_is_edited_with_result(self, db, bot, session):
-        session.errors[DeleteMessage] = bad_request("message can't be deleted")
-        await make_voting_app(vote_message_id=777, votes=["yes"])
-        await voting.finalize_due_votings(bot)
-        edit = session.of(EditMessageText)[0]
-        assert edit.message_id == 777 and "Qabul qilindi" in edit.text
-
-    async def test_if_delete_and_edit_both_fail_nothing_crashes(self, db, bot, session):
-        session.errors[DeleteMessage] = bad_request()
-        session.errors[EditMessageText] = bad_request()
-        app_id = await make_voting_app(votes=["yes"])
+    @pytest.mark.parametrize(
+        "errors,msg_id,deleted,edited",
+        [
+            ((), 777, True, False),
+            ((DeleteMessage,), 777, True, True),  # o'chmasa natija bilan tahrirlanadi
+            ((DeleteMessage, EditMessageText), 777, True, True),  # ikkalasi yiqilsa ham ariza yopiladi
+            ((), None, False, False),  # ovoz xabari id'si yo'q
+        ],
+    )
+    async def test_vote_message_cleanup(self, db, bot, session, errors, msg_id, deleted, edited):
+        for method in errors:
+            session.errors[method] = bad_request("message can't be deleted")
+        app_id = await make_voting_app(vote_message_id=msg_id, votes=["yes"])
         assert await voting.finalize_due_votings(bot) == 1
         assert await status_of(app_id) == "accepted"
-
-    async def test_no_vote_message_id_skips_delete(self, db, bot, session):
-        await make_voting_app(vote_message_id=None, votes=["yes"])
-        await voting.finalize_due_votings(bot)
-        assert not session.of(DeleteMessage) and not session.of(EditMessageText)
+        assert [(m.chat_id, m.message_id) for m in session.of(DeleteMessage)] == ([(GROUP_ID, 777)] if deleted else [])
+        edits = session.of(EditMessageText)
+        assert bool(edits) == edited and (not edits or edits[0].message_id == 777)
 
     async def test_approve_failure_is_swallowed(self, db, bot, session):
         session.errors[ApproveChatJoinRequest] = bad_request("HIDE_REQUESTER_MISSING")
@@ -235,98 +161,69 @@ class TestFinalize:
         assert await status_of(app_id) == "accepted"
         assert session.texts_to(1)  # arizachiga baribir xabar ketadi
 
-    async def test_user_blocked_bot_does_not_stop_other_applications(self, db, bot, session):
-        session.errors[SendMessage] = lambda m: forbidden() if m.chat_id == 1 else None
+    @pytest.mark.parametrize("make", [forbidden, retry_after])
+    async def test_user_notification_error_does_not_stop_other_applications(self, db, bot, session, make):
+        fail_for(session, make, 1)
         a = await make_voting_app(user_id=1, vote_message_id=1, votes=["yes"])
         b = await make_voting_app(user_id=2, vote_message_id=2, votes=["yes"])
         assert await voting.finalize_due_votings(bot) == 2
-        assert await status_of(a) == "accepted" and await status_of(b) == "accepted"
+        assert await status_of(a) == await status_of(b) == "accepted"
 
-    async def test_flood_limit_on_user_notification_does_not_abort_loop(self, db, bot, session):
-        session.errors[SendMessage] = lambda m: retry_after() if m.chat_id == 1 else None
+    async def test_second_and_concurrent_runs_process_once(self, db, bot, session):
         await make_voting_app(user_id=1, vote_message_id=1, votes=["yes"])
-        b = await make_voting_app(user_id=2, vote_message_id=2, votes=["yes"])
-        assert await voting.finalize_due_votings(bot) == 2
-        assert await status_of(b) == "accepted"
-
-    async def test_second_run_is_a_noop(self, db, bot, session):
-        await make_voting_app(votes=["yes"])
-        assert await voting.finalize_due_votings(bot) == 1
-        session.clear()
-        assert await voting.finalize_due_votings(bot) == 0
-        assert session.requests == []
-
-    async def test_concurrent_finalizers_process_once(self, db, bot, session):
-        app_id = await make_voting_app(votes=["yes"])
+        await make_voting_app(user_id=2, vote_message_id=2, votes=["yes"])
         results = await asyncio.gather(voting.finalize_due_votings(bot), voting.finalize_due_votings(bot))
-        assert sorted(results) == [0, 1]
-        assert len(session.of(ApproveChatJoinRequest)) == 1
+        assert sum(results) == 2 and len(session.of(ApproveChatJoinRequest)) == 2
+        session.clear()
+        assert await voting.finalize_due_votings(bot) == 0 and session.requests == []
 
     async def test_several_applications_processed_independently(self, db, bot, session, no_ai):
-        a = await make_voting_app(user_id=1, vote_message_id=1, votes=["yes"])
-        b = await make_voting_app(user_id=2, vote_message_id=2, votes=["no"])
-        c = await make_voting_app(user_id=3, vote_message_id=3, votes=[])
-        d = await make_voting_app(user_id=4, vote_message_id=4, votes=["yes", "no"])
+        ids = [
+            await make_voting_app(user_id=1, vote_message_id=1, votes=["yes"]),
+            await make_voting_app(user_id=2, vote_message_id=2, votes=["no"]),
+            await make_voting_app(user_id=3, vote_message_id=3, votes=[]),
+            await make_voting_app(user_id=4, vote_message_id=4, votes=["yes", "no"]),
+        ]
         assert await voting.finalize_due_votings(bot) == 4
-        assert [await status_of(x) for x in (a, b, c, d)] == ["accepted", "rejected", "expired", "admin_decision"]
+        assert [await status_of(x) for x in ids] == ["accepted", "rejected", "expired", "admin_decision"]
+
+    @pytest.mark.parametrize(
+        "percent,votes,status",
+        [(40, ["yes", "yes", "no", "no", "no"], "rejected"), (50, ["yes", "no"], "admin_decision")],
+    )
+    async def test_low_percent_outcome(self, db, bot, session, monkeypatch, no_ai, percent, votes, status):
+        monkeypatch.setattr(voting, "VOTE_ACCEPT_PERCENT", percent)
+        app_id = await make_voting_app(votes=votes)
+        await voting.finalize_due_votings(bot)
+        assert await status_of(app_id) == status
+        assert not session.of(ApproveChatJoinRequest)
 
 
 class TestAdminStatus:
-    """Ovoz natijasi bo'yicha adminlarga status: «Ism Familiya guruhga qabul qilindi/qilinmadi»."""
-
-    async def test_accepted_status_goes_to_every_admin(self, db, bot, session):
-        await make_voting_app(votes=["yes", "yes", "yes"])
-        await voting.finalize_due_votings(bot)
-        for admin in (ADMIN_ID, ADMIN2_ID):
-            assert session.texts_to(admin) == ["✅ <b>Aziz Karimov</b> guruhga qabul qilindi"]
-
-    async def test_rejected_status_goes_to_every_admin(self, db, bot, session, no_ai):
-        await make_voting_app(votes=["no", "no", "no"])
-        await voting.finalize_due_votings(bot)
-        for admin in (ADMIN_ID, ADMIN2_ID):
-            assert session.texts_to(admin) == ["❌ <b>Aziz Karimov</b> guruhga qabul qilinmadi"]
-
-    async def test_no_votes_status(self, db, bot, session):
-        await make_voting_app(votes=[])
-        await voting.finalize_due_votings(bot)
-        assert session.texts_to(ADMIN_ID) == ["❌ <b>Aziz Karimov</b> guruhga qabul qilinmadi: hech kim ovoz bermadi"]
-
-    async def test_tie_sends_only_the_decision_report_not_a_status(self, db, bot, session):
-        await make_voting_app(votes=["yes", "no"])
-        await voting.finalize_due_votings(bot)
-        assert len(session.sent_to(ADMIN_ID)) == 1 and session.sent_to(ADMIN_ID)[0].reply_markup is not None
-
-    async def test_unreachable_admins_do_not_break_finalize(self, db, bot, session, no_ai):
-        session.errors[SendMessage] = lambda m: forbidden() if m.chat_id in (ADMIN_ID, ADMIN2_ID) else None
-        app_id = await make_voting_app(votes=["no", "no", "no"])
-        assert await voting.finalize_due_votings(bot) == 1
-        assert await status_of(app_id) == "rejected"
+    """Adminlarga status matni (asosiy matnlar test_final_outcome da)."""
 
     async def test_name_is_html_escaped(self, db, bot, session):
         app_id = await make_voting_app(votes=["yes", "yes", "yes"])
-        d = await dbm.get_db()
-        await d.execute("UPDATE applications SET full_name = '<b>X</b> Y' WHERE id = ?", (app_id,))
-        await d.commit()
+        await set_full_name(app_id, "<b>X</b> Y")
         await voting.finalize_due_votings(bot)
-        assert "&lt;b&gt;X&lt;/b&gt; Y" in session.texts_to(ADMIN_ID)[0] and "<b>X</b> Y" not in session.texts_to(ADMIN_ID)[0]
+        text = session.texts_to(ADMIN_ID)[0]
+        assert "&lt;b&gt;X&lt;/b&gt; Y" in text and "<b>X</b> Y" not in text
 
 
 class TestPerformance:
     async def test_group_work_does_not_wait_for_slow_ai(self, db, bot, session, monkeypatch):
         """Rad etilganda so'rov rad etiladi va ovoz xabari o'chadi, AI xulosasi esa shundan keyin keladi."""
-        order = []
+        order: list[str] = []
 
         async def slow_feedback(reasons):
             order.append("ai")
-            return None
-
-        monkeypatch.setattr(voting, "feedback_for_applicant", slow_feedback)
-        real_decline = bot.decline_chat_join_request
 
         async def decline(*a, **k):
             order.append("decline")
             return await real_decline(*a, **k)
 
+        real_decline = bot.decline_chat_join_request
+        monkeypatch.setattr(voting, "feedback_for_applicant", slow_feedback)
         monkeypatch.setattr(bot, "decline_chat_join_request", decline, raising=False)
         await make_voting_app(votes=["no", "no", "no"])
         await voting.finalize_due_votings(bot)
@@ -334,7 +231,7 @@ class TestPerformance:
 
     async def test_slow_ai_for_one_application_does_not_block_others(self, db, bot, session, monkeypatch):
         gate = asyncio.Event()
-        started = []
+        started: list[int] = []
 
         async def feedback(reasons):
             started.append(1)
@@ -342,7 +239,6 @@ class TestPerformance:
                 await gate.wait()  # birinchisi "osilib" turadi
             else:
                 gate.set()  # ikkinchisi yetib kelsa, birinchini qo'yib yuboradi
-            return None
 
         monkeypatch.setattr(voting, "feedback_for_applicant", feedback)
         await make_voting_app(user_id=1, vote_message_id=501, votes=["no"] * 3)
@@ -351,10 +247,10 @@ class TestPerformance:
         assert await asyncio.wait_for(voting.finalize_due_votings(bot), 5) == 2
 
     async def test_one_failing_application_does_not_stop_the_others(self, db, bot, session, monkeypatch):
-        calls = []
+        calls: list[int] = []
         real = voting._finalize_one
 
-        async def flaky(b, app):
+        async def flaky(b: Bot, app: dict):
             calls.append(app["id"])
             if len(calls) == 1:
                 raise RuntimeError("kutilmagan xato")
@@ -367,90 +263,62 @@ class TestPerformance:
 
 
 class TestAdminDeliveryFallbacks:
-    async def test_no_admins_configured_majority_yes_accepts(self, db, bot, session, monkeypatch):
+    @pytest.mark.parametrize(
+        "votes,status",
+        [(["yes", "yes", "no", "no", "yes"], "accepted"), (["yes", "no"], "rejected")],
+    )
+    async def test_no_admins_configured_majority_decides(self, db, bot, session, monkeypatch, no_ai, votes, status):
         monkeypatch.setattr(voting, "ADMIN_IDS", [])
-        app_id = await make_voting_app(votes=["yes", "yes", "no", "no", "yes"])  # 3/5 = 60%: avtomatik qabul
+        app_id = await make_voting_app(votes=votes)
         await voting.finalize_due_votings(bot)
-        assert await status_of(app_id) == "accepted"
+        assert await status_of(app_id) == status
 
-    async def test_no_admins_configured_tie_is_rejected(self, db, bot, session, monkeypatch, no_ai):
-        monkeypatch.setattr(voting, "ADMIN_IDS", [])
-        app_id = await make_voting_app(votes=["yes", "no"])
+    @pytest.mark.parametrize(
+        "make,votes,status,note",
+        [
+            (forbidden, ["yes"] * 4 + ["no"] * 3, "accepted", texts.APPLICATION_ACCEPTED),  # 57%: ko'pchilik qabul
+            (forbidden, ["yes", "no"], "rejected", texts.APPLICATION_REJECTED),  # durang -> rad
+            (bad_request, ["yes"] * 3 + ["no"] * 4, "rejected", texts.APPLICATION_REJECTED),  # 43% / 57%
+        ],
+    )
+    async def test_unreachable_admins_majority_decides(
+        self, db, bot, session, no_ai, make, votes, status, note
+    ):
+        fail_for(session, make, *ADMINS)
+        app_id = await make_voting_app(votes=votes)
         await voting.finalize_due_votings(bot)
-        assert await status_of(app_id) == "rejected"
+        assert await status_of(app_id) == status
+        assert bool(session.of(ApproveChatJoinRequest)) == (status == "accepted")
+        assert bool(session.of(DeclineChatJoinRequest)) == (status == "rejected")
+        assert session.texts_to(1) == [note]
 
-    async def test_unreachable_admins_majority_decides_accept(self, db, bot, session):
-        session.errors[SendMessage] = lambda m: forbidden() if m.chat_id in (ADMIN_ID, ADMIN2_ID) else None
-        # 4 yes / 3 no: 57% -> ikkala tomon yetmaydi, adminlarga yetib bo'lmaydi -> ko'pchilik (yes>no) qabul
-        app_id = await make_voting_app(votes=["yes"] * 4 + ["no"] * 3)
-        await voting.finalize_due_votings(bot)
-        assert await status_of(app_id) == "accepted"
-        assert session.of(ApproveChatJoinRequest)
-        assert session.texts_to(1) == [texts.APPLICATION_ACCEPTED]
-
-    async def test_unreachable_admins_tie_is_rejected(self, db, bot, session, no_ai):
-        session.errors[SendMessage] = lambda m: forbidden() if m.chat_id in (ADMIN_ID, ADMIN2_ID) else None
-        app_id = await make_voting_app(votes=["yes", "no"])
-        await voting.finalize_due_votings(bot)
-        assert await status_of(app_id) == "rejected"
-        assert session.of(DeclineChatJoinRequest)
-        assert session.texts_to(1) == [texts.APPLICATION_REJECTED]
-
-    async def test_unreachable_admins_minority_yes_rejected(self, db, bot, session, no_ai):
-        session.errors[SendMessage] = lambda m: bad_request() if m.chat_id in (ADMIN_ID, ADMIN2_ID) else None
-        app_id = await make_voting_app(votes=["yes"] * 3 + ["no"] * 4)  # 43% / 57%
-        await voting.finalize_due_votings(bot)
-        assert await status_of(app_id) == "rejected"
-
-    async def test_transient_error_keeps_voting_for_retry(self, db, bot, session):
-        session.errors[SendMessage] = lambda m: retry_after() if m.chat_id in (ADMIN_ID, ADMIN2_ID) else None
+    @pytest.mark.parametrize("make", [retry_after, lambda m: RuntimeError("aiohttp"), network_error])
+    async def test_transient_error_keeps_voting_and_retries(self, db, bot, session, make):
+        fail_for(session, make, *ADMINS)
         app_id = await make_voting_app(votes=["yes", "no"])
         assert await voting.finalize_due_votings(bot) == 0
         assert await status_of(app_id) == "voting"
         # xabar o'chirilmagan va arizachiga hech narsa yozilmagan
         assert not session.of(DeleteMessage) and not session.texts_to(1)
-
-    async def test_retry_succeeds_next_cycle(self, db, bot, session):
-        session.errors[SendMessage] = lambda m: retry_after() if m.chat_id in (ADMIN_ID, ADMIN2_ID) else None
-        app_id = await make_voting_app(votes=["yes", "no"])
-        await voting.finalize_due_votings(bot)
-        session.errors.clear()
+        session.errors.clear()  # keyingi tsiklda qayta uriniladi
         assert await voting.finalize_due_votings(bot) == 1
         assert await status_of(app_id) == "admin_decision"
 
-    async def test_one_admin_reachable_is_enough(self, db, bot, session):
-        session.errors[SendMessage] = lambda m: forbidden() if m.chat_id == ADMIN_ID else None
+    @pytest.mark.parametrize("make", [forbidden, retry_after])
+    async def test_one_admin_reachable_is_enough(self, db, bot, session, make):
+        fail_for(session, make, ADMIN_ID)
         app_id = await make_voting_app(votes=["yes", "no"])
         await voting.finalize_due_votings(bot)
         assert await status_of(app_id) == "admin_decision"
         assert len(session.sent_to(ADMIN2_ID)) == 1
 
-    async def test_reachable_plus_flaky_admin_counts_as_sent(self, db, bot, session):
-        session.errors[SendMessage] = lambda m: retry_after() if m.chat_id == ADMIN_ID else None
-        app_id = await make_voting_app(votes=["yes", "no"])
-        await voting.finalize_due_votings(bot)
-        assert await status_of(app_id) == "admin_decision"
-
-    async def test_non_telegram_error_while_notifying_admins_is_retried(self, db, bot, session):
-        session.errors[SendMessage] = lambda m: RuntimeError("aiohttp") if m.chat_id in (ADMIN_ID, ADMIN2_ID) else None
-        app_id = await make_voting_app(votes=["yes", "no"])
-        assert await voting.finalize_due_votings(bot) == 0
-        assert await status_of(app_id) == "voting"
-
-    async def test_network_error_to_admin_is_retry(self, db, bot, session):
-        session.errors[SendMessage] = lambda m: network_error() if m.chat_id in (ADMIN_ID, ADMIN2_ID) else None
-        app_id = await make_voting_app(votes=["yes", "no"])
-        await voting.finalize_due_votings(bot)
-        assert await status_of(app_id) == "voting"
-
 
 async def test_rejection_note_without_reasons_is_plain(db, monkeypatch):
     app_id = await make_voting_app(votes=["no"])
-    called = []
+    called: list = []
 
     async def spy(reasons):
         called.append(reasons)
-        return None
 
     monkeypatch.setattr(voting, "feedback_for_applicant", spy)
     assert await voting.rejection_note(app_id) == texts.APPLICATION_REJECTED
@@ -463,12 +331,12 @@ async def test_ai_gateway_garbage_must_not_break_finalize(db, bot, session, monk
     from aiohttp import web
     from aiohttp.test_utils import TestServer
 
-    async def garbage(request):
+    async def garbage(request: web.Request) -> web.Response:
         return web.Response(text="<html>502</html>", content_type="text/html")
 
-    app = web.Application()
-    app.router.add_post("/x", garbage)
-    server = TestServer(app, host="127.0.0.1")
+    server_app = web.Application()
+    server_app.router.add_post("/x", garbage)
+    server = TestServer(server_app, host="127.0.0.1")
     await server.start_server()
     try:
         monkeypatch.setattr(ai_mod, "API_URL", f"http://127.0.0.1:{server.port}/x")
@@ -480,18 +348,3 @@ async def test_ai_gateway_garbage_must_not_break_finalize(db, bot, session, monk
         assert await status_of(other) == "accepted"
     finally:
         await server.close()
-
-
-async def test_low_percent_majority_no_is_rejected_not_accepted(db, bot, session, monkeypatch, no_ai):
-    monkeypatch.setattr(voting, "VOTE_ACCEPT_PERCENT", 40)
-    app_id = await make_voting_app(votes=["yes", "yes", "no", "no", "no"])
-    await voting.finalize_due_votings(bot)
-    assert await status_of(app_id) == "rejected"
-    assert not session.of(ApproveChatJoinRequest)
-
-
-async def test_low_percent_tie_goes_to_admins(db, bot, session, monkeypatch):
-    monkeypatch.setattr(voting, "VOTE_ACCEPT_PERCENT", 50)
-    app_id = await make_voting_app(votes=["yes", "no"])
-    await voting.finalize_due_votings(bot)
-    assert await status_of(app_id) == "admin_decision"

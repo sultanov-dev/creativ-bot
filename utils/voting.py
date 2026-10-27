@@ -193,9 +193,10 @@ async def _finalize_one(bot: Bot, app: dict) -> bool:
     if new == "rejected":
         note = await rejection_note(app["id"])
 
-    try:
-        await safe_send(bot=bot, chat_id=app["user_id"], text=note)
-    except TelegramAPIError:
-        # flood limit/tarmoq: holat allaqachon yozilgan, qolgan arizalar to'xtab qolmasin
-        logger.warning("Ariza %s: foydalanuvchiga xabar yuborib bo'lmadi", app["id"])
+    if note is not None:
+        try:
+            await safe_send(bot=bot, chat_id=app["user_id"], text=note)
+        except TelegramAPIError:
+            # flood limit/tarmoq: holat allaqachon yozilgan, qolgan arizalar to'xtab qolmasin
+            logger.warning("Ariza %s: foydalanuvchiga xabar yuborib bo'lmadi", app["id"])
     return True

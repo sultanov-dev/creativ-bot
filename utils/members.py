@@ -1,7 +1,7 @@
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
-from aiogram.types import Message
+from aiogram.types import Message, TelegramObject
 
 from database import add_member, remove_member
 
@@ -33,11 +33,11 @@ class TrackMembersMiddleware(BaseMiddleware):
 
     async def __call__(
         self,
-        handler: Callable[[Message, dict[str, Any]], Awaitable[Any]],
-        event: Message,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        if event.chat.type in GROUP_TYPES:
+        if isinstance(event, Message) and event.chat.type in GROUP_TYPES:
             chat_id = event.chat.id
             if event.from_user and not event.from_user.is_bot:
                 await track(chat_id, event.from_user.id)

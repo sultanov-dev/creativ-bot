@@ -26,10 +26,15 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
 
     # yakunlangan/yo'q ariza yoki boshqa arizaning (masalan, baza tozalangandan keyin id takrorlangan) eski xabari:
     # ovoz qabul qilinmaydi, eskirgan xabar guruhdan o'chiriladi
-    stale = app is None or app["status"] != "voting"
-    if not stale and isinstance(call.message, Message) and app["vote_message_id"]:
-        stale = app["vote_message_id"] != call.message.message_id
-    if stale:
+    if (
+        app is None
+        or app["status"] != "voting"
+        or (
+            isinstance(call.message, Message)
+            and app["vote_message_id"]
+            and app["vote_message_id"] != call.message.message_id
+        )
+    ):
         await call.answer(text="Bu ariza bo'yicha ovoz berish yakunlangan.", show_alert=True)
         if isinstance(call.message, Message):
             try:

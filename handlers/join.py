@@ -37,7 +37,7 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
     )
 
     # anketa hali tugamagan (ariza yaratilmagan): yangi so'rov uni boshidan boshlamaydi, davom ettirishni aytamiz
-    current = await private_state.get_state()
+    current = await private_state.get_state() or ""
     if (
         current in FORM_STATES
         and (await private_state.get_data()).get("group_id") == request.chat.id
@@ -66,7 +66,8 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
 
     # oxirgi ariza rad etilgan, muddati o'tgan yoki ko'rib chiqilmagan (failed) bo'lsa: eski ma'lumotlar
     # ko'rsatilmaydi va qayta ishlatilmaydi, anketa yangidan, sababi haqida qisqa xabar bilan
-    fresh_note = REJOIN_NOTES.get(await last_application_status(request.from_user.id, request.chat.id))
+    last_status = await last_application_status(request.from_user.id, request.chat.id)
+    fresh_note = REJOIN_NOTES.get(last_status) if last_status else None
 
     # aks holda avval anketa to'ldirgan bo'lsa: ma'lumotlarni ko'rsatamiz, o'zgartirish yoki shunday qoldirishni so'raymiz
     profile = None if fresh_note else await get_profile(request.from_user.id)

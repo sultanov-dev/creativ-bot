@@ -1,6 +1,8 @@
+from typing import Callable
+
 from aiogram import Bot
 from aiogram.fsm.state import State
-from aiogram.types import ReplyKeyboardRemove
+from aiogram.types import ReplyKeyboardMarkup, ReplyKeyboardRemove
 
 from keyboards.skip import phone_keyboard
 from states import Form
@@ -15,7 +17,7 @@ from texts import (
 from utils.typing import send_typing
 
 # holat -> (savol matni, klaviatura yasovchi); ixtiyoriy savollarda "o'tkazib yuborish" tugmasi bor
-QUESTIONS = {
+QUESTIONS: dict[str | None, tuple[str, Callable[[], ReplyKeyboardMarkup] | None]] = {
     Form.full_name.state: (ASK_FULL_NAME, None),
     Form.phone.state: (ASK_PHONE, phone_keyboard),
     Form.age.state: (ASK_AGE, None),
@@ -25,7 +27,7 @@ QUESTIONS = {
 }
 
 
-def question_for(state: State | str) -> tuple[str, object] | None:
+def question_for(state: State | str) -> tuple[str, ReplyKeyboardMarkup | ReplyKeyboardRemove] | None:
     """Savol matni va reply_markup; ixtiyoriy bo'lmagan savolda eski klaviatura olib tashlanadi."""
     name = state.state if isinstance(state, State) else state
     item = QUESTIONS.get(name)
@@ -36,5 +38,8 @@ def question_for(state: State | str) -> tuple[str, object] | None:
 
 
 async def ask(bot: Bot, chat_id: int, state: State | str, delay: float = 0.6) -> None:
-    text, markup = question_for(state)  # type: ignore[misc]
+    question = question_for(state)
+    if question is None:
+        raise ValueError(f"Noma'lum anketa holati: {state!r}")
+    text, markup = question
     await send_typing(bot=bot, chat_id=chat_id, text=text, delay=delay, reply_markup=markup)
