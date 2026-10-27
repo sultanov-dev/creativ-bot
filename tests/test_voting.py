@@ -271,6 +271,46 @@ class TestFinalize:
         assert [await status_of(x) for x in (a, b, c, d)] == ["accepted", "rejected", "expired", "creator_review"]
 
 
+class TestAdminStatus:
+    """Ovoz natijasi bo'yicha adminlarga status: «Ism Familiya guruhga qabul qilindi/qilinmadi»."""
+
+    async def test_accepted_status_goes_to_every_admin(self, db, bot, session):
+        await make_voting_app(votes=["yes", "yes", "yes"])
+        await voting.finalize_due_votings(bot)
+        for admin in (ADMIN_ID, ADMIN2_ID):
+            assert session.texts_to(admin) == ["✅ <b>Aziz Karimov</b> guruhga qabul qilindi"]
+
+    async def test_rejected_status_goes_to_every_admin(self, db, bot, session, no_ai):
+        await make_voting_app(votes=["no", "no", "no"])
+        await voting.finalize_due_votings(bot)
+        for admin in (ADMIN_ID, ADMIN2_ID):
+            assert session.texts_to(admin) == ["❌ <b>Aziz Karimov</b> guruhga qabul qilinmadi"]
+
+    async def test_no_votes_status(self, db, bot, session):
+        await make_voting_app(votes=[])
+        await voting.finalize_due_votings(bot)
+        assert session.texts_to(ADMIN_ID) == ["❌ <b>Aziz Karimov</b> guruhga qabul qilinmadi: hech kim ovoz bermadi"]
+
+    async def test_tie_sends_only_the_decision_report_not_a_status(self, db, bot, session):
+        await make_voting_app(votes=["yes", "no"])
+        await voting.finalize_due_votings(bot)
+        assert len(session.sent_to(ADMIN_ID)) == 1 and session.sent_to(ADMIN_ID)[0].reply_markup is not None
+
+    async def test_unreachable_admins_do_not_break_finalize(self, db, bot, session, no_ai):
+        session.errors[SendMessage] = lambda m: forbidden() if m.chat_id in (ADMIN_ID, ADMIN2_ID) else None
+        app_id = await make_voting_app(votes=["no", "no", "no"])
+        assert await voting.finalize_due_votings(bot) == 1
+        assert await status_of(app_id) == "rejected"
+
+    async def test_name_is_html_escaped(self, db, bot, session):
+        app_id = await make_voting_app(votes=["yes", "yes", "yes"])
+        d = await dbm.get_db()
+        await d.execute("UPDATE applications SET full_name = '<b>X</b> Y' WHERE id = ?", (app_id,))
+        await d.commit()
+        await voting.finalize_due_votings(bot)
+        assert "&lt;b&gt;X&lt;/b&gt; Y" in session.texts_to(ADMIN_ID)[0] and "<b>X</b> Y" not in session.texts_to(ADMIN_ID)[0]
+
+
 class TestPerformance:
     async def test_group_work_does_not_wait_for_slow_ai(self, db, bot, session, monkeypatch):
         """Rad etilganda so'rov rad etiladi va ovoz xabari o'chadi, AI xulosasi esa shundan keyin keladi."""

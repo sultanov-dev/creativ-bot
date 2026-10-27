@@ -8,7 +8,7 @@ from callbacks import CreatorCB
 from database import change_status, count_votes, get_application, get_no_votes
 from keyboards.creator import creator_confirm_inline, creator_inline
 from texts import APPLICATION_ACCEPTED
-from utils.admin import is_admin, safe_send
+from utils.admin import is_admin, notify_admins, safe_send, status_text
 from utils.summary import summarize_reasons
 from utils.voting import rejection_note, report_text
 
@@ -42,6 +42,13 @@ async def _decide(call: CallbackQuery, bot: Bot, app: dict, accepted: bool) -> N
     await call.answer(result)
     who = escape(call.from_user.full_name)
     await _edit(call, f"{app['anketa']}\n{result} · {who}")
+
+    # boshqa adminlarga ham natija statusi (qaror qilgan adminda xabar tahrirlandi)
+    await notify_admins(
+        bot,
+        status_text(app, accepted, f" (qaror: {who})"),
+        exclude=(call.from_user.id,),
+    )
 
     # rad etilganda AI xulosasi biroz vaqt olishi mumkin: holat allaqachon yozilgan
     note = APPLICATION_ACCEPTED if accepted else await rejection_note(app["id"])

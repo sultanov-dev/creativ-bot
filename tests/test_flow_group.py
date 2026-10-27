@@ -321,20 +321,21 @@ class TestFinish:
         assert replies(session) == ["🏁 Ovoz berish yakunlandi."]
         assert await status_of(app_id) == "creator_review"
 
-    async def test_accepted_finish_sends_nothing_to_admin_dm(self, dp, bot, session):
+    async def test_accepted_finish_gives_only_the_status_to_admin(self, dp, bot, session):
         app_id, msg = await self._voting(dp, bot)
         await cast(dp, bot, 200, "yes", app_id)
         session.clear()
         await cmd(dp, bot, "/finish", reply=self._vote_message(msg))
         assert await status_of(app_id) == "accepted"
-        assert session.texts_to(A) == []
+        assert session.texts_to(A) == ["✅ <b>Aziz Karimov</b> guruhga qabul qilindi"]
         assert replies(session) == ["🏁 Ovoz berish yakunlandi."]
 
-    async def test_no_votes_finish_sends_nothing_to_admin_dm(self, dp, bot, session):
+    async def test_no_votes_finish_gives_only_the_status_to_admin(self, dp, bot, session):
         app_id, msg = await self._voting(dp, bot)
         session.clear()
         await cmd(dp, bot, "/finish", reply=self._vote_message(msg))
-        assert await status_of(app_id) == "expired" and session.texts_to(A) == []
+        assert await status_of(app_id) == "expired"
+        assert session.texts_to(A) == ["❌ <b>Aziz Karimov</b> guruhga qabul qilinmadi: hech kim ovoz bermadi"]
 
     async def test_second_finish_says_already_finished(self, dp, bot, session):
         app_id, msg = await self._voting(dp, bot)

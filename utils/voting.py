@@ -17,7 +17,7 @@ from texts import (
     APPLICATION_REJECTED,
     FEEDBACK_INTRO,
 )
-from utils.admin import safe_send
+from utils.admin import notify_admins, safe_send, status_text
 from utils.summary import feedback_for_applicant
 
 logger = logging.getLogger(__name__)
@@ -181,6 +181,14 @@ async def _finalize_one(bot: Bot, app: dict) -> bool:
                 )
             except TelegramAPIError:
                 pass
+
+    # adminlarga natija statusi: "Ism Familiya guruhga qabul qilindi/qilinmadi" (qaror adminlarda bo'lsa, undan keyin)
+    if new == "accepted":
+        await notify_admins(bot, status_text(app, True))
+    elif new == "rejected":
+        await notify_admins(bot, status_text(app, False))
+    elif new == "expired":
+        await notify_admins(bot, status_text(app, False, ": hech kim ovoz bermadi"))
 
     # AI xulosasi eng oxirida: guruhdagi ish (so'rov, xabarni o'chirish) AI kutishiga bog'liq emas
     if new == "rejected":

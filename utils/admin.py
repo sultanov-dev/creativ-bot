@@ -1,3 +1,4 @@
+import asyncio
 from html import escape
 
 from aiogram import Bot
@@ -42,6 +43,22 @@ async def safe_send(bot: Bot, chat_id: int, text: str, **kwargs) -> bool:
         return True
     except (TelegramForbiddenError, TelegramBadRequest):
         return False
+
+
+async def notify_admins(bot: Bot, text: str, *, exclude: tuple[int, ...] = ()) -> None:
+    """Barcha adminlarga (exclude dagilardan tashqari) qisqa xabar; yetmaganlari jim o'tkaziladi."""
+    await asyncio.gather(
+        *(safe_send(bot=bot, chat_id=a, text=text) for a in ADMIN_IDS if a not in exclude),
+        return_exceptions=True,
+    )
+
+
+def status_text(app: dict, accepted: bool, note: str = "") -> str:
+    """Ovoz natijasi bo'yicha adminlarga status: «Ism Familiya guruhga qabul qilindi/qilinmadi»."""
+    name = escape(app["full_name"])
+    if accepted:
+        return f"✅ <b>{name}</b> guruhga qabul qilindi{note}"
+    return f"❌ <b>{name}</b> guruhga qabul qilinmadi{note}"
 
 
 async def mark_done(call: CallbackQuery, result: str):

@@ -506,6 +506,23 @@ class TestCreatorDecision:
         await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("back", app_id)))
         assert "Rad etishni tasdiqlang" not in edits(session)[-1].text and "Ism" in edits(session)[-1].text
 
+    async def test_admin_decision_notifies_the_other_admins_with_status(self, dp, bot, session):
+        app_id = await self._tie(dp, bot)
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("accept", app_id)))
+        session.clear()
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("final_accept", app_id)))
+        other = session.texts_to(tf.ADMIN2_ID)
+        assert len(other) == 1 and "guruhga qabul qilindi" in other[0] and "qaror:" in other[0]
+        assert not any("guruhga qabul" in t for t in session.texts_to(tf.ADMIN_ID))  # qaror qilganda xabar tahrirlanadi
+
+    async def test_admin_rejection_notifies_the_other_admins_with_status(self, dp, bot, session):
+        app_id = await self._tie(dp, bot)
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("reject", app_id)))
+        session.clear()
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("final_reject", app_id)))
+        other = session.texts_to(tf.ADMIN2_ID)
+        assert len(other) == 1 and "guruhga qabul qilinmadi" in other[0]
+
     async def test_final_accept(self, dp, bot, session):
         app_id = await self._tie(dp, bot)
         await feed(dp, bot, tf.callback(tf.ADMIN2_ID, creator_cb("final_accept", app_id)))

@@ -86,7 +86,7 @@ class TestScheduling:
         await drain()
 
     async def test_keep_flag_is_isolated_between_concurrent_tasks(self, db, mw_bot, session, delete_after):
-        delete_after(0.01)
+        delete_after(0.3)  # tekshiruvdan oldin o'chirish ishga tushib ketmasin (poyga bo'lmasligi uchun)
 
         async def kept():
             with keep_messages():
