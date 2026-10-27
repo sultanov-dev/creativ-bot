@@ -1,6 +1,14 @@
 ASK_FULL_NAME = "Ism va familiyangizni yozing, masalan: Aziz Karimov."
 ASK_PHONE = "Telefon raqamingiz?"
 REJOIN_AFTER_REJECTION = "Avvalgi arizangiz rad etilgan edi. Anketani yangidan to'ldiring."
+REJOIN_AFTER_EXPIRED = "Oxirgi arizangizning muddati o'tgan. Anketani qaytadan to'ldiring."
+REJOIN_AFTER_FAILED = "Oxirgi arizangiz ko'rib chiqilmadi. Anketani qaytadan to'ldiring."
+# oxirgi arizasi shu holatlarda bo'lsa, eski ma'lumotlar ko'rsatilmaydi: anketa boshidan, tegishli xabar bilan
+REJOIN_NOTES = {
+    "rejected": REJOIN_AFTER_REJECTION,
+    "expired": REJOIN_AFTER_EXPIRED,
+    "failed": REJOIN_AFTER_FAILED,
+}
 AD_NOTICE = "⚠️ {name}, guruhda reklama taqiqlangan. Xabaringiz o'chirildi."
 MODERATION_WARNING = "Kechirasiz, matnda nomaqbul so'zlar bor. Iltimos, hurmat bilan qayta yozing."
 SKIP_BUTTON = "⏭ O'tkazib yuborish"

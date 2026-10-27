@@ -152,7 +152,7 @@ class TestAnketaChecksFreeText:
 
     async def test_edit_mode_also_checks_text(self, dp, bot, session, block):
         first = await start_application(dp, bot)
-        await dbm.change_status(first, "pending", "expired")
+        await dbm.change_status(first, "pending", "accepted")
         await feed(dp, bot, tf.join_request(U))
         await feed(dp, bot, tf.private_message(U, texts.PROFILE_EDIT_BUTTON))
         from keyboards.profile import FIELD_LABELS

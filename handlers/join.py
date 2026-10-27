@@ -7,7 +7,7 @@ from aiogram.types import ChatJoinRequest
 from database import get_active_application, get_profile, last_application_status
 from handlers.profile import show_review
 from states import Form
-from texts import ALREADY_APPLIED, REJOIN_AFTER_REJECTION
+from texts import ALREADY_APPLIED, REJOIN_NOTES
 from utils.admin import safe_send
 from utils.fsm import get_private_state
 from utils.get_welcome import welcome_text
@@ -30,11 +30,12 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
         storage=state.storage, bot=bot, user_id=request.from_user.id
     )
 
-    # avvalgi ariza rad etilgan bo'lsa: eski ma'lumotlar ko'rsatilmaydi va qayta ishlatilmaydi, anketa yangidan
-    rejected_before = await last_application_status(request.from_user.id, request.chat.id) == "rejected"
+    # oxirgi ariza rad etilgan, muddati o'tgan yoki ko'rib chiqilmagan (failed) bo'lsa: eski ma'lumotlar
+    # ko'rsatilmaydi va qayta ishlatilmaydi, anketa yangidan, sababi haqida qisqa xabar bilan
+    fresh_note = REJOIN_NOTES.get(await last_application_status(request.from_user.id, request.chat.id))
 
-    # avval anketa to'ldirgan (va rad etilmagan) bo'lsa: ma'lumotlarni ko'rsatamiz, o'zgartirish yoki shunday qoldirishni so'raymiz
-    profile = None if rejected_before else await get_profile(request.from_user.id)
+    # aks holda avval anketa to'ldirgan bo'lsa: ma'lumotlarni ko'rsatamiz, o'zgartirish yoki shunday qoldirishni so'raymiz
+    profile = None if fresh_note else await get_profile(request.from_user.id)
     if profile:
         await private_state.set_data(
             {
@@ -61,6 +62,6 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
 
     await bot.send_message(
         chat_id=request.user_chat_id,
-        text=REJOIN_AFTER_REJECTION if rejected_before else welcome_text(),
+        text=fresh_note or welcome_text(),
     )
     await ask(bot, request.user_chat_id, Form.full_name, delay=0.6)

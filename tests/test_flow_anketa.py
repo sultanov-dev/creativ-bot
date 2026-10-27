@@ -69,28 +69,49 @@ class TestJoinRequest:
         profile = await dbm.get_profile(U)
         assert profile["full_name"] == "Bobur Aliyev" and profile["age"] == 33
 
-    async def test_expired_application_still_shows_saved_profile(self, dp, bot, session):
+    @pytest.mark.parametrize("status,note", [
+        ("rejected", texts.REJOIN_AFTER_REJECTION),
+        ("expired", texts.REJOIN_AFTER_EXPIRED),
+        ("failed", texts.REJOIN_AFTER_FAILED),
+    ])
+    async def test_last_application_rejected_expired_or_failed_means_fresh_questionnaire(
+        self, dp, bot, session, status, note
+    ):
         first = await start_application(dp, bot)
-        await dbm.change_status(first, "pending", "expired")
+        await dbm.change_status(first, "pending", status)
         session.clear()
         await feed(dp, bot, tf.join_request(U))
-        assert (await state_of(dp, bot))[0] == Form.review.state
-        assert texts.REJOIN_AFTER_REJECTION not in session.texts_to(U)
+        assert session.texts_to(U) == [note, texts.ASK_FULL_NAME]
+        state, data = await state_of(dp, bot)
+        assert state == Form.full_name.state and "full_name" not in data
 
-    async def test_rejection_is_per_group(self, dp, bot, session):
-        first = await start_application(dp, bot)
-        await dbm.change_status(first, "pending", "rejected")
-        session.clear()
-        await feed(dp, bot, tf.join_request(U, tf.GROUP_ID - 9))  # boshqa guruh: u yerda rad etilmagan
-        assert (await state_of(dp, bot))[0] == Form.review.state
+    async def test_notes_are_short(self):
+        for note in texts.REJOIN_NOTES.values():
+            assert len(note) < 80
 
-    async def test_only_the_latest_application_counts(self, dp, bot, session):
+    async def test_rejected_then_expired_still_starts_fresh(self, dp, bot, session):
         first = await start_application(dp, bot)
         await dbm.change_status(first, "pending", "rejected")
         second = await start_application(dp, bot, answers=ANSWERS)
-        await dbm.change_status(second, "pending", "expired")  # oxirgisi rad etilmagan
+        await dbm.change_status(second, "pending", "expired")
         session.clear()
         await feed(dp, bot, tf.join_request(U))
+        assert session.texts_to(U)[0] == texts.REJOIN_AFTER_EXPIRED
+        assert (await state_of(dp, bot))[0] == Form.full_name.state
+
+    async def test_accepted_application_shows_saved_profile(self, dp, bot, session):
+        first = await start_application(dp, bot)
+        await dbm.change_status(first, "pending", "accepted")
+        session.clear()
+        await feed(dp, bot, tf.join_request(U))
+        assert (await state_of(dp, bot))[0] == Form.review.state
+        assert not any(t in session.texts_to(U) for t in texts.REJOIN_NOTES.values())
+
+    async def test_status_is_per_group(self, dp, bot, session):
+        first = await start_application(dp, bot)
+        await dbm.change_status(first, "pending", "expired")
+        session.clear()
+        await feed(dp, bot, tf.join_request(U, tf.GROUP_ID - 9))  # boshqa guruhda hali arizasi yo'q
         assert (await state_of(dp, bot))[0] == Form.review.state
 
     async def test_second_join_request_mid_questionnaire_restarts_it(self, dp, bot, session):
