@@ -65,7 +65,7 @@ def test_module_wires_expected_routers_and_helpers():
     from handlers import get_routers
 
     routers = get_routers()
-    assert len(routers) == len({id(r) for r in routers}) == 12
+    assert len(routers) == len({id(r) for r in routers}) == 13
     # errors router birinchi: boshqa routerlardagi xatolar ham unga tushadi
     import handlers.errors as errors
 
