@@ -53,6 +53,35 @@ class TestContactAdmin:
         assert await get_support_chat(USER, "awaiting_start", 24) is not None
 
 
+class TestUserMessageCleanup:
+    """Botning guruhdagi qisqa javobi bilan birga foydalanuvchining o'z xabari ham o'chadi."""
+
+    async def _pending(self, message_id: int) -> bool:
+        import database
+
+        rows = await database.get_pending_deletes()
+        return any(r["chat_id"] == tf.GROUP_ID and r["message_id"] == message_id for r in rows)
+
+    async def _ask(self, dp, bot, text: str, message_id: int) -> None:
+        entities = [tf.mention(text)]
+        await feed(dp, bot, tf.group_message(USER, text, entities=entities, message_id=message_id))
+
+    async def test_user_message_is_deleted_after_dm_notice(self, dp, bot, session, group_ai, dm_ai):
+        await self._ask(dp, bot, f"{BOT} admin bilan gaplashmoqchiman", 4242)
+        assert await self._pending(4242)
+
+    async def test_user_message_is_deleted_after_start_first_notice(self, dp, bot, session, group_ai, dm_ai):
+        session.errors[SendChatAction] = tf.forbidden()
+        await self._ask(dp, bot, f"{BOT} admin bilan gaplashmoqchiman", 4243)
+        assert await self._pending(4243)
+
+    async def test_ordinary_ai_question_is_not_deleted(self, dp, bot, session, dm_ai, monkeypatch):
+        fake = FakeAsk()
+        monkeypatch.setattr(ai_handler, "ask_ai_tools", fake)
+        await self._ask(dp, bot, f"{BOT} salom", 4244)
+        assert not await self._pending(4244)
+
+
 # ---- gatekeeper: adminga faqat toza va haq masalalar boradi
 
 @pytest.fixture(autouse=True)
