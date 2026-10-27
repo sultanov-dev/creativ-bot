@@ -12,6 +12,7 @@ from handlers.profile import show_review
 from states import Form
 from texts import ALREADY_APPLIED, FINISH_FORM_FIRST, REJOIN_COOLDOWN, REJOIN_NOTES
 from utils.admin import safe_send
+from utils.form_expiry import FORM_STATES, REVIEW_STATES, form_expired
 from utils.fsm import get_private_state
 from utils.get_welcome import welcome_text
 from utils.questions import ask
@@ -19,11 +20,6 @@ from utils.timefmt import format_wait
 
 router = Router()
 
-REVIEW_STATES = (Form.review.state, Form.pick_field.state)
-FORM_STATES = (
-    Form.full_name.state, Form.phone.state, Form.age.state, Form.job.state, Form.about.state,
-    Form.join_group.state, *REVIEW_STATES,
-)
 logger = logging.getLogger(__name__)
 
 
@@ -42,7 +38,11 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
 
     # anketa hali tugamagan (ariza yaratilmagan): yangi so'rov uni boshidan boshlamaydi, davom ettirishni aytamiz
     current = await private_state.get_state()
-    if current in FORM_STATES and (await private_state.get_data()).get("group_id") == request.chat.id:
+    if (
+        current in FORM_STATES
+        and (await private_state.get_data()).get("group_id") == request.chat.id
+        and not await form_expired(private_state)  # eskirgan anketa yangi so'rov kabi boshidan boshlanadi
+    ):
         try:
             await bot.send_message(chat_id=request.user_chat_id, text=FINISH_FORM_FIRST)
             if current in REVIEW_STATES:

@@ -57,7 +57,8 @@ async def init_db() -> None:
             tg_username     TEXT,
             phone           TEXT,
             join_resolved   INTEGER NOT NULL DEFAULT 1,
-            decided_at      TIMESTAMP
+            decided_at      TIMESTAMP,
+            admins_notified INTEGER NOT NULL DEFAULT 1
         );
 
         CREATE TABLE IF NOT EXISTS votes (
@@ -105,7 +106,8 @@ async def init_db() -> None:
 
         CREATE TABLE IF NOT EXISTS fsm (
             key   TEXT PRIMARY KEY,
-            value TEXT NOT NULL
+            value TEXT NOT NULL,
+            updated_at INTEGER
         );
     """)
     # eski bazalar uchun: CREATE TABLE IF NOT EXISTS mavjud jadvalga ustun qo'shmaydi
@@ -117,6 +119,10 @@ async def init_db() -> None:
     await _add_column(db, "applications", "join_resolved", "INTEGER NOT NULL DEFAULT 1")
     # qaror vaqti: qayta ariza kutish muddati va eski ma'lumotlarni o'chirish shundan hisoblanadi
     await _add_column(db, "applications", "decided_at", "TIMESTAMP")
+    # 0: anketa adminlarga hali yetkazilmagan (bot yuborish oralig'ida to'xtagan bo'lishi mumkin)
+    await _add_column(db, "applications", "admins_notified", "INTEGER NOT NULL DEFAULT 1")
+    # anketa holati oxirgi o'zgargan vaqt (unix soniya): tugallanmagan anketa muddati shundan hisoblanadi
+    await _add_column(db, "fsm", "updated_at", "INTEGER")
     await db.execute(
         "UPDATE applications SET decided_at = created_at WHERE decided_at IS NULL "
         "AND status IN ('accepted', 'rejected', 'expired', 'failed', 'removed')"
@@ -145,6 +151,7 @@ async def create_application(
     last_name: str | None = None,
     tg_username: str | None = None,
     phone: str | None = None,
+    admins_notified: bool = True,
 ) -> int | None:
     """Ariza id'si; shu guruhga faol ariza allaqachon bo'lsa None.
 
@@ -154,8 +161,8 @@ async def create_application(
     try:
         cur = await db.execute(
             "INSERT INTO applications (user_id, group_id, full_name, anketa, "
-            "first_name, last_name, tg_username, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (user_id, group_id, full_name, anketa, first_name, last_name, tg_username, phone),
+            "first_name, last_name, tg_username, phone, admins_notified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, group_id, full_name, anketa, first_name, last_name, tg_username, phone, int(admins_notified)),
         )
     except aiosqlite.IntegrityError:
         return None
@@ -524,3 +531,16 @@ async def purge_old_data(days: int) -> int:
         )
     await db.commit()
     return len(ids)
+
+
+async def mark_admins_notified(app_id: int) -> None:
+    db = await get_db()
+    await db.execute("UPDATE applications SET admins_notified = 1 WHERE id = ?", (app_id,))
+    await db.commit()
+
+
+async def get_undelivered_applications() -> list[dict]:
+    """To'liq anketa (ariza yaratilgan), lekin adminlarga yetkazilmagan pending arizalar."""
+    db = await get_db()
+    cur = await db.execute("SELECT * FROM applications WHERE status = 'pending' AND admins_notified = 0 ORDER BY id")
+    return [dict(r) for r in await cur.fetchall()]

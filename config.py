@@ -38,6 +38,11 @@ DATA_RETENTION_DAYS = int(os.getenv("DATA_RETENTION_DAYS") or 30)
 if REJOIN_COOLDOWN_SECONDS < 0 or DATA_RETENTION_DAYS < 0:
     raise ValueError("REJOIN_COOLDOWN_SECONDS va DATA_RETENTION_DAYS manfiy bo'lmasligi kerak")
 
+# tugallanmagan anketa shuncha soatdan keyin eskiradi: foydalanuvchi davom ettirsa, ogohlantirilib qaytadan boshlanadi (0 = eskirmaydi)
+FORM_TTL_HOURS = int(os.getenv("FORM_TTL_HOURS") or 24)
+if FORM_TTL_HOURS < 0:
+    raise ValueError("FORM_TTL_HOURS manfiy bo'lmasligi kerak")
+
 # AI xizmati (OpenAI formatidagi chat/completions API)
 API_URL = os.getenv("API_URL", "")
 API_TOKEN = os.getenv("API_TOKEN", "")

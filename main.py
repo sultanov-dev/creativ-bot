@@ -14,7 +14,9 @@ from utils.ai import close_session as close_ai_session
 from utils.autodelete import AutoDeleteMiddleware, restore_pending_deletes
 from utils.commands import setup_group_commands, setup_private_commands
 from utils.create_bot import bot
+from utils.applications import redeliver_undelivered
 from utils.expiry import run_expiry_loop
+from utils.form_expiry import FormExpiryMiddleware
 from utils.join_requests import recover_unresolved
 from utils.fsm_storage import SQLiteStorage
 from utils.logging_setup import setup_logging
@@ -73,6 +75,7 @@ async def main():
     dp = Dispatcher(storage=SQLiteStorage())
     dp.update.outer_middleware(UpdateLogMiddleware())
     dp.message.outer_middleware(TrackMembersMiddleware())
+    dp.message.outer_middleware(FormExpiryMiddleware())
     dp.include_routers(*get_routers())
 
     await init_db()
@@ -84,7 +87,8 @@ async def main():
     try:
         if await reset_orphan_votings():
             logger.warning("Ovoz xabari yuborilmagan arizalar pending'ga qaytarildi")
-        await recover_unresolved(bot)  # bot to'xtagani uchun bajarilmay qolgan approve/decline
+        await recover_unresolved(bot)
+        await redeliver_undelivered(bot, dp.storage)  # bot to'xtagani uchun bajarilmay qolgan approve/decline
     except Exception:
         logger.exception("To'xtab qolgan so'rovlarni tiklashda xatolik")
     expiry_task = asyncio.create_task(run_expiry_loop(bot))

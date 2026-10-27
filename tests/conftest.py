@@ -82,11 +82,13 @@ async def dp(db):
     """To'liq dispatcher: haqiqiy routerlar, SQLite FSM, a'zolarni kuzatuvchi middleware."""
     from handlers import get_routers
     from utils.fsm_storage import SQLiteStorage
+    from utils.form_expiry import FormExpiryMiddleware
     from utils.members import TrackMembersMiddleware
 
     routers = get_routers()
     dispatcher = Dispatcher(storage=SQLiteStorage())
     dispatcher.message.outer_middleware(TrackMembersMiddleware())
+    dispatcher.message.outer_middleware(FormExpiryMiddleware())
     dispatcher.include_routers(*routers)
     yield dispatcher
     # routerlar modul darajasidagi singleton: keyingi test uchun dispatcherdan ajratamiz

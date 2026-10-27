@@ -9,7 +9,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from config import ADMIN_IDS
-from database import change_status, create_application, get_active_application, save_profile
+from database import (
+    change_status,
+    create_application,
+    get_active_application,
+    mark_admins_notified,
+    save_profile,
+)
 from handlers.profile import finish_edit
 from keyboards.action import action_inline
 from states import Form
@@ -221,6 +227,7 @@ async def _finish_application(message: Message, bot: Bot, state: FSMContext) -> 
         anketa,
         tg_username=data.get("username"),
         phone=data.get("phone"),
+        admins_notified=False,  # adminlarga yetgach belgilanadi; yetmay qolsa, startda qayta yuboriladi
     )
     if app_id is None:
         await state.clear()
@@ -249,6 +256,7 @@ async def _finish_application(message: Message, bot: Bot, state: FSMContext) -> 
         await message.answer(ERROR_GENERIC)
         return
 
+    await mark_admins_notified(app_id)
     await state.clear()  # eng oxirida: yuqoridagi qadamlar yiqilsa, javoblar yo'qolmaydi
     await message.answer(private_anketa)
     await message.answer(THANKS)

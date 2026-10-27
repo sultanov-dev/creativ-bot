@@ -30,8 +30,8 @@ class SQLiteStorage(BaseStorage):
             await db.execute("DELETE FROM fsm WHERE key = ?", (key,))
         else:
             await db.execute(
-                "INSERT INTO fsm (key, value) VALUES (?, ?) "
-                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                "INSERT INTO fsm (key, value, updated_at) VALUES (?, ?, CAST(strftime('%s', 'now') AS INTEGER)) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
                 (key, value),
             )
         await db.commit()
@@ -39,6 +39,16 @@ class SQLiteStorage(BaseStorage):
     async def set_state(self, key: StorageKey, state: StateType = None) -> None:
         value = state.state if isinstance(state, State) else state
         await self._set(self.key_builder.build(key, "state"), value)
+
+    async def state_age(self, key: StorageKey) -> int | None:
+        """Holat oxirgi marta yozilganiga necha soniya bo'ldi (yozuv yoki vaqt belgisi yo'q bo'lsa None)."""
+        db = await get_db()
+        cur = await db.execute(
+            "SELECT CAST(strftime('%s', 'now') AS INTEGER) - updated_at FROM fsm WHERE key = ?",
+            (self.key_builder.build(key, "state"),),
+        )
+        row = await cur.fetchone()
+        return row[0] if row and row[0] is not None else None
 
     async def get_state(self, key: StorageKey) -> str | None:
         return await self._get(self.key_builder.build(key, "state"))

@@ -25,3 +25,11 @@ def format_anketa(data: dict, *, with_phone: bool = False) -> str:
         f"❓ <b>Qo'shilish sababi:</b> {escape(data['join_group'])}",
     ]
     return "\n".join(lines) + "\n"
+
+
+def anketa_for_admins(anketa: str, phone: str | None) -> str:
+    """Saqlangan (telefonsiz) anketa matniga telefon qatorini format_anketa(with_phone=True) dagi joyiga qo'yadi."""
+    if not phone:
+        return anketa
+    first, _, rest = anketa.partition("\n")
+    return f"{first}\n📞 <b>Telefon:</b> {escape(phone)}\n{rest}"

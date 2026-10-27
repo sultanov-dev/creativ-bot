@@ -302,3 +302,152 @@ class TestBotStoppedMidFlow:
 
 
 ANSWERS_BEFORE_LAST = ["Aziz Karimov", texts.SKIP_BUTTON, "25", "Dasturchi", "O'zim haqimda"]
+
+
+async def age_form(hours: float, user=U):
+    d = await dbm.get_db()
+    await d.execute("UPDATE fsm SET updated_at = updated_at - ?", (int(hours * 3600),))
+    await d.commit()
+
+
+async def fsm_state(dp, bot, user=U):
+    ctx = dp.fsm.get_context(bot, chat_id=user, user_id=user)
+    return await ctx.get_state(), await ctx.get_data()
+
+
+class TestExpiredQuestionnaire:
+    async def _half_done(self, dp, bot):
+        await feed(dp, bot, tf.join_request(U))
+        await feed(dp, bot, tf.private_message(U, "Aziz Karimov"))
+        await feed(dp, bot, tf.private_message(U, texts.SKIP_BUTTON))
+
+    async def test_continuing_after_expiry_warns_and_restarts(self, dp, bot, session):
+        await self._half_done(dp, bot)
+        await age_form(25)
+        session.clear()
+        await feed(dp, bot, tf.private_message(U, "25"))
+        assert session.texts_to(U) == [texts.FORM_EXPIRED, texts.ASK_FULL_NAME]
+        state, data = await fsm_state(dp, bot)
+        assert state == "Form:full_name" and data.get("group_id") == G and "full_name" not in data
+        assert await dbm.get_active_application(U, G) is None
+        # qaytadan to'ldirish ishlaydi
+        await feed(dp, bot, tf.private_message(U, "Aziz Karimov"))
+        assert session.texts_to(U)[-1] == texts.ASK_PHONE
+
+    async def test_not_expired_continues(self, dp, bot, session):
+        await self._half_done(dp, bot)
+        await age_form(23)
+        session.clear()
+        await feed(dp, bot, tf.private_message(U, "25"))
+        assert session.texts_to(U) == [texts.ASK_JOB]
+
+    async def test_ttl_zero_disables(self, dp, bot, session, monkeypatch):
+        import utils.form_expiry as fe
+
+        monkeypatch.setattr(fe, "FORM_TTL_HOURS", 0)
+        await self._half_done(dp, bot)
+        await age_form(1000)
+        session.clear()
+        await feed(dp, bot, tf.private_message(U, "25"))
+        assert session.texts_to(U) == [texts.ASK_JOB]
+
+    async def test_new_join_request_after_expiry_starts_fresh_not_finish_first(self, dp, bot, session):
+        await self._half_done(dp, bot)
+        await age_form(30)
+        session.clear()
+        await feed(dp, bot, tf.join_request(U))
+        sent = session.texts_to(U)
+        assert texts.FINISH_FORM_FIRST not in sent and sent[-1] == texts.ASK_FULL_NAME
+        assert (await fsm_state(dp, bot))[0] == "Form:full_name"
+
+    async def test_expired_saved_profile_review_is_shown_again_with_note(self, dp, bot, session):
+        first = await start_application(dp, bot)
+        await dbm.change_status(first, "pending", "accepted")
+        await feed(dp, bot, tf.join_request(U))
+        assert (await fsm_state(dp, bot))[0] == "Form:review"
+        await age_form(30)
+        session.clear()
+        await feed(dp, bot, tf.private_message(U, texts_keep()))
+        sent = session.texts_to(U)
+        assert sent[0] == texts.FORM_EXPIRED and "Ism" in sent[1]
+        assert await dbm.get_active_application(U, G) is None  # "shunday qoldirish" qayta bosilmaguncha ariza yo'q
+
+    async def test_state_is_untouched_for_users_without_form(self, dp, bot, session):
+        await feed(dp, bot, tf.private_message(77, "salom"))
+        assert not session.texts_to(77) or texts.FORM_EXPIRED not in session.texts_to(77)
+
+
+def texts_keep():
+    return texts.PROFILE_KEEP_BUTTON
+
+
+class TestRedeliverUndelivered:
+    async def _crashed_final_step(self, dp, bot, monkeypatch, answers=None):
+        import handlers.anketa as anketa
+
+        await feed(dp, bot, tf.join_request(U))
+        for a in answers or ANSWERS_BEFORE_LAST:
+            await feed(dp, bot, tf.private_message(U, a))
+
+        async def crashing(**kw):
+            raise RuntimeError("bot to'xtadi")
+
+        real = anketa.safe_send
+        monkeypatch.setattr(anketa, "safe_send", crashing)
+        await feed(dp, bot, tf.private_message(U, "Qiziq"))
+        monkeypatch.setattr(anketa, "safe_send", real)
+
+    async def test_complete_application_is_redelivered_once(self, dp, bot, session, monkeypatch):
+        from utils.applications import redeliver_undelivered
+
+        await self._crashed_final_step(dp, bot, monkeypatch, ["Aziz Karimov", "+998901234567", "25", "Dasturchi", "Haqida"])
+        app = await dbm.get_active_application(U, G)
+        assert app["admins_notified"] == 0 and not session.sent_to(tf.ADMIN_ID)
+        session.clear()
+        assert await redeliver_undelivered(bot, dp.storage) == 1
+        for admin in (tf.ADMIN_ID, tf.ADMIN2_ID):
+            msgs = session.sent_to(admin)
+            assert len(msgs) == 1 and "Aziz Karimov" in msgs[0].text and "+998901234567" in msgs[0].text
+            assert msgs[0].reply_markup is not None
+        assert (await dbm.get_application(app["id"]))["admins_notified"] == 1
+        assert (await fsm_state(dp, bot))[0] is None
+        assert session.texts_to(U) == [texts.THANKS]
+        session.clear()
+        assert await redeliver_undelivered(bot, dp.storage) == 0 and not session.requests
+
+    async def test_phone_line_sits_after_name_like_normal_delivery(self):
+        from utils.form_anketa import anketa_for_admins, format_anketa
+
+        data = {"full_name": "Aziz Karimov", "phone": "+998901234567", "age": 25, "job": "j", "about": "a", "join_group": "q"}
+        assert anketa_for_admins(format_anketa(data), data["phone"]) == format_anketa(data, with_phone=True)
+        assert anketa_for_admins("x\ny\n", None) == "x\ny\n"
+
+    async def test_unreachable_admins_mark_failed_and_tell_user(self, dp, bot, session, monkeypatch):
+        from aiogram.exceptions import TelegramForbiddenError
+        from aiogram.methods import SendMessage
+
+        from utils.applications import redeliver_undelivered
+
+        await self._crashed_final_step(dp, bot, monkeypatch)
+        app = await dbm.get_active_application(U, G)
+        session.clear()
+        session.errors[SendMessage] = lambda m: (
+            TelegramForbiddenError(method=m, message="Forbidden") if m.chat_id in (tf.ADMIN_ID, tf.ADMIN2_ID) else None
+        )
+        await redeliver_undelivered(bot, dp.storage)
+        assert (await dbm.get_application(app["id"]))["status"] == "failed"
+        assert session.texts_to(U) == [texts.ERROR_GENERIC]
+
+    async def test_incomplete_questionnaire_is_never_sent_to_admins(self, dp, bot, session):
+        from utils.applications import redeliver_undelivered
+
+        await feed(dp, bot, tf.join_request(U))
+        await feed(dp, bot, tf.private_message(U, "Aziz Karimov"))
+        session.clear()
+        assert await redeliver_undelivered(bot, dp.storage) == 0
+        assert not session.sent_to(tf.ADMIN_ID) and (await fsm_state(dp, bot))[0] == "Form:phone"
+
+    async def test_normal_completion_is_marked_delivered(self, dp, bot, session):
+        app_id = await start_application(dp, bot)
+        assert (await dbm.get_application(app_id))["admins_notified"] == 1
+        assert await dbm.get_undelivered_applications() == []
