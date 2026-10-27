@@ -112,7 +112,9 @@ async def init_db() -> None:
             group_title TEXT,
             full_name   TEXT NOT NULL,
             tg_username TEXT,
-            status      TEXT NOT NULL DEFAULT 'active',  -- awaiting_start | active | escalated | resolved
+            status      TEXT NOT NULL DEFAULT 'active',  -- awaiting_start | active | escalated | declined | resolved
+            category    TEXT,  -- AI aniqlagan masala turi (uzatilgan yoki rad etilgan)
+            warnings    INTEGER NOT NULL DEFAULT 0,  -- odobsiz xabar uchun ogohlantirishlar
             created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -144,6 +146,8 @@ async def init_db() -> None:
     await _add_column(db, "applications", "admins_notified", "INTEGER NOT NULL DEFAULT 1")
     # anketa holati oxirgi o'zgargan vaqt (unix soniya): tugallanmagan anketa muddati shundan hisoblanadi
     await _add_column(db, "fsm", "updated_at", "INTEGER")
+    await _add_column(db, "support_chats", "category", "TEXT")
+    await _add_column(db, "support_chats", "warnings", "INTEGER NOT NULL DEFAULT 0")
     await db.execute(
         "UPDATE applications SET decided_at = created_at WHERE decided_at IS NULL "
         "AND status IN ('accepted', 'rejected', 'expired', 'failed', 'removed')"
@@ -550,15 +554,37 @@ async def get_support_chat(user_id: int, status: str, ttl_hours: int) -> dict | 
     return dict(row) if row else None
 
 
-async def set_support_status(chat_id: int, old: str, new: str) -> bool:
+async def set_support_status(chat_id: int, old: str, new: str, category: str | None = None) -> bool:
     """Atomik: faqat hozirgi holat old bo'lsa o'zgaradi (ikki marta uzatish/yopish bo'lmasin)."""
     db = await get_db()
     cur = await db.execute(
-        "UPDATE support_chats SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = ?",
-        (new, chat_id, old),
+        "UPDATE support_chats SET status = ?, category = COALESCE(?, category), updated_at = CURRENT_TIMESTAMP "
+        "WHERE id = ? AND status = ?",
+        (new, category, chat_id, old),
     )
     await db.commit()
     return cur.rowcount > 0
+
+
+async def add_support_warning(chat_id: int) -> int:
+    """Odobsiz xabar uchun ogohlantirishni oshiradi; yangi sonini qaytaradi."""
+    db = await get_db()
+    await db.execute("UPDATE support_chats SET warnings = warnings + 1 WHERE id = ?", (chat_id,))
+    await db.commit()
+    cur = await db.execute("SELECT warnings FROM support_chats WHERE id = ?", (chat_id,))
+    row = await cur.fetchone()
+    return row[0] if row else 0
+
+
+async def count_recent_escalations(user_id: int, hours: int) -> int:
+    """Foydalanuvchining oxirgi `hours` soatda adminga uzatilgan suhbatlari soni."""
+    db = await get_db()
+    cur = await db.execute(
+        "SELECT COUNT(*) FROM support_chats WHERE user_id = ? AND status = 'escalated' "
+        "AND updated_at > datetime('now', ?)",
+        (user_id, f"-{hours} hours"),
+    )
+    return (await cur.fetchone())[0]
 
 
 async def add_support_message(chat_id: int, role: str, content: str) -> None:
