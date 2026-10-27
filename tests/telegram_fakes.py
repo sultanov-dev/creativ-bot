@@ -191,7 +191,7 @@ def private_message(user_id: int, text: str | None = None, *, contact: Contact |
             message_id=message_id or next(_update_ids) + 5000,
             date=now(),
             chat=Chat(id=chat_id, type="private"),
-            from_user=make_user(user_id, f"U{user_id}"),
+            from_user=make_user(user_id, f"U{user_id}", username=f"user{user_id}"),
             text=text,
             contact=contact,
         ),
@@ -252,7 +252,7 @@ def join_request(user_id: int, chat_id: int = GROUP_ID) -> Update:
         update_id=next(_update_ids),
         chat_join_request=ChatJoinRequest(
             chat=Chat(id=chat_id, type="supergroup", title="G"),
-            from_user=make_user(user_id, f"U{user_id}"),
+            from_user=make_user(user_id, f"U{user_id}", username=f"user{user_id}"),
             user_chat_id=user_id,
             date=now(),
         ),

@@ -40,7 +40,7 @@ class TestReview:
         assert (await state_of(dp, bot))[0] == Form.review.state
 
     async def test_review_shows_phone_to_its_owner(self, dp, bot, session):
-        first = await start_application(dp, bot, answers=["Aziz Karimov", texts.SKIP_BUTTON, "+998901234567",
+        first = await start_application(dp, bot, answers=["Aziz Karimov", "+998901234567",
                                                           "25", "j", "a", "s"])
         await dbm.change_status(first, "pending", "rejected")
         session.clear()
@@ -78,8 +78,16 @@ class TestKeep:
         assert (await state_of(dp, bot)) == (None, {})
         assert_no_errors(session)
 
+    async def test_username_is_refreshed_from_telegram_and_never_shown(self, dp, bot, session):
+        await dbm.save_profile(U, {"full_name": "Aziz Karimov", "username": "old_name", "phone": None, "age": 25,
+                                   "job": "j", "about": "a", "join_group": "s"})
+        await feed(dp, bot, tf.join_request(U))
+        assert "old_name" not in session.sent_to(U)[0].text and f"user{U}" not in session.sent_to(U)[0].text
+        await feed(dp, bot, tf.private_message(U, texts.PROFILE_KEEP_BUTTON))
+        assert (await dbm.get_active_application(U, tf.GROUP_ID))["tg_username"] == f"user{U}"
+
     async def test_group_message_has_no_phone(self, dp, bot, session):
-        first = await start_application(dp, bot, answers=["Aziz Karimov", texts.SKIP_BUTTON, "+998901234567",
+        first = await start_application(dp, bot, answers=["Aziz Karimov", "+998901234567",
                                                           "25", "j", "a", "s"])
         await dbm.change_status(first, "pending", "rejected")
         await feed(dp, bot, tf.join_request(U))
@@ -166,7 +174,7 @@ class TestEdit:
         assert session.texts_to(U) == [texts.PROFILE_USE_BUTTONS]
 
     @pytest.mark.parametrize("field,question", [
-        ("full_name", texts.ASK_FULL_NAME), ("username", texts.ASK_USERNAME), ("phone", texts.ASK_PHONE),
+        ("full_name", texts.ASK_FULL_NAME), ("phone", texts.ASK_PHONE),
         ("age", texts.ASK_AGE), ("job", texts.ASK_JOB), ("about", texts.ASK_ABOUT), ("join_group", texts.ASK_REASON),
     ])
     async def test_each_field_asks_its_question_in_editing_mode(self, dp, bot, session, field, question):
@@ -208,14 +216,13 @@ class TestEdit:
         assert (await dbm.get_profile(U))["age"] == 25
 
     async def test_clearing_optional_field_by_skip(self, dp, bot, session):
-        first = await start_application(dp, bot, answers=["Aziz Karimov", "@azizbek", texts.SKIP_BUTTON, "25",
-                                                          "j", "a", "s"])
+        first = await start_application(dp, bot, answers=["Aziz Karimov", "+998901234567", "25", "j", "a", "s"])
         await dbm.change_status(first, "pending", "rejected")
         await feed(dp, bot, tf.join_request(U))
         await feed(dp, bot, tf.private_message(U, texts.PROFILE_EDIT_BUTTON))
-        await feed(dp, bot, tf.private_message(U, FIELD_LABELS["username"]))
+        await feed(dp, bot, tf.private_message(U, FIELD_LABELS["phone"]))
         await feed(dp, bot, tf.private_message(U, texts.SKIP_BUTTON))
-        assert (await dbm.get_profile(U))["username"] is None
+        assert (await dbm.get_profile(U))["phone"] is None
 
     async def test_start_while_picking_field_returns_to_review(self, dp, bot, session):
         await self._into_edit(dp, bot, session)

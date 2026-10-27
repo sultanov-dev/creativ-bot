@@ -34,7 +34,7 @@ class TestJoinRequest:
         assert sent[0].startswith("Assalomu alaykum") and sent[1] == texts.ASK_FULL_NAME
         state, data = await state_of(dp, bot)
         assert state == Form.full_name.state
-        assert data == {"group_id": tf.GROUP_ID, "user_id": U}
+        assert data == {"group_id": tf.GROUP_ID, "user_id": U, "username": f"user{U}"}
         assert_no_errors(session)
 
     async def test_active_application_blocks_new_questionnaire(self, dp, bot, session):
@@ -58,7 +58,7 @@ class TestJoinRequest:
         assert (await state_of(dp, bot))[0] == Form.review.state
 
     async def test_second_join_request_mid_questionnaire_restarts_it(self, dp, bot, session):
-        await at_step(dp, bot, 3)
+        await at_step(dp, bot, 2)
         await feed(dp, bot, tf.join_request(U))
         state, data = await state_of(dp, bot)
         assert state == Form.full_name.state and "full_name" not in data
@@ -71,17 +71,15 @@ class TestEachStepRejectsBadInput:
             (0, "Aziz", texts.WRONG_NAME),
             (0, "12 34", texts.WRONG_NAME),
             (0, "/bogus now", texts.WRONG_NAME),
-            (1, "ab", texts.WRONG_USERNAME),
-            (1, "1azizbek", texts.WRONG_USERNAME),
-            (2, "abc", texts.WRONG_PHONE),
-            (2, "12345", texts.WRONG_PHONE),
-            (3, "yigirma", texts.WRONG_AGE),
-            (3, "9", texts.WRONG_AGE),
-            (3, "101", texts.WRONG_AGE),
-            (3, "0", texts.WRONG_AGE),
+            (1, "abc", texts.WRONG_PHONE),
+            (1, "12345", texts.WRONG_PHONE),
+            (2, "yigirma", texts.WRONG_AGE),
+            (2, "9", texts.WRONG_AGE),
+            (2, "101", texts.WRONG_AGE),
+            (2, "0", texts.WRONG_AGE),
+            (3, "x" * 801, texts.TOO_LONG),
             (4, "x" * 801, texts.TOO_LONG),
             (5, "x" * 801, texts.TOO_LONG),
-            (6, "x" * 801, texts.TOO_LONG),
         ],
     )
     async def test_warning_and_state_does_not_advance(self, dp, bot, session, step, bad, warning):
@@ -92,7 +90,7 @@ class TestEachStepRejectsBadInput:
         assert (await state_of(dp, bot))[0] == before
         assert await dbm.get_active_application(U, tf.GROUP_ID) is None
 
-    @pytest.mark.parametrize("step", range(7))
+    @pytest.mark.parametrize("step", range(6))
     async def test_non_text_message_gets_only_text_notice(self, dp, bot, session, step):
         await at_step(dp, bot, step)
         before = (await state_of(dp, bot))[0]
@@ -104,46 +102,44 @@ class TestEachStepRejectsBadInput:
 class TestAcceptedValues:
     async def test_boundary_ages(self, dp, bot, session):
         for age, ok in [("10", True), ("100", True), ("9", False), ("101", False)]:
-            await at_step(dp, bot, 3)
+            await at_step(dp, bot, 2)
             await feed(dp, bot, tf.private_message(U, age))
             assert ((await state_of(dp, bot))[0] == Form.job.state) is ok
 
     async def test_age_extracted_from_sentence(self, dp, bot, session):
-        await at_step(dp, bot, 3)
+        await at_step(dp, bot, 2)
         await feed(dp, bot, tf.private_message(U, "men 25 yoshdaman"))
         assert (await state_of(dp, bot))[1]["age"] == 25
 
     async def test_exactly_800_chars_is_accepted(self, dp, bot, session):
-        await at_step(dp, bot, 4)
+        await at_step(dp, bot, 3)
         await feed(dp, bot, tf.private_message(U, "x" * 800))
         assert (await state_of(dp, bot))[0] == Form.about.state
 
-    async def test_username_is_stored_without_at(self, dp, bot, session):
-        await at_step(dp, bot, 1)
-        await feed(dp, bot, tf.private_message(U, "@azizbek"))
-        assert (await state_of(dp, bot))[1]["username"] == "azizbek"
+    async def test_username_is_taken_from_telegram_not_asked(self, dp, bot, session):
+        await at_step(dp, bot, 0)
+        assert (await state_of(dp, bot))[1]["username"] == "user1"  # join paytida Telegram'dan olinadi
 
-    async def test_skip_username_and_phone(self, dp, bot, session):
+    async def test_skip_phone(self, dp, bot, session):
         await at_step(dp, bot, 1)
         await feed(dp, bot, tf.private_message(U, texts.SKIP_BUTTON))
-        await feed(dp, bot, tf.private_message(U, "/skip"))
         state, data = await state_of(dp, bot)
-        assert state == Form.age.state and data["username"] is None and data["phone"] is None
+        assert state == Form.age.state and data["phone"] is None
 
     async def test_phone_typed_is_normalised(self, dp, bot, session):
-        await at_step(dp, bot, 2)
+        await at_step(dp, bot, 1)
         await feed(dp, bot, tf.private_message(U, "+998 90 123-45-67"))
         assert (await state_of(dp, bot))[1]["phone"] == "+998901234567"
 
     async def test_own_contact_is_accepted_and_plus_added(self, dp, bot, session):
-        await at_step(dp, bot, 2)
+        await at_step(dp, bot, 1)
         contact = Contact(phone_number="998901234567", first_name="A", user_id=U)
         await feed(dp, bot, tf.private_message(U, None, contact=contact))
         state, data = await state_of(dp, bot)
         assert state == Form.age.state and data["phone"] == "+998901234567"
 
     async def test_foreign_contact_is_refused(self, dp, bot, session):
-        await at_step(dp, bot, 2)
+        await at_step(dp, bot, 1)
         contact = Contact(phone_number="998901234567", first_name="A", user_id=555)
         await feed(dp, bot, tf.private_message(U, None, contact=contact))
         assert session.texts_to(U) == [texts.WRONG_CONTACT]
@@ -151,13 +147,13 @@ class TestAcceptedValues:
 
     async def test_contact_without_user_id_is_refused(self, dp, bot, session):
         # forward qilingan/qo'lda yozilgan kontaktda user_id bo'lmasligi mumkin: o'zimniki deb qabul qilinmasin
-        await at_step(dp, bot, 2)
+        await at_step(dp, bot, 1)
         contact = Contact(phone_number="998901234567", first_name="A")
         await feed(dp, bot, tf.private_message(U, None, contact=contact))
         assert session.texts_to(U) == [texts.WRONG_CONTACT]
 
     async def test_html_in_answers_is_escaped_in_group_and_admin_texts(self, dp, bot, session):
-        answers = ["<b>Aziz</b> Karimov".replace("<b>", "").replace("</b>", ""), texts.SKIP_BUTTON, texts.SKIP_BUTTON,
+        answers = ["<b>Aziz</b> Karimov".replace("<b>", "").replace("</b>", ""), texts.SKIP_BUTTON,
                    "25", "<script>x</script>", "a & b", "<i>sabab</i>"]
         app_id = await start_application(dp, bot, answers=answers)
         app = await dbm.get_application(app_id)
@@ -168,12 +164,12 @@ class TestAcceptedValues:
 
 class TestCompletion:
     async def test_full_flow_creates_application_and_notifies_admins(self, dp, bot, session):
-        app_id = await start_application(dp, bot, answers=["Aziz Karimov", "@azizbek", "+998901234567", "25",
+        app_id = await start_application(dp, bot, answers=["Aziz Karimov", "+998901234567", "25",
                                                            "Dasturchi", "Haqida", "Sabab"])
         assert app_id is not None
         app = await dbm.get_application(app_id)
         assert (app["status"], app["user_id"], app["group_id"]) == ("pending", U, tf.GROUP_ID)
-        assert app["full_name"] == "Aziz Karimov" and app["tg_username"] == "azizbek"
+        assert app["full_name"] == "Aziz Karimov" and app["tg_username"] == "user1"
         assert app["phone"] == "+998901234567"
         assert "+998901234567" not in app["anketa"]  # guruhga ketadigan matnda telefon yo'q
 
@@ -236,14 +232,14 @@ class TestCompletion:
         assert await dbm.get_profile(U) is not None  # javoblar baribir saqlangan
 
     async def test_existing_active_application_at_the_end(self, dp, bot, session):
-        await at_step(dp, bot, 6)
+        await at_step(dp, bot, 5)
         await dbm.create_application(U, tf.GROUP_ID, "A B", "x\n")  # shu orada boshqa ariza paydo bo'ldi
         await feed(dp, bot, tf.private_message(U, "Sabab"))
         assert session.texts_to(U) == [texts.ALREADY_APPLIED]
         assert session.sent_to(tf.ADMIN_ID) == []
 
     async def test_double_send_of_last_answer_creates_single_application(self, dp, bot, session):
-        await at_step(dp, bot, 6)
+        await at_step(dp, bot, 5)
         await feed(dp, bot, tf.private_message(U, "Sabab"))
         await feed(dp, bot, tf.private_message(U, "Sabab"))  # holat tozalangan: ikkinchisi e'tiborsiz
         rows = await (await (await dbm.get_db()).execute("SELECT COUNT(*) FROM applications")).fetchone()
@@ -263,8 +259,8 @@ class TestStartCommand:
         assert "&lt;b&gt;X" in session.texts_to(U)[0]
 
     @pytest.mark.parametrize("step,question", [
-        (0, texts.ASK_FULL_NAME), (1, texts.ASK_USERNAME), (2, texts.ASK_PHONE), (3, texts.ASK_AGE),
-        (4, texts.ASK_JOB), (5, texts.ASK_ABOUT), (6, texts.ASK_REASON),
+        (0, texts.ASK_FULL_NAME), (1, texts.ASK_PHONE), (2, texts.ASK_AGE),
+        (3, texts.ASK_JOB), (4, texts.ASK_ABOUT), (5, texts.ASK_REASON),
     ])
     async def test_start_mid_questionnaire_repeats_current_question(self, dp, bot, session, step, question):
         await at_step(dp, bot, step)
@@ -273,7 +269,7 @@ class TestStartCommand:
         assert (await state_of(dp, bot))[0] == list(Form.__states__)[step].state
 
     async def test_start_does_not_lose_collected_answers(self, dp, bot, session):
-        await at_step(dp, bot, 3)
+        await at_step(dp, bot, 2)
         await feed(dp, bot, tf.private_message(U, "/start"))
         assert (await state_of(dp, bot))[1]["full_name"] == "Aziz Karimov"
 

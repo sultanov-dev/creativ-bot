@@ -34,7 +34,13 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
     profile = await get_profile(request.from_user.id)
     if profile:
         await private_state.set_data(
-            {**profile, "group_id": request.chat.id, "user_id": request.user_chat_id}
+            {
+                **profile,
+                # username so'ralmaydi: Telegram'dan olinadi (anketada ko'rinmaydi, faqat bazada saqlanadi)
+                "username": request.from_user.username,
+                "group_id": request.chat.id,
+                "user_id": request.user_chat_id,
+            }
         )
         await private_state.set_state(Form.review)
         await show_review(bot, request.user_chat_id, private_state)
@@ -43,7 +49,11 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
     # holat javob kelishidan oldin o'rnatilishi kerak
     await private_state.set_state(Form.full_name)
     await private_state.set_data(
-        {"group_id": request.chat.id, "user_id": request.user_chat_id}
+        {
+            "group_id": request.chat.id,
+            "user_id": request.user_chat_id,
+            "username": request.from_user.username,  # so'ralmaydi, Telegram'dan olinadi
+        }
     )
 
     await bot.send_message(

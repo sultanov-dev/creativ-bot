@@ -24,7 +24,6 @@ from texts import (
     WRONG_CONTACT,
     WRONG_NAME,
     WRONG_PHONE,
-    WRONG_USERNAME,
 )
 from utils.admin import safe_send
 from utils.form_anketa import PROFILE_FIELDS, format_anketa, full_name_of
@@ -38,7 +37,6 @@ logger = logging.getLogger(__name__)
 # 3 ta javob + ism Telegram'ning 4096 belgilik xabar chegarasiga sig'ishi uchun
 MAX_ANSWER_LEN = 800
 
-USERNAME_RE = re.compile(r"^@?([A-Za-z][A-Za-z0-9_]{4,31})$")
 PHONE_RE = re.compile(r"^\+?[\d\s\-()]{7,25}$", re.ASCII)  # arab-hind kabi Unicode raqamlar o'tmasin
 
 
@@ -81,21 +79,6 @@ async def capture_full_name(message: Message, bot: Bot, state: FSMContext):
         return
 
     await state.update_data(full_name=name)
-    await _advance(message, bot, state, Form.username)
-
-
-@router.message(F.text, Form.username)
-async def capture_username(message: Message, bot: Bot, state: FSMContext):
-    if _is_skip(message.text):
-        username = None
-    else:
-        match = USERNAME_RE.match((message.text or "").strip())
-        if match is None:
-            await message.reply(WRONG_USERNAME)
-            return
-        username = match.group(1)
-
-    await state.update_data(username=username)
     await _advance(message, bot, state, Form.phone)
 
 
@@ -158,6 +141,9 @@ async def capture_join_group(message: Message, bot: Bot, state: FSMContext):
         return
 
     await state.update_data(join_group=message.text)
+    if message.from_user is not None:
+        # username so'ralmaydi: avtomatik olinadi va anketada ko'rsatilmaydi
+        await state.update_data(username=message.from_user.username)
     data = await state.get_data()
     if data.get("editing"):
         await finish_edit(bot, message.chat.id, state)

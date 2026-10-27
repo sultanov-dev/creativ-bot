@@ -1,7 +1,7 @@
 """Anketa maydonlarini tekshirish va formatlash: handlers/anketa.py, utils/form_anketa.py, utils/num_matcher.py."""
 import pytest
 
-from handlers.anketa import USERNAME_RE, _clean_name, _clean_phone, _is_skip
+from handlers.anketa import _clean_name, _clean_phone, _is_skip
 from texts import SKIP_BUTTON
 from utils.form_anketa import PROFILE_FIELDS, format_anketa, full_name_of
 from utils.num_matcher import extract_number
@@ -51,26 +51,6 @@ class TestCleanName:
 
     def test_four_chars_rejected(self):
         assert _clean_name("A Bc") is None
-
-
-class TestUsername:
-    @pytest.mark.parametrize("raw", ["@azizbek", "azizbek", "A_b_c_d", "a1234", "@" + "a" * 32])
-    def test_valid(self, raw):
-        assert USERNAME_RE.match(raw)
-
-    @pytest.mark.parametrize(
-        "raw", ["@abcd", "1azizbek", "_azizbek", "@@azizbek", "aziz bek", "azizbek!", "@" + "a" * 33, "", "@", "аzизbek"]
-    )
-    def test_invalid(self, raw):
-        assert USERNAME_RE.match(raw) is None
-
-    def test_group_strips_at(self):
-        assert USERNAME_RE.match("@azizbek").group(1) == "azizbek"
-
-    def test_trailing_newline_is_not_accepted(self):
-        # `$` yangi qatorga ham mos keladi: handler .strip() qiladi, shuning uchun muammo emas
-        assert USERNAME_RE.match("azizbek\n") is not None
-        assert USERNAME_RE.match("azizbek\n".strip()).group(1) == "azizbek"
 
 
 class TestPhone:
@@ -142,8 +122,9 @@ class TestFormatAnketa:
         assert out.endswith("\n")
         assert "Username" not in out and "Telefon" not in out
 
-    def test_username_is_shown_with_at(self):
-        assert "@azizbek" in format_anketa({**self.BASE, "username": "azizbek"})
+    def test_username_is_never_shown(self):
+        # username so'ralmaydi va anketada ko'rinmaydi (faqat bazada saqlanadi)
+        assert "azizbek" not in format_anketa({**self.BASE, "username": "azizbek"}, with_phone=True)
 
     def test_phone_hidden_by_default_and_shown_for_admins(self):
         data = {**self.BASE, "phone": "+998901234567"}
@@ -192,5 +173,6 @@ def test_profile_fields_cover_every_question():
     from utils.questions import QUESTIONS
     from states import Form
 
-    assert set(PROFILE_FIELDS) == {s.rsplit(":", 1)[-1] for s in QUESTIONS}
-    assert all(hasattr(Form, f) for f in PROFILE_FIELDS)
+    # username so'ralmaydi: Telegram'dan olinadi, lekin profilda saqlanadi
+    assert set(PROFILE_FIELDS) - {"username"} == {s.rsplit(":", 1)[-1] for s in QUESTIONS}
+    assert all(hasattr(Form, f) for f in PROFILE_FIELDS if f != "username")

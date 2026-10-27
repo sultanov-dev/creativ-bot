@@ -5,7 +5,6 @@ from texts import PROFILE_BACK_BUTTON, PROFILE_EDIT_BUTTON, PROFILE_KEEP_BUTTON
 # anketa maydoni -> tugma yozuvi (tahrirlash menyusida)
 FIELD_LABELS = {
     "full_name": "👤 Ism va familiya",
-    "username": "🔗 Username",
     "phone": "📞 Telefon",
     "age": "🎂 Yosh",
     "job": "💼 Kasb",

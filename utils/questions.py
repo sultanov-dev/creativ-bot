@@ -2,7 +2,7 @@ from aiogram import Bot
 from aiogram.fsm.state import State
 from aiogram.types import ReplyKeyboardRemove
 
-from keyboards.skip import phone_keyboard, skip_keyboard
+from keyboards.skip import phone_keyboard
 from states import Form
 from texts import (
     ASK_ABOUT,
@@ -11,14 +11,12 @@ from texts import (
     ASK_JOB,
     ASK_PHONE,
     ASK_REASON,
-    ASK_USERNAME,
 )
 from utils.typing import send_typing
 
 # holat -> (savol matni, klaviatura yasovchi); ixtiyoriy savollarda "o'tkazib yuborish" tugmasi bor
 QUESTIONS = {
     Form.full_name.state: (ASK_FULL_NAME, None),
-    Form.username.state: (ASK_USERNAME, skip_keyboard),
     Form.phone.state: (ASK_PHONE, phone_keyboard),
     Form.age.state: (ASK_AGE, None),
     Form.job.state: (ASK_JOB, None),

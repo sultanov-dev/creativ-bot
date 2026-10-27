@@ -28,7 +28,7 @@ def assert_no_errors(session: FakeSession) -> None:
         assert getattr(m, "chat_id", None) != tf.DEVELOPER_ID, f"dasturchiga xato yuborilgan: {text}"
 
 
-ANSWERS = ["Aziz Karimov", texts.SKIP_BUTTON, texts.SKIP_BUTTON, "25", "Dasturchi", "O'zim haqimda", "Qiziq"]
+ANSWERS = ["Aziz Karimov", texts.SKIP_BUTTON, "25", "Dasturchi", "O'zim haqimda", "Qiziq"]
 
 
 async def start_application(dp, bot, user_id=1, answers=None, *, group_id=tf.GROUP_ID):
