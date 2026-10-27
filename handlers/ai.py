@@ -9,7 +9,8 @@ from aiogram.types import Message
 from aiogram.utils.chat_action import ChatActionSender
 
 import texts
-from utils.ai import AIError, ask_ai
+from handlers.support import CONTACT_ADMIN_TOOL, open_chat
+from utils.ai import AIError, ask_ai_tools
 from utils.ai_html import plain_text, sanitize_html
 from utils.autodelete import keep_messages
 from utils.lang import detect_lang
@@ -116,10 +117,19 @@ async def on_ai_question(message: Message, bot: Bot):
 
     try:
         async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
-            answer = await ask_ai(history)
+            answer, calls = await ask_ai_tools(history, [CONTACT_ADMIN_TOOL])
     except AIError:
         await message.reply(texts.AI_ERROR[lang])
         raise
+
+    contact = next((args for name, args in calls if name == "contact_admin"), None)
+    if contact is not None:
+        # admin bilan gaplashmoqchi: guruhda javob yozilmaydi, suhbat lichkada davom etadi
+        await open_chat(bot, message, question, str(contact.get("reason") or ""))
+        return
+    if not answer:
+        await message.reply(texts.AI_ERROR[lang])
+        return
 
     for part in _split(answer)[:MAX_PARTS]:
         _remember(await _reply_part(message, part))

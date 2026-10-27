@@ -10,6 +10,7 @@ from keyboards.skip import skip_keyboard
 from utils.admin import is_reviewer
 from utils.reason_text import reason_question
 from handlers.profile import show_review
+from handlers.support import resume_support
 from states import Form
 from utils.questions import question_for
 
@@ -44,3 +45,6 @@ async def cmd_start(message: Message, state: FSMContext, bot: Bot):
             reason_question(pending["applicant_name"]),
             reply_markup=skip_keyboard() if await is_reviewer(bot, pending["group_id"], message.from_user.id) else None,
         )
+
+    # guruhda admin bilan gaplashmoqchi bo'lib, botga /start bosmagan bo'lsa: suhbat shu yerdan boshlanadi
+    await resume_support(bot, message.from_user.id)
