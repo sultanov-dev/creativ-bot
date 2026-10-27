@@ -12,8 +12,8 @@ class AIError(Exception):
     """AI xizmatiga ulanib bo'lmadi yoki kutilmagan javob keldi."""
 
 
-# javob uzunligi (va xarajat) chegarasi
-MAX_TOKENS = 1500
+# javob uzunligi (va xarajat) chegarasi; uzun javob = uzoq kutish, shuning uchun o'rtacha
+MAX_TOKENS = 900
 _LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 
 
@@ -26,22 +26,43 @@ def _endpoint() -> str:
     return url
 
 
+_session: aiohttp.ClientSession | None = None
+_session_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _get_session() -> aiohttp.ClientSession:
+    """Umumiy sessiya: ulanish (TLS) qayta-qayta o'rnatilmaydi, har so'rov ~0,3-0,5 s tezroq."""
+    global _session, _session_loop
+    loop = asyncio.get_running_loop()
+    if _session is None or _session.closed or _session_loop is not loop:
+        _session = aiohttp.ClientSession(timeout=TIMEOUT)
+        _session_loop = loop
+    return _session
+
+
+async def close_session() -> None:
+    """Bot to'xtaganda chaqiriladi."""
+    global _session
+    if _session is not None and not _session.closed:
+        await _session.close()
+    _session = None
+
+
 async def ask_ai(messages: list[dict[str, str]]) -> str:
     """OpenAI formatidagi chat/completions so'rovi; javob matnini qaytaradi."""
     try:
-        async with aiohttp.ClientSession(timeout=TIMEOUT) as session:
-            async with session.post(
-                _endpoint(),
-                json={
-                    "messages": messages,
-                    "max_tokens": MAX_TOKENS,
-                    **({"model": API_MODEL} if API_MODEL else {}),
-                },
-                headers={"Authorization": f"Bearer {API_TOKEN}"},
-            ) as resp:
-                if resp.status != 200:
-                    raise AIError(f"AI API {resp.status}: {(await resp.text())[:200]}")
-                data = await resp.json(content_type=None)
+        async with _get_session().post(
+            _endpoint(),
+            json={
+                "messages": messages,
+                "max_tokens": MAX_TOKENS,
+                **({"model": API_MODEL} if API_MODEL else {}),
+            },
+            headers={"Authorization": f"Bearer {API_TOKEN}"},
+        ) as resp:
+            if resp.status != 200:
+                raise AIError(f"AI API {resp.status}: {(await resp.text())[:200]}")
+            data = await resp.json(content_type=None)
     except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:  # ValueError: JSON emas
         raise AIError(f"AI API ulanish xatosi: {e!r}") from e
 

@@ -35,6 +35,6 @@ def question_for(state: State | str) -> tuple[str, object] | None:
     return text, (make_markup() if make_markup else ReplyKeyboardRemove())
 
 
-async def ask(bot: Bot, chat_id: int, state: State | str, delay: float = 2.0) -> None:
+async def ask(bot: Bot, chat_id: int, state: State | str, delay: float = 0.6) -> None:
     text, markup = question_for(state)  # type: ignore[misc]
     await send_typing(bot=bot, chat_id=chat_id, text=text, delay=delay, reply_markup=markup)

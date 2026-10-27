@@ -271,6 +271,61 @@ class TestFinalize:
         assert [await status_of(x) for x in (a, b, c, d)] == ["accepted", "rejected", "expired", "creator_review"]
 
 
+class TestPerformance:
+    async def test_group_work_does_not_wait_for_slow_ai(self, db, bot, session, monkeypatch):
+        """Rad etilganda so'rov rad etiladi va ovoz xabari o'chadi, AI xulosasi esa shundan keyin keladi."""
+        order = []
+
+        async def slow_feedback(reasons):
+            order.append("ai")
+            return None
+
+        monkeypatch.setattr(voting, "feedback_for_applicant", slow_feedback)
+        real_decline = bot.decline_chat_join_request
+
+        async def decline(*a, **k):
+            order.append("decline")
+            return await real_decline(*a, **k)
+
+        monkeypatch.setattr(bot, "decline_chat_join_request", decline, raising=False)
+        await make_voting_app(votes=["no", "no", "no"])
+        await voting.finalize_due_votings(bot)
+        assert order.index("decline") < order.index("ai")
+
+    async def test_slow_ai_for_one_application_does_not_block_others(self, db, bot, session, monkeypatch):
+        gate = asyncio.Event()
+        started = []
+
+        async def feedback(reasons):
+            started.append(1)
+            if len(started) == 1:
+                await gate.wait()  # birinchisi "osilib" turadi
+            else:
+                gate.set()  # ikkinchisi yetib kelsa, birinchini qo'yib yuboradi
+            return None
+
+        monkeypatch.setattr(voting, "feedback_for_applicant", feedback)
+        await make_voting_app(user_id=1, vote_message_id=501, votes=["no"] * 3)
+        await make_voting_app(user_id=2, vote_message_id=502, votes=["no"] * 3)
+        # ketma-ket bo'lganida bu test osilib qolardi (birinchi AI ikkinchisini kutdirardi)
+        assert await asyncio.wait_for(voting.finalize_due_votings(bot), 5) == 2
+
+    async def test_one_failing_application_does_not_stop_the_others(self, db, bot, session, monkeypatch):
+        calls = []
+        real = voting._finalize_one
+
+        async def flaky(b, app):
+            calls.append(app["id"])
+            if len(calls) == 1:
+                raise RuntimeError("kutilmagan xato")
+            return await real(b, app)
+
+        monkeypatch.setattr(voting, "_finalize_one", flaky)
+        await make_voting_app(user_id=1, vote_message_id=501, votes=["yes"] * 3)
+        await make_voting_app(user_id=2, vote_message_id=502, votes=["yes"] * 3)
+        assert await voting.finalize_due_votings(bot) == 1
+
+
 class TestAdminDeliveryFallbacks:
     async def test_no_admins_configured_majority_yes_accepts(self, db, bot, session, monkeypatch):
         monkeypatch.setattr(voting, "ADMIN_IDS", [])

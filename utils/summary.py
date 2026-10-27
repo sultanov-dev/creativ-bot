@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from html import escape
 
@@ -8,6 +9,8 @@ logger = logging.getLogger(__name__)
 MAX_REASONS = 50
 REASON_LIMIT = 300
 FEEDBACK_LIMIT = 700
+# AI sekin/ishlamasa, arizachi va admin uzoq kutib qolmasin: shundan keyin zaxira matn ishlatiladi
+AI_WAIT_SECONDS = 10
 SUMMARY_LIMIT = 1500
 
 SYSTEM_PROMPT = (
@@ -45,14 +48,17 @@ async def summarize_reasons(reasons: list[str | None]) -> tuple[str, bool]:
 
     numbered = "\n".join(f"{i}. {r}" for i, r in enumerate(cleaned, 1))
     try:
-        text = await ask_ai(
-            [
-                {"role": "system", "content": ADMIN_PROMPT},
-                {"role": "user", "content": numbered},
-            ]
+        text = await asyncio.wait_for(
+            ask_ai(
+                [
+                    {"role": "system", "content": ADMIN_PROMPT},
+                    {"role": "user", "content": numbered},
+                ]
+            ),
+            AI_WAIT_SECONDS,
         )
         return text[:SUMMARY_LIMIT], True
-    except AIError as e:
+    except (AIError, asyncio.TimeoutError) as e:
         logger.warning("Sabablar xulosasini AI yozib bera olmadi: %s", e)
         shown = numbered[:SUMMARY_LIMIT]
         return f"Kechirasiz, AI xulosa tayyorlay olmadi. A'zolarning o'z javoblari:\n{shown}", False
@@ -70,13 +76,16 @@ async def feedback_for_applicant(reasons: list[str | None]) -> str | None:
 
     numbered = "\n".join(f"{i}. {r}" for i, r in enumerate(cleaned, 1))
     try:
-        text = await ask_ai(
-            [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": numbered},
-            ]
+        text = await asyncio.wait_for(
+            ask_ai(
+                [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": numbered},
+                ]
+            ),
+            AI_WAIT_SECONDS,
         )
-    except AIError as e:
+    except (AIError, asyncio.TimeoutError) as e:
         logger.warning("Rad etilgan arizachi uchun xulosani AI yozib bera olmadi: %s", e)
         return None
     text = text.strip()[:FEEDBACK_LIMIT]

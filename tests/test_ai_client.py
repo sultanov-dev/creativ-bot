@@ -241,3 +241,34 @@ class TestFeedbackForApplicant:
         monkeypatch.setattr(summary, "ask_ai", boom)
         with pytest.raises(RuntimeError):
             await summary.feedback_for_applicant(["a"])
+
+
+class TestPerformance:
+    async def test_session_is_reused_between_requests(self, fake_ai):
+        await ask_ai(MSGS)
+        first = ai_mod._session
+        await ask_ai(MSGS)
+        assert ai_mod._session is first and not first.closed
+        await ai_mod.close_session()
+        assert ai_mod._session is None
+
+    async def test_new_session_after_close(self, fake_ai):
+        await ask_ai(MSGS)
+        first = ai_mod._session
+        await ai_mod.close_session()
+        await ask_ai(MSGS)
+        assert ai_mod._session is not first
+        await ai_mod.close_session()
+
+    async def test_slow_ai_falls_back_quickly_for_applicant_feedback(self, fake_ai, monkeypatch):
+        fake_ai.delay = 2
+        monkeypatch.setattr(summary, "AI_WAIT_SECONDS", 0.1)
+        assert await asyncio.wait_for(summary.feedback_for_applicant(["sabab"]), 1) is None
+        await ai_mod.close_session()
+
+    async def test_slow_ai_falls_back_quickly_for_admin_summary(self, fake_ai, monkeypatch):
+        fake_ai.delay = 2
+        monkeypatch.setattr(summary, "AI_WAIT_SECONDS", 0.1)
+        text, by_ai = await asyncio.wait_for(summary.summarize_reasons(["sabab"]), 1)
+        assert by_ai is False and "sabab" in text
+        await ai_mod.close_session()

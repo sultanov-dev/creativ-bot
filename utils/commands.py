@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from aiogram import Bot
@@ -33,7 +34,7 @@ async def setup_private_commands(bot: Bot) -> None:
 
 async def setup_group_commands(bot: Bot, chat_id: int) -> None:
     """Guruhdagi "/" menyusini faqat ADMIN_IDS adminlari uchun o'rnatadi."""
-    for admin_id in ADMIN_IDS:
+    async def one(admin_id: int) -> None:
         try:
             await bot.set_my_commands(
                 ADMIN_COMMANDS,
@@ -42,3 +43,5 @@ async def setup_group_commands(bot: Bot, chat_id: int) -> None:
         except (TelegramBadRequest, TelegramForbiddenError):
             # admin guruhda emas yoki bot guruhdan chiqarilgan
             logger.warning("Guruh buyruqlarini o'rnatib bo'lmadi (chat_id=%s, admin=%s)", chat_id, admin_id)
+
+    await asyncio.gather(*(one(a) for a in ADMIN_IDS))

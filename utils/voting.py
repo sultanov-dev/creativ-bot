@@ -97,86 +97,98 @@ async def finalize_due_votings(bot: Bot) -> int:
     - ikkala tomon ham yetmasa: adminlarga hisobot, qaror ularda (handlers/creator.py);
       adminlarga yetkazib bo'lmasa, ko'pchilik ovoz hal qiladi.
     """
+    due = await get_due_votings()
+    # arizalar bir-biriga xalaqit bermasligi uchun parallel: bittasida sekin AI/tarmoq boshqalarni kutdirmasin
+    results = await asyncio.gather(*(_finalize_one(bot, app) for app in due), return_exceptions=True)
     done = 0
-    for app in await get_due_votings():
-        yes, no = await count_votes(app["id"])
-        note: str | None = None
-        if yes == 0 and no == 0:
-            new, result = "expired", "⌛ Ovoz berish yakunlandi: hech kim ovoz bermadi, ariza yopildi."
-            note = (
-                "Arizangiz bo'yicha hech kim ovoz bermadi, shuning uchun u yopildi. "
-                "Xohlasangiz, guruhga qo'shilish so'rovini qayta yuborishingiz mumkin."
-            )
-        elif is_accepted(yes, no):
-            new, result, note = "accepted", "✅ Qabul qilindi", APPLICATION_ACCEPTED
-        elif is_rejected(yes, no):
-            new, result = "rejected", "❌ Rad etildi"
-        else:
-            new, result = "creator_review", "🔎 Yakuniy qaror adminlarga yuborildi"
-            note = (
-                "Guruh a'zolarining ovoz berishi yakunlandi. "
-                "Yakuniy qarorni adminlar qabul qiladi, natijani shu yerda xabar qilamiz ⏳"
-            )
-
-        # ayni paytda holat o'zgargan bo'lsa, change_status False qaytaradi
-        if not await change_status(app["id"], old="voting", new=new):
-            continue
-
-        if new == "creator_review":
-            outcome = await _send_to_admins(bot, app, yes, no)
-            if outcome == RETRY:
-                # vaqtinchalik xato: ariza "voting" da qoladi (muddat tugagan, ovoz qabul qilinmaydi)
-                # va keyingi aylanishda hisobot qayta yuboriladi
-                await change_status(app["id"], old="creator_review", new="voting")
-                continue
-            if outcome == UNREACHABLE:
-                # adminlarga yetkazib bo'lmasa (/start bosmagan), ariza osilib qolmasligi uchun
-                # ko'pchilik ovoz hal qiladi (👍 ko'p bo'lsa qabul, aks holda rad)
-                new = "accepted" if yes > no else "rejected"
-                logger.warning(
-                    "Ariza %s: adminlarga yuborib bo'lmadi, ko'pchilik ovoz bo'yicha hal qilindi: %s",
-                    app["id"], new,
-                )
-                await change_status(app["id"], old="creator_review", new=new)
-                if new == "accepted":
-                    result, note = "✅ Qabul qilindi", APPLICATION_ACCEPTED
-                else:
-                    result, note = "❌ Rad etildi", None
-
-        if new == "rejected":
-            note = await rejection_note(app["id"])
-
-        done += 1
-        logger.info("Ovoz berish yakunlandi: ariza %s -> %s (%s/%s)", app["id"], new, yes, no)
-
-        if new in ("accepted", "rejected", "expired"):
-            try:
-                if new == "accepted":
-                    await bot.approve_chat_join_request(chat_id=app["group_id"], user_id=app["user_id"])
-                else:
-                    await bot.decline_chat_join_request(chat_id=app["group_id"], user_id=app["user_id"])
-            except TelegramAPIError:
-                pass  # so'rov muddati o'tgan yoki foydalanuvchi allaqachon a'zo
-
-        if app["vote_message_id"]:
-            try:
-                await bot.delete_message(
-                    chat_id=app["group_id"], message_id=app["vote_message_id"]
-                )
-            except TelegramAPIError:
-                # o'chirib bo'lmasa (xabar allaqachon o'chgan yoki huquq yo'q), natijani xabarga yozamiz
-                try:
-                    await bot.edit_message_text(
-                        chat_id=app["group_id"],
-                        message_id=app["vote_message_id"],
-                        text=f"{app['anketa']}\n\n{result}",
-                    )
-                except TelegramAPIError:
-                    pass
-
-        try:
-            await safe_send(bot=bot, chat_id=app["user_id"], text=note)
-        except TelegramAPIError:
-            # flood limit/tarmoq: holat allaqachon yozilgan, qolgan arizalar to'xtab qolmasin
-            logger.warning("Ariza %s: foydalanuvchiga xabar yuborib bo'lmadi", app["id"])
+    for app, res in zip(due, results):
+        if isinstance(res, BaseException):
+            logger.error("Ariza %s yakunlashda xatolik: %r", app["id"], res, exc_info=res)
+        elif res:
+            done += 1
     return done
+
+
+async def _finalize_one(bot: Bot, app: dict) -> bool:
+    """Bitta arizani yakunlaydi; False: hech narsa o'zgarmadi yoki keyingi aylanishga qoldi."""
+    yes, no = await count_votes(app["id"])
+    note: str | None = None
+    if yes == 0 and no == 0:
+        new, result = "expired", "⌛ Ovoz berish yakunlandi: hech kim ovoz bermadi, ariza yopildi."
+        note = (
+            "Arizangiz bo'yicha hech kim ovoz bermadi, shuning uchun u yopildi. "
+            "Xohlasangiz, guruhga qo'shilish so'rovini qayta yuborishingiz mumkin."
+        )
+    elif is_accepted(yes, no):
+        new, result, note = "accepted", "✅ Qabul qilindi", APPLICATION_ACCEPTED
+    elif is_rejected(yes, no):
+        new, result = "rejected", "❌ Rad etildi"
+    else:
+        new, result = "creator_review", "🔎 Yakuniy qaror adminlarga yuborildi"
+        note = (
+            "Guruh a'zolarining ovoz berishi yakunlandi. "
+            "Yakuniy qarorni adminlar qabul qiladi, natijani shu yerda xabar qilamiz ⏳"
+        )
+
+    # ayni paytda holat o'zgargan bo'lsa, change_status False qaytaradi
+    if not await change_status(app["id"], old="voting", new=new):
+        return False
+
+    if new == "creator_review":
+        outcome = await _send_to_admins(bot, app, yes, no)
+        if outcome == RETRY:
+            # vaqtinchalik xato: ariza "voting" da qoladi (muddat tugagan, ovoz qabul qilinmaydi)
+            # va keyingi aylanishda hisobot qayta yuboriladi
+            await change_status(app["id"], old="creator_review", new="voting")
+            return False
+        if outcome == UNREACHABLE:
+            # adminlarga yetkazib bo'lmasa (/start bosmagan), ariza osilib qolmasligi uchun
+            # ko'pchilik ovoz hal qiladi (👍 ko'p bo'lsa qabul, aks holda rad)
+            new = "accepted" if yes > no else "rejected"
+            logger.warning(
+                "Ariza %s: adminlarga yuborib bo'lmadi, ko'pchilik ovoz bo'yicha hal qilindi: %s",
+                app["id"], new,
+            )
+            await change_status(app["id"], old="creator_review", new=new)
+            if new == "accepted":
+                result, note = "✅ Qabul qilindi", APPLICATION_ACCEPTED
+            else:
+                result, note = "❌ Rad etildi", None
+
+    logger.info("Ovoz berish yakunlandi: ariza %s -> %s (%s/%s)", app["id"], new, yes, no)
+
+    if new in ("accepted", "rejected", "expired"):
+        try:
+            if new == "accepted":
+                await bot.approve_chat_join_request(chat_id=app["group_id"], user_id=app["user_id"])
+            else:
+                await bot.decline_chat_join_request(chat_id=app["group_id"], user_id=app["user_id"])
+        except TelegramAPIError:
+            pass  # so'rov muddati o'tgan yoki foydalanuvchi allaqachon a'zo
+
+    if app["vote_message_id"]:
+        try:
+            await bot.delete_message(
+                chat_id=app["group_id"], message_id=app["vote_message_id"]
+            )
+        except TelegramAPIError:
+            # o'chirib bo'lmasa (xabar allaqachon o'chgan yoki huquq yo'q), natijani xabarga yozamiz
+            try:
+                await bot.edit_message_text(
+                    chat_id=app["group_id"],
+                    message_id=app["vote_message_id"],
+                    text=f"{app['anketa']}\n\n{result}",
+                )
+            except TelegramAPIError:
+                pass
+
+    # AI xulosasi eng oxirida: guruhdagi ish (so'rov, xabarni o'chirish) AI kutishiga bog'liq emas
+    if new == "rejected":
+        note = await rejection_note(app["id"])
+
+    try:
+        await safe_send(bot=bot, chat_id=app["user_id"], text=note)
+    except TelegramAPIError:
+        # flood limit/tarmoq: holat allaqachon yozilgan, qolgan arizalar to'xtab qolmasin
+        logger.warning("Ariza %s: foydalanuvchiga xabar yuborib bo'lmadi", app["id"])
+    return True

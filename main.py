@@ -10,6 +10,7 @@ from aiohttp import web
 from config import ADMIN_IDS, WEB_HOST, WEB_PORT, WEBHOOK_PATH, WEBHOOK_SECRET, WEBHOOK_URL
 from database import close_db, get_known_group_ids, init_db
 from handlers import get_routers
+from utils.ai import close_session as close_ai_session
 from utils.autodelete import AutoDeleteMiddleware, restore_pending_deletes
 from utils.commands import setup_group_commands, setup_private_commands
 from utils.create_bot import bot
@@ -76,8 +77,8 @@ async def main():
     await init_db()
     await setup_private_commands(bot)
     # yangi buyruqlar mavjud guruhlardagi admin menyusida ham chiqishi uchun
-    for group_id in await get_known_group_ids():
-        await setup_group_commands(bot, group_id)
+    # parallel: har bir chaqiruv ~0,4 s, ketma-ket qilinsa guruh/admin soniga ko'paya boradi
+    await asyncio.gather(*(setup_group_commands(bot, g) for g in await get_known_group_ids()))
     await restore_pending_deletes(bot)
     expiry_task = asyncio.create_task(run_expiry_loop(bot))
     try:
@@ -88,6 +89,7 @@ async def main():
             await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         expiry_task.cancel()
+        await close_ai_session()
         await close_db()
 
 
