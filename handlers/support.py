@@ -154,18 +154,23 @@ async def _notify_admins(bot: Bot, chat: dict, summary: str) -> int:
     return sum(r is True for r in results)
 
 
-async def _escalate(bot: Bot, chat: dict, summary: str, category: str) -> str | None:
-    """Adminlarga uzatadi; natija: "escalated" | "unavailable" | "limit" (None: allaqachon uzatilgan/yopilgan)."""
+async def _escalate(chat: dict, category: str) -> str | None:
+    """Uzatishni rasmiylashtiradi (holat "escalated"); natija: "escalated" | "limit" (None: allaqachon uzatilgan/yopilgan).
+
+    Adminlarga yuborish keyin, foydalanuvchi "yetkazildi" xabarini o'qigach: `_deliver`.
+    """
     if await count_recent_escalations(chat["user_id"], 24) >= MAX_ESCALATIONS_PER_DAY:
         return "limit" if await set_support_status(chat["id"], "active", "declined", "limit") else None
-    if not await set_support_status(chat["id"], "active", "escalated", category):
-        return None
-    if await _notify_admins(bot, chat, summary) == 0:
-        # hech bir adminga yetmadi: foydalanuvchiga "yubordim" deb aytib bo'lmaydi
-        logger.error("Support so'rovi hech bir adminga yetmadi (chat_id=%s, ADMIN_IDS=%s)", chat["id"], len(ADMIN_IDS))
-        await set_support_status(chat["id"], "escalated", "active")
-        return "unavailable"
-    return "escalated"
+    return "escalated" if await set_support_status(chat["id"], "active", "escalated", category) else None
+
+
+async def _deliver(bot: Bot, chat: dict, summary: str, lang: str) -> None:
+    """Xulosani adminlarga yuboradi (foydalanuvchiga "yetkazildi" deyilgandan KEYIN); hech kimga yetmasa, foydalanuvchiga aytadi."""
+    if await _notify_admins(bot, chat, summary) > 0:
+        return
+    logger.error("Support so'rovi hech bir adminga yetmadi (chat_id=%s, ADMIN_IDS=%s)", chat["id"], len(ADMIN_IDS))
+    await set_support_status(chat["id"], "escalated", "active")  # suhbat qayta ochiladi
+    await safe_send(bot, chat["user_id"], texts.SUPPORT_ADMIN_UNAVAILABLE[lang])
 
 
 async def _decline(chat: dict, category: str, close: bool) -> bool:
@@ -252,15 +257,16 @@ async def run_turn(bot: Bot, chat: dict) -> None:
     if escalate is not None:
         summary = str(escalate.get("summary") or "").strip() or _fallback_summary(messages)
         category = str(escalate.get("category") or "")
-        result = await _escalate(bot, chat, summary, category if category in FORWARD_CATEGORIES else "other")
+        result = await _escalate(chat, category if category in FORWARD_CATEGORIES else "other")
         if result is None:
             return
         outcome, fallback = {
             "escalated": (texts.SUPPORT_OUTCOME_ESCALATED, texts.SUPPORT_ESCALATED),
-            "unavailable": (texts.SUPPORT_OUTCOME_UNAVAILABLE, texts.SUPPORT_ADMIN_UNAVAILABLE),
             "limit": (texts.SUPPORT_OUTCOME_LIMIT, texts.SUPPORT_LIMIT),
         }[result]
         await _say(bot, chat, history, outcome, fallback, lang)  # AI matni emas, natijadan xabardor yangi javob
+        if result == "escalated":
+            await _deliver(bot, chat, summary, lang)  # avval foydalanuvchi "yetkazildi" deb o'qiydi, keyin admin oladi
         return
 
     if text:
