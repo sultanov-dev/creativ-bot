@@ -15,6 +15,7 @@ from aiogram.utils.chat_action import ChatActionSender
 import texts
 from config import ADMIN_IDS, SUPPORT_MAX_TURNS, SUPPORT_TTL_HOURS
 from database import (
+    get_pending_reason,
     add_support_message,
     add_support_warning,
     count_recent_escalations,
@@ -23,7 +24,7 @@ from database import (
     get_support_messages,
     set_support_status,
 )
-from utils.admin import safe_send
+from utils.admin import is_admin, safe_send
 from utils.autodelete import schedule_delete
 from utils.ai import AIError, ask_ai_tools
 from utils.ai_html import plain_text, sanitize_html
@@ -106,7 +107,20 @@ SUPPORT_TOOLS = [ESCALATE_TOOL, DECLINE_TOOL, RESOLVE_TOOL]
 # bir foydalanuvchining xabarlari ketma-ket ishlansin (AI javobi kelguncha yana yozsa, suhbat chalkashmasin)
 _locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
 _last_wait: dict[int, float] = {}
+_last_idle: dict[int, float] = {}
 _LAST_WAIT_MAX = 1000
+
+
+def _throttled(store: dict[int, float], user_id: int) -> bool:
+    """Bir foydalanuvchiga avtomatik eslatma daqiqada ko'pi bilan bir marta (takroriy xabarlarga javob yog'ilmasin)."""
+    now = time.monotonic()
+    if now - store.get(user_id, -WAIT_NOTICE_INTERVAL) < WAIT_NOTICE_INTERVAL:
+        return True
+    if len(store) >= _LAST_WAIT_MAX:
+        for uid in [u for u, t in store.items() if now - t >= WAIT_NOTICE_INTERVAL]:
+            del store[uid]
+    store[user_id] = now
+    return False
 
 
 def _fallback_summary(messages: list[dict]) -> str:
@@ -322,11 +336,25 @@ async def on_after_escalation(message: Message, chat: dict):
     """Uzatilgan suhbatda bot AI'ga yubormaydi: admin o'zi gaplashadi; takroriy xabarlarga kamdan-kam eslatadi."""
     if message.from_user is None or message.text is None:
         return
-    now = time.monotonic()
-    if now - _last_wait.get(message.from_user.id, -WAIT_NOTICE_INTERVAL) < WAIT_NOTICE_INTERVAL:
+    if _throttled(_last_wait, message.from_user.id):
         return
-    if len(_last_wait) >= _LAST_WAIT_MAX:
-        for uid in [u for u, t in _last_wait.items() if now - t >= WAIT_NOTICE_INTERVAL]:
-            del _last_wait[uid]
-    _last_wait[message.from_user.id] = now
     await message.answer(texts.SUPPORT_WAIT[detect_lang(message.text)])
+
+
+async def _idle_user(message: Message) -> bool:
+    """Faol suhbati yo'q oddiy foydalanuvchi (adminlar va "yo'q" ovoz sababini yozayotganlar bundan mustasno)."""
+    user = message.from_user
+    return user is not None and not is_admin(user.id) and await get_pending_reason(user.id) is None
+
+
+@router.message(F.text, ~F.text.startswith("/"), StateFilter(None), _idle_user)
+async def on_idle_message(message: Message, bot: Bot):
+    """Suhbat yopilgan (rad etilgan, hal bo'lgan, muddati o'tgan) yoki hech qachon ochilmagan: bot jim turmasin."""
+    if message.from_user is None or message.text is None or _throttled(_last_idle, message.from_user.id):
+        return
+    lang = detect_lang(message.text)
+    if await get_support_chat(message.from_user.id, "declined", DECLINE_COOLDOWN_HOURS) is not None:
+        await message.answer(texts.SUPPORT_DECLINED[lang])
+        return
+    me = await bot.me()
+    await message.answer(texts.SUPPORT_IDLE[lang].format(username=me.username))

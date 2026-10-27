@@ -189,6 +189,12 @@ SUPPORT_DECLINED_BY_CATEGORY = {
         "en": "Without knowing what you want to talk about I can't pass it to the admins. Please describe the matter clearly and try again 🙏",
     },
 }
+SUPPORT_IDLE = {
+    "uz": "Admin bilan gaplashish uchun guruhda botni belgilab yozing, masalan: @{username} admin bilan gaplashmoqchiman 👋",
+    "uz_cyr": "Админ билан гаплашиш учун гуруҳда ботни белгилаб ёзинг, масалан: @{username} админ билан гаплашмоқчиман 👋",
+    "ru": "Чтобы поговорить с администратором, упомяните бота в группе, например: @{username} хочу поговорить с админом 👋",
+    "en": "To talk to an admin, mention the bot in the group, for example: @{username} I want to talk to an admin 👋",
+}
 SUPPORT_REPHRASE = {
     "uz": "Iltimos, odobli yozing. Masalangizni qayta, hurmat bilan bayon qiling 🙏",
     "uz_cyr": "Илтимос, одобли ёзинг. Масалангизни қайта, ҳурмат билан баён қилинг 🙏",
