@@ -104,6 +104,27 @@ async def init_db() -> None:
             PRIMARY KEY (chat_id, message_id)
         );
 
+        -- foydalanuvchi admin bilan gaplashmoqchi bo'lganda lichkadagi AI suhbat
+        CREATE TABLE IF NOT EXISTS support_chats (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL,
+            group_id    INTEGER NOT NULL,
+            group_title TEXT,
+            full_name   TEXT NOT NULL,
+            tg_username TEXT,
+            status      TEXT NOT NULL DEFAULT 'active',  -- awaiting_start | active | escalated | resolved
+            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_support_chats_user ON support_chats (user_id, status);
+
+        CREATE TABLE IF NOT EXISTS support_messages (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            role    TEXT NOT NULL,  -- user | assistant
+            content TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS fsm (
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL,
@@ -504,12 +525,71 @@ async def reset_orphan_votings() -> int:
     return cur.rowcount
 
 
+async def create_support_chat(
+    user_id: int, group_id: int, group_title: str | None, full_name: str, tg_username: str | None, status: str
+) -> int:
+    db = await get_db()
+    cur = await db.execute(
+        "INSERT INTO support_chats (user_id, group_id, group_title, full_name, tg_username, status) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, group_id, group_title, full_name, tg_username, status),
+    )
+    await db.commit()
+    return cur.lastrowid
+
+
+async def get_support_chat(user_id: int, status: str, ttl_hours: int) -> dict | None:
+    """Foydalanuvchining shu holatdagi oxirgi suhbati (oxirgi xabaridan ttl_hours dan oshmagan)."""
+    db = await get_db()
+    cur = await db.execute(
+        "SELECT * FROM support_chats WHERE user_id = ? AND status = ? AND updated_at > datetime('now', ?) "
+        "ORDER BY id DESC LIMIT 1",
+        (user_id, status, f"-{ttl_hours} hours"),
+    )
+    row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def set_support_status(chat_id: int, old: str, new: str) -> bool:
+    """Atomik: faqat hozirgi holat old bo'lsa o'zgaradi (ikki marta uzatish/yopish bo'lmasin)."""
+    db = await get_db()
+    cur = await db.execute(
+        "UPDATE support_chats SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = ?",
+        (new, chat_id, old),
+    )
+    await db.commit()
+    return cur.rowcount > 0
+
+
+async def add_support_message(chat_id: int, role: str, content: str) -> None:
+    db = await get_db()
+    await db.execute(
+        "INSERT INTO support_messages (chat_id, role, content) VALUES (?, ?, ?)", (chat_id, role, content)
+    )
+    await db.execute("UPDATE support_chats SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (chat_id,))
+    await db.commit()
+
+
+async def get_support_messages(chat_id: int) -> list[dict]:
+    db = await get_db()
+    cur = await db.execute("SELECT role, content FROM support_messages WHERE chat_id = ? ORDER BY id", (chat_id,))
+    return [dict(r) for r in await cur.fetchall()]
+
+
 async def purge_old_data(days: int) -> int:
     """Rad etilgan/muddati o'tgan/ko'rib chiqilmagan/chiqarilgan arizalarni `days` kundan keyin shaxsiy ma'lumotlari
     (anketa, telefon, ovozlar, sabablar) bilan o'chiradi; boshqa arizasi qolmagan foydalanuvchining saqlangan anketasi ham o'chadi."""
     if days <= 0:
         return 0
     db = await get_db()
+    # lichkadagi AI suhbatlar ham shaxsiy ma'lumot: eskirgach o'chadi
+    await db.execute(
+        "DELETE FROM support_messages WHERE chat_id IN "
+        "(SELECT id FROM support_chats WHERE updated_at < datetime('now', ?))",
+        (f"-{days} days",),
+    )
+    await db.execute("DELETE FROM support_chats WHERE updated_at < datetime('now', ?)", (f"-{days} days",))
+    await db.commit()
     cur = await db.execute(
         "SELECT id, user_id FROM applications "
         "WHERE status IN ('rejected', 'expired', 'failed', 'removed') AND decided_at < datetime('now', ?)",

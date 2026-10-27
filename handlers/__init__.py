@@ -1,6 +1,6 @@
 from aiogram import Router
 
-from . import ads, admin, ai, anketa, decision, errors, group, join, profile, reason, start, vote
+from . import ads, admin, ai, anketa, decision, errors, group, join, profile, reason, start, support, vote
 
 
 def get_routers() -> list[Router]:
@@ -13,6 +13,7 @@ def get_routers() -> list[Router]:
         admin.router,
         vote.router,
         decision.router,
+        support.router,
         reason.router,
         group.router,
         group.strangers,

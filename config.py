@@ -48,6 +48,13 @@ API_URL = os.getenv("API_URL", "")
 API_TOKEN = os.getenv("API_TOKEN", "")
 API_MODEL = os.getenv("API_MODEL", "")
 
+# foydalanuvchi bilan lichkadagi AI suhbat: shuncha xabarda hal bo'lmasa, summary bilan adminlarga uzatiladi
+SUPPORT_MAX_TURNS = int(os.getenv("SUPPORT_MAX_TURNS") or 10)
+# lichkadagi suhbat shuncha soat jim tursa, yopiladi (ochiq so'rov ham shuncha vaqt kutadi)
+SUPPORT_TTL_HOURS = int(os.getenv("SUPPORT_TTL_HOURS") or 24)
+if SUPPORT_MAX_TURNS < 1 or SUPPORT_TTL_HOURS < 1:
+    raise ValueError("SUPPORT_MAX_TURNS va SUPPORT_TTL_HOURS kamida 1 bo'lishi kerak")
+
 # Webhook rejimi: WEBHOOK_URL berilsa (ochiq https manzil, masalan https://bot.example.uz), Telegram
 # yangilanishlarni shu manzilga yuboradi; berilmasa, bot long polling bilan ishlaydi.
 # TLS (https) ni oldidagi reverse proxy/ingress qiladi, bot ichkarida oddiy HTTP da WEB_HOST:WEB_PORT da tinglaydi.

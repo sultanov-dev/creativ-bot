@@ -81,7 +81,10 @@ AI_SYSTEM_PROMPT = (
     "Format the answer as Telegram HTML: use only <b>, <i>, <u>, <s>, <code>, <pre>, <a href> tags, "
     "write the characters <, > and & in plain text as &lt;, &gt;, &amp;. Do not use Markdown. "
     "Never use hyphen or dash characters (-, –, —) anywhere in the answer, in any language; "
-    "for lists use the • character or numbers."
+    "for lists use the • character or numbers. "
+    "If the user wants to talk to an admin, a moderator or the group owner (in any wording or language, "
+    "also indirectly: a complaint, a personal problem, a request only an admin can decide), "
+    "call the contact_admin tool and write no reply text: the bot will continue in a private chat."
 )
 AI_EMPTY = "Savolingizni yozing, masalan: @{username} bugun ob-havo qanday?"
 AI_TOO_LONG = {
@@ -103,3 +106,60 @@ AI_ERROR = {
     "ru": "Извините, сейчас я не могу ответить. Пожалуйста, попробуйте ещё раз чуть позже.",
     "en": "Sorry, I can't answer right now. Please try again in a little while.",
 }
+
+# lichkadagi suhbat: foydalanuvchi admin bilan gaplashmoqchi (handlers/support.py)
+SUPPORT_SYSTEM_PROMPT = (
+    "You are a friendly, polite assistant of a Telegram group, talking privately with a group member who wants "
+    "to talk to an admin. The first user message is what they wrote in the group (marked [Guruhdagi xabar]). "
+    "You understand Uzbek (Latin and Cyrillic), Russian and English completely, including slang and typos. "
+    "Always answer in the language of the user's latest message: Uzbek in the same script the user wrote in "
+    "(Latin if unclear), Russian in Russian, English in English. Address the user respectfully: «siz», «вы». "
+    "Your goal is to solve the user's problem YOURSELF as much as possible: ask short clarifying questions, "
+    "explain, suggest concrete solutions. Ask one thing at a time, keep every message brief. Do not invent facts, "
+    "rules or promises on behalf of the admins; say so if you do not know. "
+    "Call escalate_to_admin ONLY if the matter is serious and an admin must decide or act: a complaint about a member "
+    "or an admin, money or payment, abuse, threats or safety, a ban or access decision, something you cannot solve, "
+    "or the user insists on talking to a human admin after you tried to help. In summary write, in Uzbek, "
+    "what the user wants and all details the admin needs, so the admin does not have to ask again. "
+    "Call resolve when the problem is solved or the user has no more questions. "
+    "Format the answer as Telegram HTML: use only <b>, <i>, <u>, <s>, <code>, <pre>, <a href> tags, "
+    "write the characters <, > and & in plain text as &lt;, &gt;, &amp;. Do not use Markdown. "
+    "Never use hyphen or dash characters (-, –, —) anywhere in the answer, in any language; "
+    "for lists use the • character or numbers."
+)
+SUPPORT_LAST_TURN = (
+    "This is the final message of the conversation: the limit of messages is reached. Decide now. "
+    "If your answer solves the user's problem, write the final answer and call resolve. "
+    "If it is not solved, call escalate_to_admin with a full summary (in Uzbek) and tell the user briefly "
+    "that you are passing it to the admin. Do not ask further questions."
+)
+SUPPORT_START_FIRST = {
+    "uz": "Sizga shaxsiy xabar yoza olmayman. Avval botga o'tib /start bosing: {link} 👈",
+    "uz_cyr": "Сизга шахсий хабар ёза олмайман. Аввал ботга ўтиб /start босинг: {link} 👈",
+    "ru": "Я не могу написать вам в личные сообщения. Сначала откройте бота и нажмите /start: {link} 👈",
+    "en": "I can't message you privately yet. Please open the bot and press /start first: {link} 👈",
+}
+SUPPORT_ESCALATED = {
+    "uz": "Masalangizni adminga yubordim 🙏 Admin imkon qadar tezroq siz bilan o'zi bog'lanadi.",
+    "uz_cyr": "Масалангизни админга юбордим 🙏 Админ имкон қадар тезроқ сиз билан ўзи боғланади.",
+    "ru": "Я передал ваш вопрос администратору 🙏 Он свяжется с вами сам, как только сможет.",
+    "en": "I have passed your matter to an admin 🙏 They will contact you themselves as soon as possible.",
+}
+SUPPORT_WAIT = {
+    "uz": "Masalangiz adminga yuborilgan, admin javobini kuting ⏳",
+    "uz_cyr": "Масалангиз админга юборилган, админ жавобини кутинг ⏳",
+    "ru": "Ваш вопрос уже передан администратору, ожидайте ответа ⏳",
+    "en": "Your matter has already been sent to an admin, please wait for their reply ⏳",
+}
+SUPPORT_ADMIN_UNAVAILABLE = {
+    "uz": "Hozir adminga yetkaza olmadim. Iltimos, birozdan keyin qayta yozing.",
+    "uz_cyr": "Ҳозир админга етказа олмадим. Илтимос, бироздан кейин қайта ёзинг.",
+    "ru": "Сейчас не удалось передать администратору. Пожалуйста, напишите чуть позже.",
+    "en": "I couldn't reach an admin right now. Please write again a bit later.",
+}
+SUPPORT_ADMIN_NOTICE = (
+    "🆘 <b>Foydalanuvchi siz bilan gaplashmoqchi</b>\n"
+    "👤 <a href=\"tg://user?id={user_id}\">{name}</a>{username}\n"
+    "💬 Guruh: {group}\n\n"
+    "<b>Xulosa:</b>\n{summary}"
+)
