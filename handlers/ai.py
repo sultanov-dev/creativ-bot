@@ -1,10 +1,11 @@
+import asyncio
 import re
 import time
 from collections import OrderedDict
 
 from aiogram import Bot, F, Router
 from aiogram.enums import MessageEntityType
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.types import Message
 from aiogram.utils.chat_action import ChatActionSender
 
@@ -12,6 +13,7 @@ import texts
 from utils.ai import AIError, ask_ai
 from utils.ai_html import plain_text, sanitize_html
 from utils.autodelete import keep_messages
+from utils.lang import detect_lang
 
 router = Router()
 router.message.filter(F.chat.type.in_({"group", "supergroup"}))
@@ -75,6 +77,20 @@ async def _reply_part(message: Message, part: str) -> Message:
             return await message.reply(plain_text(part), parse_mode=None)
 
 
+async def _send_loading(message: Message, lang: str) -> Message:
+    # javob kelgach o'zimiz o'chiramiz, shuning uchun avto-o'chirish navbatiga qo'shilmaydi
+    with keep_messages():
+        return await message.reply(texts.AI_LOADING[lang])
+
+
+async def _remove_loading(task: "asyncio.Task[Message]") -> None:
+    """"Yuklanmoqda" xabarini o'chiradi (yuborilmagan yoki allaqachon o'chgan bo'lsa, jim o'tadi)."""
+    try:
+        await (await task).delete()
+    except TelegramAPIError:
+        pass
+
+
 @router.message(F.text, ~F.text.startswith("/"), addressed)
 async def on_ai_question(message: Message, bot: Bot):
     if message.from_user is None or message.text is None:
@@ -112,12 +128,19 @@ async def on_ai_question(message: Message, bot: Bot):
         question = f"Xabar: {quoted[:MAX_QUESTION]}\n\nSavol: {question}"
     history.append({"role": "user", "content": question})
 
+    # "yuklanmoqda" xabari AI so'rovi bilan parallel yuboriladi: javobni kechiktirmaydi
+    loading = asyncio.create_task(_send_loading(message, detect_lang(question)))
     try:
         async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
             answer = await ask_ai(history)
     except AIError:
+        await _remove_loading(loading)
         await message.reply(texts.AI_ERROR)
         raise
+    except BaseException:
+        loading.cancel()
+        raise
+    await _remove_loading(loading)
 
     for part in _split(answer)[:MAX_PARTS]:
         _remember(await _reply_part(message, part))

@@ -1,7 +1,7 @@
 """handlers/ai.py: guruhdagi AI yordamchi (mention yoki AI javobiga reply)."""
 import pytest
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.methods import SendMessage
+from aiogram.methods import DeleteMessage, SendMessage
 
 import handlers.ai as ai_handler
 import texts
@@ -36,8 +36,16 @@ async def say(dp, bot, text, *, user=USER, reply=None, mention_in_text=True):
     await feed(dp, bot, tf.group_message(user, text, reply_to=reply, entities=entities))
 
 
+LOADING_TEXTS = set(texts.AI_LOADING.values())
+
+
 def bot_replies(session):
-    return [m for m in session.of(SendMessage) if m.chat_id == G]
+    """Bot javoblari ("yuklanmoqda" xabarlarisiz)."""
+    return [m for m in session.of(SendMessage) if m.chat_id == G and m.text not in LOADING_TEXTS]
+
+
+def loading_messages(session):
+    return [m for m in session.of(SendMessage) if m.chat_id == G and m.text in LOADING_TEXTS]
 
 
 class TestTriggering:
@@ -178,12 +186,14 @@ class TestAnswerDelivery:
         calls = []
 
         def reject_once(m):
+            if m.text in LOADING_TEXTS:
+                return None
             calls.append(m)
             return TelegramBadRequest(method=m, message="Bad Request: can't parse entities") if len(calls) == 1 else None
 
         session.errors[SendMessage] = reject_once
         await say(dp, bot, f"{BOT} savol")
-        sent = session.of(SendMessage)
+        sent = [m for m in session.of(SendMessage) if m.text not in LOADING_TEXTS]
         assert len(sent) == 2 and sent[1].text == "qalin matn" and sent[1].parse_mode is None
 
     async def test_long_answer_is_split_into_at_most_two_messages(self, dp, bot, session, fake_ai):
@@ -249,3 +259,60 @@ class TestFailures:
         text = f"{BOT} @{tf.BOT_USERNAME}_x ni qanday topaman?"
         await feed(dp, bot, tf.group_message(USER, text, entities=[tf.mention(text)]))
         assert f"@{tf.BOT_USERNAME}_x" in fake_ai.calls[0][-1]["content"]
+
+
+class TestLoadingState:
+    @pytest.mark.parametrize("question,lang", [
+        ("bugun ob-havo qanday?", "uz"),
+        ("Привет, как дела? Расскажи про Python", "ru"),
+        ("What is the weather today?", "en"),
+        ("Бугун об-ҳаво қандай?", "uz_cyr"),
+        ("123 ???", "uz"),
+    ])
+    async def test_loading_text_matches_question_language(self, dp, bot, session, fake_ai, question, lang):
+        await say(dp, bot, f"{BOT} {question}")
+        loading = loading_messages(session)
+        assert [m.text for m in loading] == [texts.AI_LOADING[lang]]
+        assert loading[0].reply_parameters is not None  # savolga reply
+
+    async def test_loading_is_shown_before_answer_and_removed_after(self, dp, bot, session, fake_ai):
+        await say(dp, bot, f"{BOT} salom")
+        sent = [m for m in session.of(SendMessage) if m.chat_id == G]
+        assert sent[0].text in LOADING_TEXTS and sent[1].text == "Javob matni"
+        deleted = [m for m in session.of(DeleteMessage) if m.chat_id == G]
+        assert len(deleted) == 1  # faqat "yuklanmoqda" xabari o'chdi, javob qoldi
+        assert bot_replies(session)[0].text == "Javob matni"
+
+    async def test_loading_removed_when_ai_fails(self, dp, bot, session, fake_ai):
+        fake_ai.state["error"] = AIError("down")
+        await say(dp, bot, f"{BOT} salom")
+        assert len([m for m in session.of(DeleteMessage) if m.chat_id == G]) == 1
+        assert bot_replies(session)[0].text == texts.AI_ERROR
+
+    async def test_failed_loading_message_does_not_break_the_answer(self, dp, bot, session, fake_ai):
+        def only_loading_fails(m):
+            return TelegramBadRequest(method=m, message="x") if m.text in LOADING_TEXTS else None
+
+        session.errors[SendMessage] = only_loading_fails
+        await say(dp, bot, f"{BOT} salom")
+        assert bot_replies(session)[0].text == "Javob matni"
+        assert not session.of(DeleteMessage)
+
+    async def test_no_loading_for_rejected_questions(self, dp, bot, session, fake_ai):
+        await say(dp, bot, f"{BOT}")
+        assert not loading_messages(session)
+
+
+class TestDetectLang:
+    @pytest.mark.parametrize("text,lang", [
+        ("salom, bu nima?", "uz"),
+        ("o'zbekiston haqida ayt", "uz"),
+        ("tell me how to write code", "en"),
+        ("помоги мне с кодом", "ru"),
+        ("менга ёрдам беринг", "uz_cyr"),
+        ("", "uz"),
+    ])
+    def test_detect(self, text, lang):
+        from utils.lang import detect_lang
+
+        assert detect_lang(text) == lang

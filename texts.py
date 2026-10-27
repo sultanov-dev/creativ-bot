@@ -86,4 +86,11 @@ AI_SYSTEM_PROMPT = (
 AI_EMPTY = "Savolingizni yozing, masalan: @{username} bugun ob-havo qanday?"
 AI_TOO_LONG = "Kechirasiz, savol juda uzun. Iltimos, 2000 belgidan oshirmay, qisqaroq yozing ✍️"
 AI_COOLDOWN = "Biroz sabr qiling, oldingi savolingiz hali ishlanmoqda ⏳"
+# AI javobi kelguncha ko'rsatiladigan xabar: savol qaysi tilda bo'lsa, shu tilda (utils/lang.detect_lang)
+AI_LOADING = {
+    "uz": "⏳ Javob tayyorlanmoqda…",
+    "uz_cyr": "⏳ Жавоб тайёрланмоқда…",
+    "ru": "⏳ Готовлю ответ…",
+    "en": "⏳ Preparing the answer…",
+}
 AI_ERROR = "Kechirasiz, hozir javob bera olmayapman. Iltimos, birozdan keyin qayta urinib ko'ring."
