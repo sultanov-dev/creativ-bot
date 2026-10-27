@@ -1,10 +1,13 @@
 import asyncio
 import json
+import logging
 from urllib.parse import urlsplit
 
 import aiohttp
 
 from config import API_MODEL, API_TOKEN, API_URL
+
+logger = logging.getLogger(__name__)
 
 TIMEOUT = aiohttp.ClientTimeout(total=60)
 
@@ -111,6 +114,11 @@ async def ask_ai_tools(
         calls.append((function["name"], args if isinstance(args, dict) else {}))
 
     text = (message.get("content") or "").strip()
+    # tool'lar berilgan, lekin AI chaqirmadimi, yoki API `tools` ni umuman qo'llamadimi: shu qator ko'rsatadi
+    logger.info(
+        "AI tool calling: yuborilgan tool'lar=%s, chaqirilgan=%s, matn=%s belgi",
+        [t["function"]["name"] for t in tools], [n for n, _ in calls], len(text),
+    )
     if not text and not calls:
         raise AIError("AI API bo'sh javob qaytardi")
     return text, calls
