@@ -19,9 +19,9 @@ async def state_of(dp, bot, user=U):
 
 
 async def rejoin(dp, bot, session, group=tf.GROUP_ID):
-    """Birinchi ariza rad etilgan, foydalanuvchi qayta qo'shilish so'rovi yuboradi."""
+    """Birinchi ariza muddati o'tgan (rad etilmagan), foydalanuvchi qayta qo'shilish so'rovi yuboradi."""
     first = await start_application(dp, bot, user_id=U)
-    await dbm.change_status(first, "pending", "rejected")
+    await dbm.change_status(first, "pending", "expired")
     session.clear()
     await feed(dp, bot, tf.join_request(U, group))
     return first
@@ -42,7 +42,7 @@ class TestReview:
     async def test_review_shows_phone_to_its_owner(self, dp, bot, session):
         first = await start_application(dp, bot, answers=["Aziz Karimov", "+998901234567",
                                                           "25", "j", "a", "s"])
-        await dbm.change_status(first, "pending", "rejected")
+        await dbm.change_status(first, "pending", "expired")
         session.clear()
         await feed(dp, bot, tf.join_request(U))
         assert "+998901234567" in session.sent_to(U)[0].text
@@ -89,7 +89,7 @@ class TestKeep:
     async def test_group_message_has_no_phone(self, dp, bot, session):
         first = await start_application(dp, bot, answers=["Aziz Karimov", "+998901234567",
                                                           "25", "j", "a", "s"])
-        await dbm.change_status(first, "pending", "rejected")
+        await dbm.change_status(first, "pending", "expired")
         await feed(dp, bot, tf.join_request(U))
         session.clear()
         await feed(dp, bot, tf.private_message(U, texts.PROFILE_KEEP_BUTTON))
@@ -217,7 +217,7 @@ class TestEdit:
 
     async def test_clearing_optional_field_by_skip(self, dp, bot, session):
         first = await start_application(dp, bot, answers=["Aziz Karimov", "+998901234567", "25", "j", "a", "s"])
-        await dbm.change_status(first, "pending", "rejected")
+        await dbm.change_status(first, "pending", "expired")
         await feed(dp, bot, tf.join_request(U))
         await feed(dp, bot, tf.private_message(U, texts.PROFILE_EDIT_BUTTON))
         await feed(dp, bot, tf.private_message(U, FIELD_LABELS["phone"]))
@@ -256,6 +256,6 @@ class TestEdit:
     async def test_status_after_keep_is_not_stuck_pending(self, dp, bot, session):
         first = await rejoin(dp, bot, session)
         await feed(dp, bot, tf.private_message(U, texts.PROFILE_KEEP_BUTTON))
-        assert await status_of(first) == "rejected"
+        assert await status_of(first) == "expired"
         app = await dbm.get_active_application(U, tf.GROUP_ID)
         assert app["id"] != first

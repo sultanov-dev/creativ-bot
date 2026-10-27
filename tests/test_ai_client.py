@@ -44,6 +44,7 @@ async def fake_ai(monkeypatch):
     await server.start_server()
     monkeypatch.setattr(ai_mod, "API_URL", f"http://127.0.0.1:{server.port}/v1/chat/completions")
     yield fake
+    await ai_mod.close_session()
     await server.close()
 
 

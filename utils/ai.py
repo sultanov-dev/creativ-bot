@@ -48,14 +48,15 @@ async def close_session() -> None:
     _session = None
 
 
-async def ask_ai(messages: list[dict[str, str]]) -> str:
+async def ask_ai(messages: list[dict[str, str]], *, max_tokens: int | None = None) -> str:
     """OpenAI formatidagi chat/completions so'rovi; javob matnini qaytaradi."""
     try:
+        url = _endpoint()  # sessiyadan oldin: noto'g'ri URL bo'lsa, ortiqcha sessiya ochilmasin
         async with _get_session().post(
-            _endpoint(),
+            url,
             json={
                 "messages": messages,
-                "max_tokens": MAX_TOKENS,
+                "max_tokens": max_tokens or MAX_TOKENS,
                 **({"model": API_MODEL} if API_MODEL else {}),
             },
             headers={"Authorization": f"Bearer {API_TOKEN}"},

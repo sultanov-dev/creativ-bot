@@ -49,12 +49,48 @@ class TestJoinRequest:
         await feed(dp, bot, tf.join_request(U, chat_id=tf.GROUP_ID - 1))
         assert (await state_of(dp, bot))[0] == Form.full_name.state
 
-    async def test_rejoin_after_rejection_starts_fresh_application(self, dp, bot, session):
+    async def test_rejoin_after_rejection_asks_everything_again(self, dp, bot, session):
+        first = await start_application(dp, bot)
+        await dbm.change_status(first, "pending", "rejected")  # admin/ovoz/yakuniy qaror: oxirgi holat shu
+        session.clear()
+        await feed(dp, bot, tf.join_request(U))
+        # eski ma'lumotlar ko'rsatilmaydi: qisqa xabar va anketa boshidan
+        assert session.texts_to(U) == [texts.REJOIN_AFTER_REJECTION, texts.ASK_FULL_NAME]
+        state, data = await state_of(dp, bot)
+        assert state == Form.full_name.state and "full_name" not in data and "age" not in data
+        assert not any("Ma'lumotlaringiz" in t for t in session.texts_to(U))
+
+    async def test_rejected_user_can_apply_again_and_new_answers_replace_the_profile(self, dp, bot, session):
+        first = await start_application(dp, bot)
+        await dbm.change_status(first, "pending", "rejected")
+        second = await start_application(dp, bot, answers=["Bobur Aliyev", texts.SKIP_BUTTON, "33", "Dizayner",
+                                                           "Yangi", "Sabab"])
+        assert second is not None and second != first
+        profile = await dbm.get_profile(U)
+        assert profile["full_name"] == "Bobur Aliyev" and profile["age"] == 33
+
+    async def test_expired_application_still_shows_saved_profile(self, dp, bot, session):
+        first = await start_application(dp, bot)
+        await dbm.change_status(first, "pending", "expired")
+        session.clear()
+        await feed(dp, bot, tf.join_request(U))
+        assert (await state_of(dp, bot))[0] == Form.review.state
+        assert texts.REJOIN_AFTER_REJECTION not in session.texts_to(U)
+
+    async def test_rejection_is_per_group(self, dp, bot, session):
         first = await start_application(dp, bot)
         await dbm.change_status(first, "pending", "rejected")
         session.clear()
+        await feed(dp, bot, tf.join_request(U, tf.GROUP_ID - 9))  # boshqa guruh: u yerda rad etilmagan
+        assert (await state_of(dp, bot))[0] == Form.review.state
+
+    async def test_only_the_latest_application_counts(self, dp, bot, session):
+        first = await start_application(dp, bot)
+        await dbm.change_status(first, "pending", "rejected")
+        second = await start_application(dp, bot, answers=ANSWERS)
+        await dbm.change_status(second, "pending", "expired")  # oxirgisi rad etilmagan
+        session.clear()
         await feed(dp, bot, tf.join_request(U))
-        # profil saqlangan: savollar o'rniga ko'rib chiqish
         assert (await state_of(dp, bot))[0] == Form.review.state
 
     async def test_second_join_request_mid_questionnaire_restarts_it(self, dp, bot, session):

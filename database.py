@@ -403,3 +403,14 @@ async def get_pending_deletes() -> list[dict]:
     db = await get_db()
     cur = await db.execute("SELECT chat_id, message_id, delete_at FROM pending_deletes")
     return [dict(r) for r in await cur.fetchall()]
+
+
+async def last_application_status(user_id: int, group_id: int) -> str | None:
+    """Foydalanuvchining shu guruhdagi oxirgi arizasi holati (yo'q bo'lsa None)."""
+    db = await get_db()
+    cur = await db.execute(
+        "SELECT status FROM applications WHERE user_id = ? AND group_id = ? ORDER BY id DESC LIMIT 1",
+        (user_id, group_id),
+    )
+    row = await cur.fetchone()
+    return row["status"] if row else None

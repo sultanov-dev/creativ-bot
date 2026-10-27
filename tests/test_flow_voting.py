@@ -361,6 +361,32 @@ class TestReasonCapture:
         await feed(dp, bot, tf.private_message(M[0], texts.SKIP_BUTTON))
         assert (await dbm.get_no_votes(app_id))[0]["reason"] == texts.SKIP_BUTTON
 
+    async def test_abusive_reason_is_refused_and_can_be_rewritten(self, dp, bot, session, monkeypatch):
+        async def fake(text):
+            return "SOKINISH" in text
+
+        monkeypatch.setattr("handlers.reason.is_abusive", fake)
+        app_id = await self._no_vote(dp, bot)
+        session.clear()
+        await feed(dp, bot, tf.private_message(M[0], "SOKINISH"))
+        assert session.texts_to(M[0]) == [texts.MODERATION_WARNING]
+        assert (await dbm.get_no_votes(app_id))[0]["reason"] is None  # saqlanmadi, hali so'raladi
+        await feed(dp, bot, tf.private_message(M[0], "anketa qisqa"))
+        assert (await dbm.get_no_votes(app_id))[0]["reason"] == "anketa qisqa"
+
+    async def test_admin_skip_button_is_not_sent_to_moderation(self, dp, bot, session, monkeypatch):
+        calls = []
+
+        async def spy(text):
+            calls.append(text)
+            return False
+
+        monkeypatch.setattr("handlers.reason.is_abusive", spy)
+        app_id = await voting_app(dp, bot)
+        await cast(dp, bot, tf.ADMIN_ID, "no", app_id)
+        await feed(dp, bot, tf.private_message(tf.ADMIN_ID, texts.SKIP_BUTTON))
+        assert calls == []
+
     async def test_reason_after_voting_ended_is_not_accepted(self, dp, bot, session):
         app_id = await self._no_vote(dp, bot)
         await expire_voting(app_id)

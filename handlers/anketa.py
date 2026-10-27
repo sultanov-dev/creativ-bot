@@ -16,6 +16,7 @@ from states import Form
 from texts import (
     ALREADY_APPLIED,
     ERROR_GENERIC,
+    MODERATION_WARNING,
     ONLY_TEXT,
     SKIP_BUTTON,
     THANKS,
@@ -27,6 +28,7 @@ from texts import (
 )
 from utils.admin import safe_send
 from utils.form_anketa import PROFILE_FIELDS, format_anketa, full_name_of
+from utils.moderation import is_abusive
 from utils.num_matcher import extract_number
 from utils.questions import ask
 
@@ -78,6 +80,10 @@ async def capture_full_name(message: Message, bot: Bot, state: FSMContext):
         await message.reply(WRONG_NAME)
         return
 
+    if await is_abusive(name):
+        await message.reply(MODERATION_WARNING)
+        return
+
     await state.update_data(full_name=name)
     await _advance(message, bot, state, Form.phone)
 
@@ -120,6 +126,10 @@ async def capture_job(message: Message, bot: Bot, state: FSMContext):
         await message.reply(TOO_LONG)
         return
 
+    if await is_abusive(message.text or ""):
+        await message.reply(MODERATION_WARNING)
+        return
+
     await state.update_data(job=message.text)
     await _advance(message, bot, state, Form.about)
 
@@ -130,6 +140,10 @@ async def capture_about(message: Message, bot: Bot, state: FSMContext):
         await message.reply(TOO_LONG)
         return
 
+    if await is_abusive(message.text or ""):
+        await message.reply(MODERATION_WARNING)
+        return
+
     await state.update_data(about=message.text)
     await _advance(message, bot, state, Form.join_group)
 
@@ -138,6 +152,10 @@ async def capture_about(message: Message, bot: Bot, state: FSMContext):
 async def capture_join_group(message: Message, bot: Bot, state: FSMContext):
     if len(message.text or "") > MAX_ANSWER_LEN:
         await message.reply(TOO_LONG)
+        return
+
+    if await is_abusive(message.text or ""):
+        await message.reply(MODERATION_WARNING)
         return
 
     await state.update_data(join_group=message.text)

@@ -1,5 +1,7 @@
 ASK_FULL_NAME = "Ism va familiyangizni yozing, masalan: Aziz Karimov."
 ASK_PHONE = "Telefon raqamingiz?"
+REJOIN_AFTER_REJECTION = "Avvalgi arizangiz rad etilgan edi. Anketani yangidan to'ldiring."
+MODERATION_WARNING = "Kechirasiz, matnda nomaqbul so'zlar bor. Iltimos, hurmat bilan qayta yozing."
 SKIP_BUTTON = "⏭ O'tkazib yuborish"
 PHONE_BUTTON = "📱 Raqamni ulashish"
 WRONG_NAME = (
