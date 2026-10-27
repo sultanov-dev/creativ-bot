@@ -137,8 +137,12 @@ SUPPORT_SYSTEM_PROMPT = (
     "scam, spam, no_purpose, or unclear (you asked two clarifying questions and it is still not clear). "
     "The category must describe the FINAL matter: once the user has told what it is about, never use no_purpose "
     "(for example betting or casino advertising is prohibited_ad). "
-    "When you call decline or escalate_to_admin, the bot sends its own fixed message to the user and ignores your "
-    "reply text, so never write that you pass something to the admins unless you call escalate_to_admin. "
+    "When you call decline or escalate_to_admin leave the reply empty: the bot executes it, tells you the result "
+    "and then you write the final reply. decline does NOT end the conversation: the user may keep talking and tell "
+    "another matter, so keep chatting naturally. Think yourself about what to write to every message; never repeat "
+    "the same refusal. If the user's message is vague (for example just 'a personal matter'), ask in a friendly way "
+    "what exactly it is. In your first message refer to what the user wrote in the group. Never claim that something "
+    "was passed to the admins unless escalate_to_admin was executed. "
     "Never forward doubtful matters: ask, and if it stays doubtful, decline. "
     "If a legitimate complaint is written rudely, ask the user to restate it politely before escalating. "
     "In summary write, in Uzbek, a calm, factual and positive account of what the user wants and all details the "
@@ -174,7 +178,31 @@ SUPPORT_DECLINED = {
     "ru": "Извините, я не могу передать этот вопрос администратору. Если есть другой вопрос, пишите 🙏",
     "en": "Sorry, I can't pass this on to the admins. If you have another question, just write 🙏",
 }
-# decline: foydalanuvchiga AI matni emas, shu qat'iy matn yuboriladi (AI "adminga yuboraman" deb yozib qo'ymasin)
+# qaror bajarilgach AI'ga aytiladigan natija: u yakuniy javobni shunga mos o'zi yozadi (utils/support: _say)
+_PLAIN = " Reply with plain text only (no JSON, no tool calls)."
+SUPPORT_OUTCOME_DECLINED = (
+    "Result: decline was executed, the matter was NOT passed to the admins. The conversation continues. "
+    "Write your reply to the user now: kindly say that this cannot be passed to the admins and briefly why, without "
+    "accusing, and invite them to tell another matter if they have one. Never say anything was passed to the admins."
+    + _PLAIN
+)
+SUPPORT_OUTCOME_CLOSED = (
+    "Result: the conversation is closed and the matter was NOT passed to the admins. Write one short polite closing "
+    "reply to the user. Never say anything was passed to the admins." + _PLAIN
+)
+SUPPORT_OUTCOME_ESCALATED = (
+    "Result: escalate_to_admin was executed, the admins received your summary. Write one short reply: confirm that "
+    "the admins received it and will contact the user personally." + _PLAIN
+)
+SUPPORT_OUTCOME_UNAVAILABLE = (
+    "Result: the admins could not be reached right now and nothing was passed. Write one short reply: say that you "
+    "could not reach them and the user should write again later." + _PLAIN
+)
+SUPPORT_OUTCOME_LIMIT = (
+    "Result: the daily limit of messages to the admins is reached and nothing was passed. Write one short reply: "
+    "tell the user to write tomorrow." + _PLAIN
+)
+# zaxira: AI yakuniy javobni yoza olmasa
 SUPPORT_DECLINED_BY_CATEGORY = {
     "prohibited_ad": {
         "uz": "Kechirasiz, bunday reklama guruhimizda qabul qilinmaydi va adminga yetkazilmaydi 🙏",

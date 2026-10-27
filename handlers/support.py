@@ -26,7 +26,7 @@ from database import (
 )
 from utils.admin import is_admin, safe_send
 from utils.autodelete import schedule_delete
-from utils.ai import AIError, ask_ai_tools
+from utils.ai import AIError, ask_ai, ask_ai_tools
 from utils.ai_html import plain_text, sanitize_html
 from utils.lang import detect_lang
 from utils.moderation import is_abusive
@@ -152,36 +152,47 @@ async def _notify_admins(bot: Bot, chat: dict, summary: str) -> int:
     return sum(r is True for r in results)
 
 
-async def _escalate(bot: Bot, chat: dict, summary: str, category: str, lang: str) -> None:
+async def _escalate(bot: Bot, chat: dict, summary: str, category: str) -> str | None:
+    """Adminlarga uzatadi; natija: "escalated" | "unavailable" | "limit" (None: allaqachon uzatilgan/yopilgan)."""
     if await count_recent_escalations(chat["user_id"], 24) >= MAX_ESCALATIONS_PER_DAY:
-        if await set_support_status(chat["id"], "active", "declined", "limit"):
-            await safe_send(bot, chat["user_id"], texts.SUPPORT_LIMIT[lang])
-        return
+        return "limit" if await set_support_status(chat["id"], "active", "declined", "limit") else None
     if not await set_support_status(chat["id"], "active", "escalated", category):
-        return  # allaqachon uzatilgan yoki yopilgan
+        return None
     if await _notify_admins(bot, chat, summary) == 0:
         # hech bir adminga yetmadi: foydalanuvchiga "yubordim" deb aytib bo'lmaydi
         logger.error("Support so'rovi hech bir adminga yetmadi (chat_id=%s, ADMIN_IDS=%s)", chat["id"], len(ADMIN_IDS))
         await set_support_status(chat["id"], "escalated", "active")
-        await safe_send(bot, chat["user_id"], texts.SUPPORT_ADMIN_UNAVAILABLE[lang])
-        return
-    await safe_send(bot, chat["user_id"], texts.SUPPORT_ESCALATED[lang])
+        return "unavailable"
+    return "escalated"
 
 
-async def _decline(bot: Bot, chat: dict, category: str, lang: str, text: str = "") -> None:
-    """Admin ko'rmaydigan masala: suhbat yopiladi, turi bazada saqlanadi (AI xatosini keyin ko'rish uchun).
+async def _decline(chat: dict, category: str, close: bool) -> bool:
+    """Masala adminga yetkazilmaydi; turi bazada saqlanadi (AI xatosini keyin ko'rish uchun).
 
-    Foydalanuvchiga AI matni emas, kategoriyaga mos qat'iy matn yuboriladi: AI "adminga yuboraman" deb yozib,
-    aslida hech narsa yuborilmagan bo'lmasin. `text` faqat AI qaror bermagan (limit/xato) holat uchun.
+    close=False: suhbat davom etadi (foydalanuvchi boshqa masala aytishi mumkin); close=True (limit, haqorat): yopiladi.
     """
-    if not await set_support_status(chat["id"], "active", "declined", category):
+    if not await set_support_status(chat["id"], "active", "declined" if close else "active", category):
+        return False
+    logger.info("Support so'rovi adminga yetkazilmadi (chat_id=%s, kategoriya=%s, yopildi=%s)", chat["id"], category, close)
+    return True
+
+
+async def _say(bot: Bot, chat: dict, history: list[dict], outcome: str, fallback: dict[str, str], lang: str) -> None:
+    """Qaror bajarilgach AI yakuniy javobni natijadan xabardor holda o'zi yozadi: matn har doim bajarilgan ish bilan mos.
+
+    AI yoza olmasa, tayyor zaxira matn yuboriladi.
+    """
+    try:
+        text = await ask_ai([*history, {"role": "system", "content": outcome}])
+    except AIError as e:
+        logger.warning("Support yakuniy javobini AI yozmadi, zaxira matn yuborildi: %r", e)
+        await safe_send(bot, chat["user_id"], fallback[lang])
         return
-    logger.info("Support so'rovi adminga yetkazilmadi (chat_id=%s, kategoriya=%s)", chat["id"], category)
-    if text:
+    try:
         await _send(bot, chat["user_id"], text)
-    else:
-        notice = texts.SUPPORT_DECLINED_BY_CATEGORY.get(category, texts.SUPPORT_DECLINED)
-        await safe_send(bot, chat["user_id"], notice[lang])
+    except (TelegramForbiddenError, TelegramBadRequest):
+        return
+    await add_support_message(chat["id"], "assistant", text)
 
 
 async def _accept(bot: Bot, chat: dict, text: str, lang: str) -> bool:
@@ -190,8 +201,8 @@ async def _accept(bot: Bot, chat: dict, text: str, lang: str) -> bool:
         return True
     if await add_support_warning(chat["id"]) == 1:
         await safe_send(bot, chat["user_id"], texts.SUPPORT_REPHRASE[lang])
-    else:
-        await _decline(bot, chat, "abuse", lang)
+    elif await _decline(chat, "abuse", close=True):
+        await safe_send(bot, chat["user_id"], texts.SUPPORT_DECLINED[lang])
     return False
 
 
@@ -214,7 +225,7 @@ async def run_turn(bot: Bot, chat: dict) -> None:
     except AIError:
         if not last:
             raise
-        text, calls = "", []  # limitga yetgan suhbat AI xatosi tufayli osilib qolmasin: rad etiladi
+        text, calls = "", []  # limitga yetgan suhbat AI xatosi tufayli osilib qolmasin: yopiladi
 
     lang = detect_lang(next((m["content"] for m in reversed(messages) if m["role"] == "user"), ""))
     decline = next((a for n, a in calls if n == "decline"), None)
@@ -227,13 +238,27 @@ async def run_turn(bot: Bot, chat: dict) -> None:
     if decline is not None:  # ikkalasi bo'lsa, xavfsizi: adminga yubormaymiz
         category = str(decline.get("category") or "")
         category = category if category in DECLINE_CATEGORIES else "unclear"
-        await _decline(bot, chat, category, lang, text if implicit and text else "")
+        if not await _decline(chat, category, close=last):
+            return
+        if implicit and text:
+            await _send(bot, chat["user_id"], text)  # AI qaror bermadi, lekin oxirgi javobini yozgan
+            return
+        outcome = texts.SUPPORT_OUTCOME_CLOSED if last else texts.SUPPORT_OUTCOME_DECLINED
+        fallback = texts.SUPPORT_DECLINED_BY_CATEGORY.get(category, texts.SUPPORT_DECLINED)
+        await _say(bot, chat, history, outcome, fallback, lang)
         return
     if escalate is not None:
-        # AI matni yuborilmaydi: foydalanuvchi faqat bot haqiqatan nima qilganini o'qiydi (_escalate)
         summary = str(escalate.get("summary") or "").strip() or _fallback_summary(messages)
         category = str(escalate.get("category") or "")
-        await _escalate(bot, chat, summary, category if category in FORWARD_CATEGORIES else "other", lang)
+        result = await _escalate(bot, chat, summary, category if category in FORWARD_CATEGORIES else "other")
+        if result is None:
+            return
+        outcome, fallback = {
+            "escalated": (texts.SUPPORT_OUTCOME_ESCALATED, texts.SUPPORT_ESCALATED),
+            "unavailable": (texts.SUPPORT_OUTCOME_UNAVAILABLE, texts.SUPPORT_ADMIN_UNAVAILABLE),
+            "limit": (texts.SUPPORT_OUTCOME_LIMIT, texts.SUPPORT_LIMIT),
+        }[result]
+        await _say(bot, chat, history, outcome, fallback, lang)  # AI matni emas, natijadan xabardor yangi javob
         return
 
     if text:
