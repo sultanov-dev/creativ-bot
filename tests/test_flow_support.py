@@ -247,6 +247,50 @@ class TestPolicyPrompt:
         assert [t["function"]["name"] for t in support.SUPPORT_TOOLS] == ["escalate_to_admin", "decline", "resolve"]
 
 
+class TestIdleReplies:
+    """Suhbat yopilgan yoki ochilmagan: bot jim turmaydi."""
+
+    @pytest.fixture(autouse=True)
+    def _reset(self):
+        support._last_idle.clear()
+        yield
+        support._last_idle.clear()
+
+    async def test_user_without_a_chat_gets_the_how_to_hint(self, dp, bot, session):
+        await dm(dp, bot, "salom")
+        assert session.texts_to(USER) == [texts.SUPPORT_IDLE["uz"].format(username=tf.BOT_USERNAME)]
+
+    async def test_declined_user_keeps_getting_the_refusal_not_silence(self, dp, bot, session, group_ai, dm_ai):
+        await start_chat(dp, bot, group_ai, dm_ai)
+        dm_ai.answer = ""
+        dm_ai.tool_calls = [("decline", {"category": "indecent"})]
+        await dm(dp, bot, "nomaqul taklif")
+        session.clear()
+        await dm(dp, bot, "shaxsiy ishim bor")
+        assert session.texts_to(USER) == [texts.SUPPORT_DECLINED["uz"]]
+        assert not admin_notices(session)
+
+    async def test_replies_are_throttled_to_one_per_minute(self, dp, bot, session):
+        await dm(dp, bot, "salom")
+        await dm(dp, bot, "aloo")
+        assert len(session.texts_to(USER)) == 1
+        support._last_idle[USER] -= support.WAIT_NOTICE_INTERVAL + 1
+        await dm(dp, bot, "aloo")
+        assert len(session.texts_to(USER)) == 2
+
+    async def test_resolved_chat_user_gets_the_hint(self, dp, bot, session, group_ai, dm_ai):
+        await start_chat(dp, bot, group_ai, dm_ai)
+        dm_ai.answer, dm_ai.tool_calls = "Marhamat!", [("resolve", {})]
+        await dm(dp, bot, "rahmat")
+        session.clear()
+        await dm(dp, bot, "yana savol bor")
+        assert session.texts_to(USER) == [texts.SUPPORT_IDLE["uz"].format(username=tf.BOT_USERNAME)]
+
+    async def test_bot_admins_are_not_answered(self, dp, bot, session):
+        await feed(dp, bot, tf.private_message(ADMIN_IDS[0], "salom"))
+        assert not session.texts_to(ADMIN_IDS[0])
+
+
 class TestLimit:
     @pytest.fixture(autouse=True)
     def _small_limit(self, monkeypatch: pytest.MonkeyPatch):

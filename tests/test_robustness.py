@@ -162,8 +162,9 @@ class TestReasonCapture:
 
     async def test_reply_is_stored_once_and_commands_are_not_reasons(self, dp: Dispatcher, bot: Bot, session: FakeSession) -> None:
         app_id = await self._no_vote(dp, bot)
-        await feed(dp, bot, tf.private_message(M[1], "salom"))  # kutilayotgan ovozi yo'q: e'tiborsiz
-        assert session.requests == []
+        await feed(dp, bot, tf.private_message(M[1], "salom"))  # kutilayotgan ovozi yo'q: sabab sifatida e'tiborsiz
+        assert await only_reason(app_id) is None
+        assert session.texts_to(M[1]) == [texts.SUPPORT_IDLE["uz"].format(username=tf.BOT_USERNAME)]  # oddiy yo'l-yo'riq
         await feed(dp, bot, tf.private_message(M[0], "/help"))
         assert await only_reason(app_id) is None
         await feed(dp, bot, tf.private_message(M[0], "/start"))  # sabab hali kutilmoqda: qayta so'raladi
@@ -175,7 +176,9 @@ class TestReasonCapture:
         session.clear()
         for text in ("ikkinchi", "/start"):  # sabab berilgach: ikkinchi sabab ham, qayta so'rash ham yo'q
             await feed(dp, bot, tf.private_message(M[0], text))
-        assert len(session.texts_to(M[0])) == 1 and await only_reason(app_id) == texts.SKIP_BUTTON
+        sent = session.texts_to(M[0])  # ikkinchi sabab saqlanmaydi: faqat yo'l-yo'riq, va /start salomi
+        assert len(sent) == 2 and sent[0] == texts.SUPPORT_IDLE["uz"].format(username=tf.BOT_USERNAME)
+        assert await only_reason(app_id) == texts.SKIP_BUTTON
 
     @pytest.mark.parametrize("reply, stored, moderated", [(texts.SKIP_BUTTON, "", []), ("admin fikri", "admin fikri", ["admin fikri"])])
     async def test_admin_reason_skip_and_start_reask(self, dp: Dispatcher, bot: Bot, session: FakeSession, monkeypatch: pytest.MonkeyPatch, reply: str, stored: str, moderated: list[str]) -> None:
