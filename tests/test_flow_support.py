@@ -84,6 +84,33 @@ class TestUserMessageCleanup:
 
 # ---- gatekeeper: adminga faqat toza va haq masalalar boradi
 
+class FakeSay:
+    """handlers.support.ask_ai o'rniga: qaror bajarilgach AI yozadigan yakuniy javob."""
+
+    def __init__(self) -> None:
+        self.calls: list[list[dict[str, str]]] = []
+        self.answer = "AI yakuniy javob"
+        self.error: Exception | None = None
+
+    async def __call__(self, messages: list[dict[str, str]], **kw) -> str:
+        self.calls.append(messages)
+        if self.error:
+            raise self.error
+        return self.answer
+
+    @property
+    def outcome(self) -> str:
+        """Oxirgi chaqiruvda AI'ga aytilgan natija."""
+        return self.calls[-1][-1]["content"]
+
+
+@pytest.fixture(autouse=True)
+def say_ai(monkeypatch: pytest.MonkeyPatch) -> FakeSay:
+    fake = FakeSay()
+    monkeypatch.setattr(support, "ask_ai", fake)
+    return fake
+
+
 @pytest.fixture(autouse=True)
 def _moderation(monkeypatch: pytest.MonkeyPatch):
     """Haqiqiy AI moderatsiyasi o'rniga: matnda 'BADWORD' bo'lsa odobsiz."""
@@ -105,18 +132,25 @@ async def start_chat(dp, bot, group_ai, dm_ai, text: str = f"{BOT} admin bilan g
     dm_ai.calls.clear()
 
 
+async def close_chat_by_abuse(dp, bot, dm_ai) -> None:
+    """Suhbatni yopishning bir yo'li: ikki marta odobsiz xabar (adminga bormaydi, AI chaqirilmaydi)."""
+    await dm(dp, bot, "BADWORD birinchi")
+    await dm(dp, bot, "BADWORD ikkinchi")
+
+
 def admin_notices(session) -> list[str]:
     return [t for a in ADMIN_IDS for t in session.texts_to(a)]
 
 
 class TestGatekeeper:
-    async def test_escalation_reaches_admins_without_category_label(self, dp, bot, session, group_ai, dm_ai):
+    async def test_escalation_reaches_admins_without_category_label(self, dp, bot, session, group_ai, dm_ai, say_ai):
         await start_chat(dp, bot, group_ai, dm_ai)
         dm_ai.answer = "AI yozgan matn"
         dm_ai.tool_calls = [("escalate_to_admin", {"summary": "Tolov qaytmadi", "category": "payment"})]
         await dm(dp, bot, "Pulim qaytmadi")
-        assert "AI yozgan matn" not in session.texts_to(USER)  # foydalanuvchi faqat botning qat'iy xabarini o'qiydi
-        assert session.texts_to(USER)[-1] == texts.SUPPORT_ESCALATED["uz"]
+        assert "AI yozgan matn" not in session.texts_to(USER)  # tool bilan birga yozilgan matn yuborilmaydi
+        assert session.texts_to(USER)[-1] == say_ai.answer  # yakuniy javobni AI natijadan xabardor holda yozadi
+        assert say_ai.outcome == texts.SUPPORT_OUTCOME_ESCALATED
         notices = admin_notices(session)
         assert len(notices) == len(ADMIN_IDS) and "Tolov qaytmadi" in notices[0]
         assert "payment" not in notices[0] and "ategoriya" not in notices[0]
@@ -135,32 +169,59 @@ class TestGatekeeper:
         chat = await get_support_chat(USER, "resolved", 24)
         assert chat is not None and await get_support_chat(USER, "escalated", 24) is None
 
-    async def test_decline_keeps_the_matter_from_admins_and_logs_the_category(self, dp, bot, session, group_ai, dm_ai):
+    async def test_decline_keeps_the_matter_from_admins_and_logs_the_category(
+        self, dp, bot, session, group_ai, dm_ai, say_ai
+    ):
         await start_chat(dp, bot, group_ai, dm_ai)
         dm_ai.answer = "Adminga yuboraman."  # AI decline bilan zid matn yozsa ham foydalanuvchiga bormaydi
         dm_ai.tool_calls = [("decline", {"category": "prohibited_ad"})]
         await dm(dp, bot, "Kazino reklamasini bermoqchiman")
         assert not admin_notices(session)
         user_texts = session.texts_to(USER)
-        assert "Adminga yuboraman." not in user_texts
-        assert user_texts[-1] == texts.SUPPORT_DECLINED_BY_CATEGORY["prohibited_ad"]["uz"]
-        chat = await get_support_chat(USER, "declined", 24)
+        assert "Adminga yuboraman." not in user_texts and user_texts[-1] == say_ai.answer
+        assert say_ai.outcome == texts.SUPPORT_OUTCOME_DECLINED and "NOT passed" in say_ai.outcome
+        chat = await get_support_chat(USER, "active", 24)  # suhbat tugamaydi
         assert chat is not None and chat["category"] == "prohibited_ad"
 
-    async def test_decline_text_matches_the_category(self, dp, bot, session, group_ai, dm_ai):
+    async def test_conversation_continues_after_a_decline(self, dp, bot, session, group_ai, dm_ai, say_ai):
         await start_chat(dp, bot, group_ai, dm_ai)
-        dm_ai.answer = ""
-        dm_ai.tool_calls = [("decline", {"category": "no_purpose"})]
+        dm_ai.answer, dm_ai.tool_calls = "", [("decline", {"category": "no_purpose"})]
+        await dm(dp, bot, "shaxsiy ishim bor")
+        dm_ai.answer, dm_ai.tool_calls = "Qanday shaxsiy masala? Aniqroq ayting.", []
+        session.clear()
+        await dm(dp, bot, "shaxsiy masala bor")
+        assert session.texts_to(USER) == ["Qanday shaxsiy masala? Aniqroq ayting."]  # tayyor rad matni emas, AI o'zi yozadi
+        assert dm_ai.calls[-1][-1]["content"] == "shaxsiy masala bor" or any(
+            m["content"] == "shaxsiy masala bor" for m in dm_ai.calls[-1]
+        )
+
+    async def test_ai_failure_falls_back_to_the_category_text(self, dp, bot, session, group_ai, dm_ai, say_ai):
+        from utils.ai import AIError
+
+        await start_chat(dp, bot, group_ai, dm_ai)
+        say_ai.error = AIError("xato")
+        dm_ai.answer, dm_ai.tool_calls = "", [("decline", {"category": "no_purpose"})]
         await dm(dp, bot, "admin kerak")
         assert session.texts_to(USER)[-1] == texts.SUPPORT_DECLINED_BY_CATEGORY["no_purpose"]["uz"]
         assert not admin_notices(session)
 
-    async def test_other_categories_use_the_generic_refusal(self, dp, bot, session, group_ai, dm_ai):
+    async def test_other_categories_fall_back_to_the_generic_refusal(self, dp, bot, session, group_ai, dm_ai, say_ai):
+        from utils.ai import AIError
+
         await start_chat(dp, bot, group_ai, dm_ai)
-        dm_ai.answer = ""
-        dm_ai.tool_calls = [("decline", {"category": "spam"})]
+        say_ai.error = AIError("xato")
+        dm_ai.answer, dm_ai.tool_calls = "", [("decline", {"category": "spam"})]
         await dm(dp, bot, "arzon telefon sotaman")
         assert session.texts_to(USER)[-1] == texts.SUPPORT_DECLINED["uz"]
+
+    async def test_unreachable_admins_are_told_to_the_ai_not_hidden(self, dp, bot, session, group_ai, dm_ai, say_ai):
+        for admin in ADMIN_IDS:
+            session.errors[SendMessage] = lambda m, a=ADMIN_IDS: tf.forbidden() if m.chat_id in a else None
+        await start_chat(dp, bot, group_ai, dm_ai)
+        dm_ai.answer, dm_ai.tool_calls = "", [("escalate_to_admin", {"summary": "s", "category": "other"})]
+        await dm(dp, bot, "masala")
+        assert say_ai.outcome == texts.SUPPORT_OUTCOME_UNAVAILABLE
+        assert await get_support_chat(USER, "active", 24) is not None
 
     async def test_unknown_categories_fall_back_safely(self, dp, bot, session, group_ai, dm_ai):
         await start_chat(dp, bot, group_ai, dm_ai)
@@ -168,7 +229,7 @@ class TestGatekeeper:
         dm_ai.tool_calls = [("decline", {"category": "xyz"}), ("escalate_to_admin", {"summary": "s", "category": "other"})]
         await dm(dp, bot, "gap")
         assert not admin_notices(session)  # ikkalasi bo'lsa, xavfsizi: rad
-        assert (await get_support_chat(USER, "declined", 24))["category"] == "unclear"
+        assert (await get_support_chat(USER, "active", 24))["category"] == "unclear"
 
     async def test_abusive_message_gets_one_warning_then_decline(self, dp, bot, session, group_ai, dm_ai):
         await start_chat(dp, bot, group_ai, dm_ai)
@@ -194,7 +255,7 @@ class TestGatekeeper:
         assert not any("BADWORD" in m["content"] for m in first)
         assert any(m["content"].startswith("[Guruhdagi xabar]") for m in first)
 
-    async def test_daily_escalation_limit(self, dp, bot, session, group_ai, dm_ai):
+    async def test_daily_escalation_limit(self, dp, bot, session, group_ai, dm_ai, say_ai):
         for _ in range(support_policy.MAX_ESCALATIONS_PER_DAY):
             await start_chat(dp, bot, group_ai, dm_ai)
             dm_ai.answer = ""
@@ -208,13 +269,11 @@ class TestGatekeeper:
         dm_ai.tool_calls = [("escalate_to_admin", {"summary": "s", "category": "other"})]
         await dm(dp, bot, "yana masala")
         assert not admin_notices(session)
-        assert session.texts_to(USER)[-1] == texts.SUPPORT_LIMIT["uz"]
+        assert say_ai.outcome == texts.SUPPORT_OUTCOME_LIMIT and session.texts_to(USER)[-1] == say_ai.answer
 
     async def test_recently_declined_user_gets_a_short_refusal_without_ai(self, dp, bot, session, group_ai, dm_ai):
         await start_chat(dp, bot, group_ai, dm_ai)
-        dm_ai.answer = ""
-        dm_ai.tool_calls = [("decline", {"category": "scam"})]
-        await dm(dp, bot, "tez boyish")
+        await close_chat_by_abuse(dp, bot, dm_ai)
         dm_ai.calls.clear()
         session.clear()
         ai_handler._last_ask.clear()
@@ -229,6 +288,8 @@ class TestPolicyPrompt:
             assert category in prompt, category
         assert "ALWAYS start by finding out WHAT the matter is" in prompt
         assert "music and concert advertising IS allowed" in prompt
+        assert "decline does NOT end the conversation" in prompt  # rad etilgach ham suhbat davom etadi
+        assert "refer to what the user wrote in the group" in prompt
 
     def test_prohibited_ads_include_the_agreed_list(self):
         joined = " ".join(support_policy.PROHIBITED_ADS)
@@ -262,9 +323,7 @@ class TestIdleReplies:
 
     async def test_declined_user_keeps_getting_the_refusal_not_silence(self, dp, bot, session, group_ai, dm_ai):
         await start_chat(dp, bot, group_ai, dm_ai)
-        dm_ai.answer = ""
-        dm_ai.tool_calls = [("decline", {"category": "indecent"})]
-        await dm(dp, bot, "nomaqul taklif")
+        await close_chat_by_abuse(dp, bot, dm_ai)
         session.clear()
         await dm(dp, bot, "shaxsiy ishim bor")
         assert session.texts_to(USER) == [texts.SUPPORT_DECLINED["uz"]]
@@ -301,12 +360,12 @@ class TestLimit:
         dm_ai.answer = "Yana bir narsa?"
         await dm(dp, bot, "bir")  # 1-xabar: hali limit emas
 
-    async def test_unsolved_conversation_is_declined_not_escalated(self, dp, bot, session, group_ai, dm_ai):
+    async def test_unsolved_conversation_is_declined_not_escalated(self, dp, bot, session, group_ai, dm_ai, say_ai):
         await self._to_limit(dp, bot, group_ai, dm_ai)
         dm_ai.answer, dm_ai.tool_calls = "", []
         await dm(dp, bot, "ikki")
         assert not admin_notices(session)
-        assert session.texts_to(USER)[-1] == texts.SUPPORT_DECLINED["uz"]
+        assert say_ai.outcome == texts.SUPPORT_OUTCOME_CLOSED and session.texts_to(USER)[-1] == say_ai.answer
         assert (await get_support_chat(USER, "declined", 24))["category"] == "unclear"
 
     async def test_final_turn_offers_only_resolve_and_decline(self, dp, bot, session, group_ai, dm_ai):
