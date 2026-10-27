@@ -172,3 +172,48 @@ class TestStatusRenameMigration:
         assert (await dbm.get_application(a))["status"] == "admin_decision"
         # indeks yangilandi: shu foydalanuvchiga ikkinchi faol ariza ochilmaydi
         assert await dbm.create_application(U, G, "A B", "y\n") is None
+
+
+class TestUnfinishedQuestionnaire:
+    async def test_second_join_mid_form_asks_to_finish_and_repeats_question(self, dp, bot, session):
+        await feed(dp, bot, tf.join_request(U))
+        await feed(dp, bot, tf.private_message(U, "Aziz Karimov"))
+        session.clear()
+        await feed(dp, bot, tf.join_request(U))
+        sent = session.texts_to(U)
+        assert sent == [texts.FINISH_FORM_FIRST, texts.ASK_PHONE]
+        # holat va javoblar saqlanib qoldi: davom ettirish mumkin
+        await feed(dp, bot, tf.private_message(U, texts.SKIP_BUTTON))
+        assert session.texts_to(U)[-1] == texts.ASK_AGE
+
+    async def test_bug_case_after_expired_application_no_stale_note(self, dp, bot, session):
+        app_id = await start_application(dp, bot)
+        await dbm.change_status(app_id, "pending", "expired")
+        await feed(dp, bot, tf.join_request(U))  # eslatma + savol boshlandi
+        await feed(dp, bot, tf.private_message(U, "Aziz Karimov"))
+        session.clear()
+        await feed(dp, bot, tf.join_request(U))  # yana so'rov: eski "muddati o'tgan" xabari emas
+        sent = session.texts_to(U)
+        assert texts.REJOIN_AFTER_EXPIRED not in sent
+        assert sent[0] == texts.FINISH_FORM_FIRST
+
+    async def test_first_question_is_repeated_too(self, dp, bot, session):
+        await feed(dp, bot, tf.join_request(U))
+        session.clear()
+        await feed(dp, bot, tf.join_request(U))
+        assert session.texts_to(U) == [texts.FINISH_FORM_FIRST, texts.ASK_FULL_NAME]
+
+    async def test_other_group_still_starts_fresh(self, dp, bot, session):
+        await feed(dp, bot, tf.join_request(U))
+        await feed(dp, bot, tf.private_message(U, "Aziz Karimov"))
+        session.clear()
+        await feed(dp, bot, tf.join_request(U, chat_id=-1009999))
+        assert texts.FINISH_FORM_FIRST not in session.texts_to(U)
+        assert session.texts_to(U)[-1] == texts.ASK_FULL_NAME
+
+    async def test_after_completed_application_state_is_clear(self, dp, bot, session):
+        app_id = await start_application(dp, bot)
+        await dbm.change_status(app_id, "pending", "rejected")
+        session.clear()
+        await feed(dp, bot, tf.join_request(U))
+        assert texts.FINISH_FORM_FIRST not in session.texts_to(U)

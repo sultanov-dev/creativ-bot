@@ -114,11 +114,12 @@ class TestJoinRequest:
         await feed(dp, bot, tf.join_request(U, tf.GROUP_ID - 9))  # boshqa guruhda hali arizasi yo'q
         assert (await state_of(dp, bot))[0] == Form.review.state
 
-    async def test_second_join_request_mid_questionnaire_restarts_it(self, dp, bot, session):
+    async def test_second_join_request_mid_questionnaire_keeps_progress(self, dp, bot, session):
         await at_step(dp, bot, 2)
         await feed(dp, bot, tf.join_request(U))
         state, data = await state_of(dp, bot)
-        assert state == Form.full_name.state and "full_name" not in data
+        assert state == Form.age.state and data["full_name"] == "Aziz Karimov"
+        assert session.texts_to(U) == [texts.FINISH_FORM_FIRST, texts.ASK_AGE]
 
 
 class TestEachStepRejectsBadInput:
@@ -159,6 +160,7 @@ class TestEachStepRejectsBadInput:
 class TestAcceptedValues:
     async def test_boundary_ages(self, dp, bot, session):
         for age, ok in [("10", True), ("100", True), ("9", False), ("101", False)]:
+            await dp.fsm.get_context(bot, chat_id=U, user_id=U).clear()  # oldingi tugallanmagan anketa to'sqinlik qilmasin
             await at_step(dp, bot, 2)
             await feed(dp, bot, tf.private_message(U, age))
             assert ((await state_of(dp, bot))[0] == Form.job.state) is ok

@@ -10,7 +10,7 @@ from config import REJOIN_COOLDOWN_SECONDS
 from database import get_active_application, get_profile, last_application_status, rejoin_wait_seconds
 from handlers.profile import show_review
 from states import Form
-from texts import ALREADY_APPLIED, REJOIN_COOLDOWN, REJOIN_NOTES
+from texts import ALREADY_APPLIED, FINISH_FORM_FIRST, REJOIN_COOLDOWN, REJOIN_NOTES
 from utils.admin import safe_send
 from utils.fsm import get_private_state
 from utils.get_welcome import welcome_text
@@ -18,6 +18,12 @@ from utils.questions import ask
 from utils.timefmt import format_wait
 
 router = Router()
+
+REVIEW_STATES = (Form.review.state, Form.pick_field.state)
+FORM_STATES = (
+    Form.full_name.state, Form.phone.state, Form.age.state, Form.job.state, Form.about.state,
+    Form.join_group.state, *REVIEW_STATES,
+)
 logger = logging.getLogger(__name__)
 
 
@@ -30,6 +36,20 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
         )
         return
 
+    private_state = get_private_state(
+        storage=state.storage, bot=bot, user_id=request.from_user.id
+    )
+
+    # anketa hali tugamagan (ariza yaratilmagan): yangi so'rov uni boshidan boshlamaydi, davom ettirishni aytamiz
+    current = await private_state.get_state()
+    if current in FORM_STATES and (await private_state.get_data()).get("group_id") == request.chat.id:
+        await safe_send(bot=bot, chat_id=request.user_chat_id, text=FINISH_FORM_FIRST)
+        if current in REVIEW_STATES:
+            await show_review(bot, request.user_chat_id, private_state)
+        else:
+            await ask(bot, request.user_chat_id, current, delay=0.3)
+        return
+
     # rad etilgandan keyin darhol qayta ariza berib, adminlarni charchatmaslik uchun qisqa kutish
     wait = await rejoin_wait_seconds(request.from_user.id, request.chat.id, REJOIN_COOLDOWN_SECONDS)
     if wait:
@@ -40,10 +60,6 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
             pass
         await safe_send(bot=bot, chat_id=request.user_chat_id, text=REJOIN_COOLDOWN.format(wait=format_wait(wait)))
         return
-
-    private_state = get_private_state(
-        storage=state.storage, bot=bot, user_id=request.from_user.id
-    )
 
     # oxirgi ariza rad etilgan, muddati o'tgan yoki ko'rib chiqilmagan (failed) bo'lsa: eski ma'lumotlar
     # ko'rsatilmaydi va qayta ishlatilmaydi, anketa yangidan, sababi haqida qisqa xabar bilan
