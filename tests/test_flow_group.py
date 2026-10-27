@@ -124,14 +124,20 @@ class TestBan:
     @pytest.mark.parametrize("command,method,args,reply_user,status", [
         (c, m, a, r, st)
         for c, m in [("/ban", BanChatMember), ("/mute", RestrictChatMember)]
-        for a, r, st in [("", tf.ADMIN2_ID, None), ("", VICTIM, "administrator"), ("", VICTIM, "creator"),
-                         *([(f" {A}", None, None)] if c == "/ban" else [])]  # bot admini, guruh admini, o'zi
+        for a, r, st in [("", tf.ADMIN2_ID, None), *([(f" {A}", None, None)] if c == "/ban" else [])]  # bot adminlari
     ])
     async def test_cannot_touch_admins(self, dp, bot, session, command, method, args, reply_user, status):
         if status:
             session.statuses[(G, VICTIM)] = status
         await cmd(dp, bot, command + args, reply=reply_to(reply_user) if reply_user else None)
         assert not session.of(method)
+
+    @pytest.mark.parametrize("status", ["administrator", "creator"])
+    @pytest.mark.parametrize("command,method", [("/ban", BanChatMember), ("/mute", RestrictChatMember)])
+    async def test_telegram_group_admin_is_not_special_for_the_bot(self, dp, bot, session, command, method, status):
+        session.statuses[(G, VICTIM)] = status  # faqat ADMIN_IDS himoyalanadi; qolganini Telegram o'zi hal qiladi
+        await cmd(dp, bot, command, reply=reply_to())
+        assert session.of(method)
 
     async def test_flood_limit_is_retried_once(self, dp, bot, session, monkeypatch):
         import handlers.group as group

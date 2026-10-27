@@ -20,7 +20,7 @@ from database import (
     get_members,
     mark_removed,
 )
-from utils.admin import get_user_status, is_admin
+from utils.admin import is_admin
 from utils.autodelete import CommandCleanupMiddleware, schedule_delete
 from utils.commands import setup_group_commands
 from utils.members import track, untrack
@@ -33,17 +33,15 @@ router = Router()
 router.message.filter(F.chat.type.in_({"group", "supergroup"}))
 logger = logging.getLogger(__name__)
 
-PRIVILEGED = (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR)
-
 
 async def admin_only(message: Message) -> bool:
     """Buyruqlarni faqat bot adminlari (ADMIN_IDS) bajara oladi; boshqalarga bot javob bermaydi."""
     return message.from_user is not None and is_admin(message.from_user.id)
 
 
-async def _is_protected(bot: Bot, chat_id: int, user_id: int) -> bool:
-    """Bot admini yoki guruh admini bloklanmasligi/jim qilinmasligi kerak."""
-    return is_admin(user_id) or await get_user_status(bot, chat_id, user_id) in PRIVILEGED
+def _is_protected(user_id: int) -> bool:
+    """Bot adminlari (ADMIN_IDS) bloklanmasligi/jim qilinmasligi kerak; Telegram'dagi guruh adminligi hisobga olinmaydi."""
+    return is_admin(user_id)
 
 
 COMMANDS = ("kick_deleted", "ban", "unban", "mute", "unmute", "stats", "finish")
@@ -205,7 +203,7 @@ async def ban(message: Message, command: CommandObject, bot: Bot):
     if user_id is None:
         await message.reply("Foydalanuvchi xabariga javob bering yoki ID yozing: /ban &lt;id&gt;")
         return
-    if await _is_protected(bot, message.chat.id, user_id):
+    if _is_protected(user_id):
         await message.reply("Kechirasiz, adminni bloklab bo'lmaydi.")
         return
 
@@ -239,7 +237,7 @@ async def mute(message: Message, command: CommandObject, bot: Bot):
         return
 
     user_id = reply.from_user.id
-    if await _is_protected(bot, message.chat.id, user_id):
+    if _is_protected(user_id):
         await message.reply("Kechirasiz, adminni jim qilib bo'lmaydi.")
         return
 
