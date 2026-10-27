@@ -1,12 +1,13 @@
 import asyncio
 import logging
+from contextlib import suppress
 import time
 from collections import defaultdict
 from html import escape
 
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatAction
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import StateFilter
 from aiogram.types import Message
 from aiogram.utils.chat_action import ChatActionSender
@@ -175,9 +176,13 @@ async def open_chat(bot: Bot, message: Message, text: str, reason: str = "") -> 
             # AI'ga murojaatdan oldin: lichkaga yozib bo'ladimi (foydalanuvchi botga /start bosganmi)
             await bot.send_chat_action(user.id, ChatAction.TYPING)
             await run_turn(bot, chat)
-            return
         except (TelegramForbiddenError, TelegramBadRequest):
             await set_support_status(chat["id"], "active", "awaiting_start")
+        else:
+            # guruhdagi "yozmoqda..." kimga ekani noma'lum: qisqa xabar (guruh xabarlari kabi o'zi o'chadi)
+            with suppress(TelegramAPIError):  # xabar o'chirilgan bo'lsa ham, lichkaga yuborilgan suhbat buzilmasin
+                await message.reply(texts.SUPPORT_DM_SENT[detect_lang(text)])
+            return
     me = await bot.me()
     lang = detect_lang(text)
     await message.reply(texts.SUPPORT_START_FIRST[lang].format(link=f"https://t.me/{me.username}?start=support"))

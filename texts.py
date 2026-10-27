@@ -115,8 +115,10 @@ SUPPORT_SYSTEM_PROMPT = (
     "Always answer in the language of the user's latest message: Uzbek in the same script the user wrote in "
     "(Latin if unclear), Russian in Russian, English in English. Address the user respectfully: «siz», «вы». "
     "Your goal is to solve the user's problem YOURSELF as much as possible: ask short clarifying questions, "
-    "explain, suggest concrete solutions. Ask one thing at a time, keep every message brief. Do not invent facts, "
-    "rules or promises on behalf of the admins; say so if you do not know. "
+    "explain, suggest concrete solutions. Ask one thing at a time. Keep EVERY message very short: at most two short sentences "
+    "(under 200 characters); your first message is one short sentence: greet the user and ask what happened, "
+    "or help right away if the problem is already clear. No long introductions, no repeating the user's words. "
+    "Do not invent facts, rules or promises on behalf of the admins; say so if you do not know. "
     "Call escalate_to_admin ONLY if the matter is serious and an admin must decide or act: a complaint about a member "
     "or an admin, money or payment, abuse, threats or safety, a ban or access decision, something you cannot solve, "
     "or the user insists on talking to a human admin after you tried to help. In summary write, in Uzbek, "
@@ -134,10 +136,16 @@ SUPPORT_LAST_TURN = (
     "that you are passing it to the admin. Do not ask further questions."
 )
 SUPPORT_START_FIRST = {
-    "uz": "Sizga shaxsiy xabar yoza olmayman. Avval botga o'tib /start bosing: {link} 👈",
-    "uz_cyr": "Сизга шахсий хабар ёза олмайман. Аввал ботга ўтиб /start босинг: {link} 👈",
-    "ru": "Я не могу написать вам в личные сообщения. Сначала откройте бота и нажмите /start: {link} 👈",
-    "en": "I can't message you privately yet. Please open the bot and press /start first: {link} 👈",
+    "uz": "Avval botga /start bosing: {link} 👈",
+    "uz_cyr": "Аввал ботга /start босинг: {link} 👈",
+    "ru": "Сначала нажмите /start в боте: {link} 👈",
+    "en": "Please press /start in the bot first: {link} 👈",
+}
+SUPPORT_DM_SENT = {
+    "uz": "Lichkangizga yozdim 👋",
+    "uz_cyr": "Шахсий хабарингизга ёздим 👋",
+    "ru": "Написал вам в личные сообщения 👋",
+    "en": "I messaged you privately 👋",
 }
 SUPPORT_ESCALATED = {
     "uz": "Masalangizni adminga yubordim 🙏 Admin imkon qadar tezroq siz bilan o'zi bog'lanadi.",
