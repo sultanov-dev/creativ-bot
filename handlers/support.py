@@ -30,6 +30,7 @@ router.message.filter(F.chat.type == "private")
 logger = logging.getLogger(__name__)
 
 MAX_TEXT = 2000
+GROUP_PREFIX = "[Guruhdagi xabar]"
 WAIT_NOTICE_INTERVAL = 60
 
 # guruhda AI shu tool'ni chaqirsa, bot foydalanuvchining lichkasiga yozadi (guruhda javob yozilmaydi)
@@ -121,17 +122,17 @@ async def _escalate(bot: Bot, chat: dict, summary: str, lang: str) -> None:
 async def run_turn(bot: Bot, chat: dict) -> None:
     """Saqlangan suhbat bo'yicha AI javobi: matnni foydalanuvchiga yuboradi, tool chaqirsa bajaradi."""
     messages = await get_support_messages(chat["id"])
-    user_turns = sum(m["role"] == "user" for m in messages)
+    # limit lichkadagi xabarlarga: guruhdan ko'chirilgan birinchi xabar hisobga kirmaydi
+    user_turns = sum(m["role"] == "user" and not m["content"].startswith(GROUP_PREFIX) for m in messages)
     last = user_turns >= SUPPORT_MAX_TURNS
     history = [{"role": "system", "content": texts.SUPPORT_SYSTEM_PROMPT}, *messages]
-    tool_choice = None
     if last:
+        # majburlamaymiz: AI oxirgi yechimini aytib resolve qilishi yoki escalate_to_admin qilishi mumkin
         history.append({"role": "system", "content": texts.SUPPORT_LAST_TURN})
-        tool_choice = {"type": "function", "function": {"name": "escalate_to_admin"}}
 
     try:
         async with ChatActionSender.typing(bot=bot, chat_id=chat["user_id"]):
-            text, calls = await ask_ai_tools(history, SUPPORT_TOOLS, tool_choice=tool_choice)
+            text, calls = await ask_ai_tools(history, SUPPORT_TOOLS)
     except AIError:
         if not last:
             raise
@@ -143,12 +144,13 @@ async def run_turn(bot: Bot, chat: dict) -> None:
         await add_support_message(chat["id"], "assistant", text)
 
     escalate = next((a for n, a in calls if n == "escalate_to_admin"), None)
-    if escalate is None and last:
-        escalate = {}  # AI tool chaqirmadi, lekin limitga yetdi: baribir adminga
+    resolved = any(n == "resolve" for n, _ in calls)
+    if escalate is None and last and not resolved:
+        escalate = {}  # oxirgi navbatda AI hal qilmadi va qaror ham bermadi: baribir adminga
     if escalate is not None:
         summary = str(escalate.get("summary") or "").strip() or _fallback_summary(messages)
         await _escalate(bot, chat, summary, lang)
-    elif any(n == "resolve" for n, _ in calls):
+    elif resolved:
         await set_support_status(chat["id"], "active", "resolved")
 
 
@@ -163,7 +165,7 @@ async def open_chat(bot: Bot, message: Message, text: str, reason: str = "") -> 
         chat = await get_support_chat(user.id, "active", SUPPORT_TTL_HOURS)
         if chat is None:
             return
-    content = f"[Guruhdagi xabar] {text[:MAX_TEXT]}"
+    content = f"{GROUP_PREFIX} {text[:MAX_TEXT]}"
     if reason:
         content += f"\n[AI taxmini: {reason[:300]}]"
     await add_support_message(chat["id"], "user", content)

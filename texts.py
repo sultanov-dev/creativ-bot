@@ -128,8 +128,10 @@ SUPPORT_SYSTEM_PROMPT = (
     "for lists use the • character or numbers."
 )
 SUPPORT_LAST_TURN = (
-    "The limit of messages is reached and the matter is not solved. Call escalate_to_admin now with a full summary "
-    "(in Uzbek) of the conversation, and tell the user briefly that you are passing it to the admin."
+    "This is the final message of the conversation: the limit of messages is reached. Decide now. "
+    "If your answer solves the user's problem, write the final answer and call resolve. "
+    "If it is not solved, call escalate_to_admin with a full summary (in Uzbek) and tell the user briefly "
+    "that you are passing it to the admin. Do not ask further questions."
 )
 SUPPORT_START_FIRST = {
     "uz": "Sizga shaxsiy xabar yoza olmayman. Avval botga o'tib /start bosing: {link} 👈",
