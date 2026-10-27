@@ -191,12 +191,8 @@ SUPPORT_OUTCOME_CLOSED = (
     "reply to the user. Never say anything was passed to the admins." + _PLAIN
 )
 SUPPORT_OUTCOME_ESCALATED = (
-    "Result: escalate_to_admin was executed, the admins received your summary. Write one short reply: confirm that "
-    "the admins received it and will contact the user personally." + _PLAIN
-)
-SUPPORT_OUTCOME_UNAVAILABLE = (
-    "Result: the admins could not be reached right now and nothing was passed. Write one short reply: say that you "
-    "could not reach them and the user should write again later." + _PLAIN
+    "Result: escalate_to_admin was executed, your summary is being passed to the admins right now. Write one short "
+    "reply: confirm that the matter is passed to the admins and that they will contact the user personally." + _PLAIN
 )
 SUPPORT_OUTCOME_LIMIT = (
     "Result: the daily limit of messages to the admins is reached and nothing was passed. Write one short reply: "

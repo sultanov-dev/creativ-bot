@@ -214,14 +214,22 @@ class TestGatekeeper:
         await dm(dp, bot, "arzon telefon sotaman")
         assert session.texts_to(USER)[-1] == texts.SUPPORT_DECLINED["uz"]
 
-    async def test_unreachable_admins_are_told_to_the_ai_not_hidden(self, dp, bot, session, group_ai, dm_ai, say_ai):
-        for admin in ADMIN_IDS:
-            session.errors[SendMessage] = lambda m, a=ADMIN_IDS: tf.forbidden() if m.chat_id in a else None
+    async def test_user_is_told_it_was_passed_before_the_admins_receive_it(self, dp, bot, session, group_ai, dm_ai, say_ai):
+        await start_chat(dp, bot, group_ai, dm_ai)
+        dm_ai.answer, dm_ai.tool_calls = "", [("escalate_to_admin", {"summary": "Tolov qaytmadi", "category": "payment"})]
+        await dm(dp, bot, "Pulim qaytmadi")
+        order = [m.chat_id for m in session.of(SendMessage) if m.chat_id == USER or m.chat_id in ADMIN_IDS]
+        assert order[-3:] == [USER, *ADMIN_IDS]  # avval foydalanuvchiga "yetkazildi", keyin adminlarga
+        assert say_ai.outcome == texts.SUPPORT_OUTCOME_ESCALATED
+
+    async def test_unreachable_admins_reopen_the_chat_and_correct_the_message(self, dp, bot, session, group_ai, dm_ai, say_ai):
+        session.errors[SendMessage] = lambda m: tf.forbidden() if m.chat_id in ADMIN_IDS else None
         await start_chat(dp, bot, group_ai, dm_ai)
         dm_ai.answer, dm_ai.tool_calls = "", [("escalate_to_admin", {"summary": "s", "category": "other"})]
         await dm(dp, bot, "masala")
-        assert say_ai.outcome == texts.SUPPORT_OUTCOME_UNAVAILABLE
-        assert await get_support_chat(USER, "active", 24) is not None
+        user_texts = session.texts_to(USER)
+        assert user_texts[-2:] == [say_ai.answer, texts.SUPPORT_ADMIN_UNAVAILABLE["uz"]]  # yetkazildi, keyin tuzatish
+        assert await get_support_chat(USER, "active", 24) is not None  # suhbat qayta ochiq
 
     async def test_unknown_categories_fall_back_safely(self, dp, bot, session, group_ai, dm_ai):
         await start_chat(dp, bot, group_ai, dm_ai)
