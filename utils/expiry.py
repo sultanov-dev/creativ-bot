@@ -6,6 +6,7 @@ from aiogram.exceptions import TelegramAPIError
 
 from database import change_status, get_expired_applications
 from utils.admin import safe_send
+from utils.join_requests import settle_join_request
 from utils.voting import finalize_due_votings
 
 logger = logging.getLogger(__name__)
@@ -25,12 +26,7 @@ async def expire_applications(bot: Bot) -> int:
         expired += 1
         logger.info("Ariza %s muddati tugadi (oldingi holat: %s)", app["id"], app["status"])
 
-        try:
-            await bot.decline_chat_join_request(
-                chat_id=app["group_id"], user_id=app["user_id"]
-            )
-        except TelegramAPIError:
-            pass  # so'rov allaqachon hal qilingan yoki foydalanuvchi guruhda
+        await settle_join_request(bot, app, False)
 
         if app["vote_message_id"]:
             try:

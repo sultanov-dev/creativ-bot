@@ -4,10 +4,16 @@ REJOIN_AFTER_REJECTION = "Avvalgi arizangiz rad etilgan edi. Anketani yangidan t
 REJOIN_AFTER_EXPIRED = "Oxirgi arizangizning muddati o'tgan. Anketani qaytadan to'ldiring."
 REJOIN_AFTER_FAILED = "Oxirgi arizangiz ko'rib chiqilmadi. Anketani qaytadan to'ldiring."
 # oxirgi arizasi shu holatlarda bo'lsa, eski ma'lumotlar ko'rsatilmaydi: anketa boshidan, tegishli xabar bilan
+REJOIN_AFTER_REMOVED = "Guruhdan chiqarilgansiz. Anketani yangidan to'ldiring."
+APPLICATION_ACCEPTED_NOT_JOINED = (
+    "Arizangiz qabul qilindi, lekin guruhga qo'shilish so'rovingiz topilmadi. "
+    "Iltimos, guruhga qayta qo'shilish so'rovini yuboring."
+)
 REJOIN_NOTES = {
     "rejected": REJOIN_AFTER_REJECTION,
     "expired": REJOIN_AFTER_EXPIRED,
     "failed": REJOIN_AFTER_FAILED,
+    "removed": REJOIN_AFTER_REMOVED,
 }
 AD_NOTICE = "⚠️ {name}, guruhda reklama taqiqlangan. Xabaringiz o'chirildi."
 MODERATION_WARNING = "Kechirasiz, matnda nomaqbul so'zlar bor. Iltimos, hurmat bilan qayta yozing."

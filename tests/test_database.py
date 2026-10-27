@@ -214,9 +214,15 @@ class TestExpiredApplications:
         assert await dbm.get_expired_applications(3) == []
 
 
+async def voting_app(**kw):
+    a = await new_app(**kw)
+    await dbm.start_voting(a, 10)
+    return a
+
+
 class TestVotes:
     async def test_add_vote_once(self, db):
-        a = await new_app()
+        a = await voting_app()
         assert await dbm.add_vote(a, 10, "yes") is True
         assert await dbm.add_vote(a, 10, "no") is False  # ovozni o'zgartirib bo'lmaydi
         assert await dbm.get_vote(a, 10) == "yes"
@@ -237,26 +243,26 @@ class TestVotes:
         assert await dbm.count_votes(a) == (0, 0)
 
     async def test_count_votes_mixed(self, db):
-        a = await new_app()
+        a = await voting_app()
         for uid, v in [(10, "yes"), (11, "yes"), (12, "no"), (13, "yes"), (14, "no")]:
             await dbm.add_vote(a, uid, v)
         assert await dbm.count_votes(a) == (3, 2)
 
     async def test_count_votes_isolated_per_application(self, db):
-        a, b = await new_app(user_id=1), await new_app(user_id=2)
+        a, b = await voting_app(user_id=1), await voting_app(user_id=2)
         await dbm.add_vote(a, 10, "yes")
         await dbm.add_vote(b, 10, "no")
         assert await dbm.count_votes(a) == (1, 0)
         assert await dbm.count_votes(b) == (0, 1)
 
     async def test_concurrent_same_voter_counts_once(self, db):
-        a = await new_app()
+        a = await voting_app()
         results = await asyncio.gather(*(dbm.add_vote(a, 10, "yes") for _ in range(8)))
         assert results.count(True) == 1
         assert await dbm.count_votes(a) == (1, 0)
 
     async def test_no_votes_with_reasons_in_order(self, db):
-        a = await new_app()
+        a = await voting_app()
         await dbm.add_vote(a, 10, "no")
         await dbm.add_vote(a, 11, "yes")
         await dbm.add_vote(a, 12, "no")

@@ -1,5 +1,4 @@
 from aiogram import Bot, F, Router
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery
 
 from callbacks import ApplicantCB
@@ -7,6 +6,7 @@ from database import change_status, get_application
 from texts import APPLICATION_REJECTED
 from utils.admin import is_admin, mark_done, safe_send
 from utils.applications import open_voting
+from utils.join_requests import settle_join_request
 
 router = Router()
 
@@ -31,10 +31,7 @@ async def reject(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
         await mark_done(call, "⚠️ Allaqachon ko'rib chiqilgan")
         return
 
-    try:
-        await bot.decline_chat_join_request(chat_id=group_id, user_id=user_id)
-    except TelegramBadRequest:
-        pass
+    await settle_join_request(bot, app, False)
 
     await call.answer("Ariza rad etildi")
     await mark_done(call, "❌ Rad etildi")

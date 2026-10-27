@@ -55,7 +55,8 @@ async def init_db() -> None:
             first_name      TEXT,
             last_name       TEXT,
             tg_username     TEXT,
-            phone           TEXT
+            phone           TEXT,
+            join_resolved   INTEGER NOT NULL DEFAULT 1
         );
 
         CREATE TABLE IF NOT EXISTS votes (
@@ -108,6 +109,8 @@ async def init_db() -> None:
     await _add_column(db, "votes", "weight", "INTEGER NOT NULL DEFAULT 1")
     for column in ("first_name", "last_name", "tg_username", "phone"):
         await _add_column(db, "applications", column, "TEXT")
+    # eski qatorlar uchun 1: ularning so'rovi allaqachon hal qilingan deb hisoblanadi
+    await _add_column(db, "applications", "join_resolved", "INTEGER NOT NULL DEFAULT 1")
     await db.execute(
         "UPDATE applications SET voting_ends_at = datetime('now', ?) "
         "WHERE status = 'voting' AND voting_ends_at IS NULL",
@@ -215,13 +218,44 @@ async def get_active_application(user_id: int, group_id: int) -> dict | None:
 
 
 async def change_status(app_id: int, old: str, new: str) -> bool:
+    """Atomik o'tish. Yakuniy holatga (accepted/rejected/expired) o'tganda guruh so'rovi hali hal qilinmagan
+    deb belgilanadi (join_resolved = 0): bot shu oraliqda to'xtasa, startda qayta bajariladi."""
     db = await get_db()
     cur = await db.execute(
-        "UPDATE applications SET status = ? WHERE id = ? AND status = ?",
-        (new, app_id, old),
+        "UPDATE applications SET status = ?, "
+        "join_resolved = CASE WHEN ? IN ('accepted', 'rejected', 'expired') THEN 0 ELSE join_resolved END "
+        "WHERE id = ? AND status = ?",
+        (new, new, app_id, old),
     )
     await db.commit()
     return cur.rowcount == 1
+
+
+async def mark_join_resolved(app_id: int) -> None:
+    db = await get_db()
+    await db.execute("UPDATE applications SET join_resolved = 1 WHERE id = ?", (app_id,))
+    await db.commit()
+
+
+async def get_unresolved_join_requests() -> list[dict]:
+    """Yakuniy holati yozilgan, lekin guruh so'rovi (approve/decline) bajarilmagan arizalar."""
+    db = await get_db()
+    cur = await db.execute(
+        "SELECT * FROM applications WHERE join_resolved = 0 AND status IN ('accepted', 'rejected', 'expired')"
+    )
+    return [dict(r) for r in await cur.fetchall()]
+
+
+async def mark_removed(user_id: int, group_id: int) -> int:
+    """Admin guruhdan chiqargan/bloklagan foydalanuvchining qabul qilingan arizalari 'removed' bo'ladi:
+    qayta qo'shilganda eski anketa bilan ovozga emas, yangi anketa va admin ko'rigiga boradi."""
+    db = await get_db()
+    cur = await db.execute(
+        "UPDATE applications SET status = 'removed' WHERE user_id = ? AND group_id = ? AND status = 'accepted'",
+        (user_id, group_id),
+    )
+    await db.commit()
+    return cur.rowcount
 
 
 async def start_voting(app_id: int, minutes: int) -> bool:
@@ -285,9 +319,12 @@ async def set_vote_message(app_id: int, message_id: int) -> None:
 
 async def add_vote(app_id: int, voter_id: int, vote: str) -> bool:
     db = await get_db()
+    # holat va muddat shu yerning o'zida tekshiriladi: yakunlash bilan poyga bo'lmasin (muddatdan keyingi ovoz yozilmaydi)
     cur = await db.execute(
-        "INSERT OR IGNORE INTO votes (application_id, voter_id, vote) VALUES (?, ?, ?)",
-        (app_id, voter_id, vote),
+        "INSERT OR IGNORE INTO votes (application_id, voter_id, vote) "
+        "SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM applications WHERE id = ? AND status = 'voting' "
+        "AND (voting_ends_at IS NULL OR voting_ends_at > datetime('now')))",
+        (app_id, voter_id, vote, app_id),
     )
     await db.commit()
     return cur.rowcount == 1

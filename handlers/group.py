@@ -18,6 +18,7 @@ from database import (
     end_voting_now,
     get_application_by_vote_message,
     get_members,
+    mark_removed,
 )
 from utils.admin import get_user_status, is_admin
 from utils.autodelete import CommandCleanupMiddleware, schedule_delete
@@ -91,6 +92,8 @@ async def _remove(bot: Bot, chat_id: int, user_id: int, *, ban: bool) -> None:
             await bot.ban_chat_member(chat_id, user_id)
             if not ban:
                 await bot.unban_chat_member(chat_id, user_id, only_if_banned=True)
+            # chiqarilgan/bloklangan foydalanuvchi qayta qo'shilsa, yana admin ko'rigidan o'tadi
+            await mark_removed(user_id, chat_id)
             return
         except TelegramRetryAfter as e:
             if attempt == 1:
@@ -120,6 +123,10 @@ async def member_changed(event: ChatMemberUpdated):
         ChatMemberStatus.ADMINISTRATOR,
         ChatMemberStatus.CREATOR,
     ) or (member.status == ChatMemberStatus.RESTRICTED and member.is_member)
+
+    if member.status == ChatMemberStatus.KICKED:
+        # Telegram'dan qo'lda bloklangan holat ham (bot orqali emas)
+        await mark_removed(member.user.id, event.chat.id)
 
     if is_in:
         await track(event.chat.id, member.user.id)

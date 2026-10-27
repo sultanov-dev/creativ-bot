@@ -62,6 +62,10 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
 
     if not await add_vote(app["id"], voter_id, callback_data.vote):
         previous = await get_vote(app["id"], voter_id)
+        if previous is None:
+            # tekshiruvdan keyin muddat tugagan: ovoz yozilmadi
+            await call.answer("Ovoz berish muddati tugadi. Natija tez orada ma'lum bo'ladi.", show_alert=True)
+            return
         await call.answer(
             f"Siz allaqachon «{VOTE_LABELS.get(previous, '?')}» deb ovoz bergansiz. "
             "Ovozni o'zgartirib bo'lmaydi.",

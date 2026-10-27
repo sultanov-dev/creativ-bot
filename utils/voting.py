@@ -14,10 +14,12 @@ from database import change_status, count_votes, get_due_votings, get_no_votes
 from keyboards.creator import creator_inline
 from texts import (
     APPLICATION_ACCEPTED,
+    APPLICATION_ACCEPTED_NOT_JOINED,
     APPLICATION_REJECTED,
     FEEDBACK_INTRO,
 )
-from utils.admin import notify_admins, safe_send, status_text
+from utils.admin import join_failed_text, notify_admins, safe_send, status_text
+from utils.join_requests import settle_join_request
 from utils.summary import feedback_for_applicant
 
 logger = logging.getLogger(__name__)
@@ -157,14 +159,11 @@ async def _finalize_one(bot: Bot, app: dict) -> bool:
 
     logger.info("Ovoz berish yakunlandi: ariza %s -> %s (%s/%s)", app["id"], new, yes, no)
 
+    joined = True
     if new in ("accepted", "rejected", "expired"):
-        try:
-            if new == "accepted":
-                await bot.approve_chat_join_request(chat_id=app["group_id"], user_id=app["user_id"])
-            else:
-                await bot.decline_chat_join_request(chat_id=app["group_id"], user_id=app["user_id"])
-        except TelegramAPIError:
-            pass  # so'rov muddati o'tgan yoki foydalanuvchi allaqachon a'zo
+        joined = await settle_join_request(bot, app, new == "accepted")
+        if new == "accepted" and not joined:
+            result, note = "✅ Qabul qilindi, lekin guruhga qo'shib bo'lmadi", APPLICATION_ACCEPTED_NOT_JOINED
 
     if app["vote_message_id"]:
         try:
@@ -184,7 +183,7 @@ async def _finalize_one(bot: Bot, app: dict) -> bool:
 
     # adminlarga natija statusi: "Ism Familiya guruhga qabul qilindi/qilinmadi" (qaror adminlarda bo'lsa, undan keyin)
     if new == "accepted":
-        await notify_admins(bot, status_text(app, True))
+        await notify_admins(bot, status_text(app, True) if joined else join_failed_text(app))
     elif new == "rejected":
         await notify_admins(bot, status_text(app, False))
     elif new == "expired":

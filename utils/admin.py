@@ -61,6 +61,14 @@ def status_text(app: dict, accepted: bool, note: str = "") -> str:
     return f"❌ <b>{name}</b> guruhga qabul qilinmadi{note}"
 
 
+def join_failed_text(app: dict) -> str:
+    """Ariza qabul qilindi, lekin guruhga qo'shib bo'lmadi: adminlar bilishi kerak."""
+    return (
+        f"⚠️ <b>{escape(app['full_name'])}</b> arizasi qabul qilindi, lekin guruhga qo'shib bo'lmadi "
+        "(so'rov bekor qilingan yoki botda huquq yetmaydi). Foydalanuvchi qayta so'rov yuborishi kerak."
+    )
+
+
 async def mark_done(call: CallbackQuery, result: str):
     """Admin xabaridagi tugmalarni olib, natija va qaror qilgan admin ismini yozadi."""
     if isinstance(call.message, Message):

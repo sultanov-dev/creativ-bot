@@ -15,6 +15,7 @@ from utils.autodelete import AutoDeleteMiddleware, restore_pending_deletes
 from utils.commands import setup_group_commands, setup_private_commands
 from utils.create_bot import bot
 from utils.expiry import run_expiry_loop
+from utils.join_requests import recover_unresolved
 from utils.fsm_storage import SQLiteStorage
 from utils.logging_setup import setup_logging
 from utils.members import TrackMembersMiddleware
@@ -80,6 +81,10 @@ async def main():
     # parallel: har bir chaqiruv ~0,4 s, ketma-ket qilinsa guruh/admin soniga ko'paya boradi
     await asyncio.gather(*(setup_group_commands(bot, g) for g in await get_known_group_ids()))
     await restore_pending_deletes(bot)
+    try:
+        await recover_unresolved(bot)  # bot to'xtagani uchun bajarilmay qolgan approve/decline
+    except Exception:
+        logger.exception("To'xtab qolgan so'rovlarni tiklashda xatolik")
     expiry_task = asyncio.create_task(run_expiry_loop(bot))
     try:
         if WEBHOOK_URL:
