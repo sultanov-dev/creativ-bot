@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from html import escape
 
@@ -67,8 +68,10 @@ def _target_id(message: Message, command: CommandObject) -> int | None:
     reply = message.reply_to_message
     if reply and reply.from_user:
         return reply.from_user.id
-    if command.args and _is_number(command.args.split()[0].lstrip("-")):
-        return int(command.args.split()[0])
+    token = command.args.split()[0] if command.args else ""
+    # faqat ASCII raqam, ixtiyoriy bitta minus ('--5' va '²' int() da xato beradi)
+    if re.fullmatch(r"-?[0-9]+", token):
+        return int(token)
     return None
 
 

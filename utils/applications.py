@@ -1,7 +1,7 @@
 import logging
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import TelegramAPIError
 from aiogram.types import ReplyKeyboardRemove
 
 from config import VOTING_MINUTES
@@ -37,7 +37,7 @@ async def open_voting(bot: Bot, app: dict) -> bool:
             ),
             reply_markup=vote_inline(app_id=app["id"]),
         )
-    except (TelegramBadRequest, TelegramForbiddenError):
+    except TelegramAPIError:
         await change_status(app_id=app["id"], old="voting", new="pending")
         return False
 

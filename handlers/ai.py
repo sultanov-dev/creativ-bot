@@ -83,7 +83,7 @@ async def on_ai_question(message: Message, bot: Bot):
     username = me.username or ""
 
     question = re.sub(
-        rf"@{re.escape(username)}", "", message.text, flags=re.IGNORECASE
+        rf"@{re.escape(username)}(?![A-Za-z0-9_])", "", message.text, flags=re.IGNORECASE
     ).strip()
     reply = message.reply_to_message
     quoted = (reply.text or reply.caption) if reply else None

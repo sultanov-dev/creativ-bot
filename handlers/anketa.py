@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 MAX_ANSWER_LEN = 800
 
 USERNAME_RE = re.compile(r"^@?([A-Za-z][A-Za-z0-9_]{4,31})$")
-PHONE_RE = re.compile(r"^\+?[\d\s\-()]{7,25}$")
+PHONE_RE = re.compile(r"^\+?[\d\s\-()]{7,25}$", re.ASCII)  # arab-hind kabi Unicode raqamlar o'tmasin
 
 
 def _is_skip(text: str | None) -> bool:
@@ -58,7 +58,7 @@ def _clean_name(text: str | None) -> str | None:
 
 def _clean_phone(text: str) -> str | None:
     text = text.strip()
-    digits = re.sub(r"\D", "", text)
+    digits = re.sub(r"\D", "", text, flags=re.ASCII)
     if not PHONE_RE.match(text) or not 7 <= len(digits) <= 15:
         return None
     return ("+" if text.startswith("+") else "") + digits
