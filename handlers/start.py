@@ -6,7 +6,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from database import get_pending_reason
+from keyboards.skip import skip_keyboard
 from utils.admin import is_admin
+from utils.reason_text import reason_question
 from handlers.profile import show_review
 from states import Form
 from utils.questions import question_for
@@ -35,9 +37,9 @@ async def cmd_start(message: Message, state: FSMContext, bot: Bot):
         return
 
     # ovoz berganda shaxsiy xabar yuborib bo'lmagan bo'lsa, sababni shu yerda so'raymiz
-    pending = None if is_admin(message.from_user.id) else await get_pending_reason(message.from_user.id)
+    pending = await get_pending_reason(message.from_user.id)
     if pending:
         await message.answer(
-            f"Siz <b>{escape(pending['applicant_name'])}</b> arizasiga 👎 bergansiz.\n"
-            "Qaroringiz sababini qisqacha yozib yuborsangiz, minnatdor bo'lamiz:"
+            reason_question(pending["applicant_name"]),
+            reply_markup=skip_keyboard() if is_admin(message.from_user.id) else None,
         )

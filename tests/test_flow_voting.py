@@ -227,11 +227,19 @@ class TestVoting:
         assert "yakunlangan" in last_alert(session).text
         assert await dbm.count_votes(app_id) == (1, 0)
 
-    async def test_admin_vote_counts_as_one_and_no_reason_is_requested(self, dp, bot, session):
+    async def test_admin_no_vote_counts_as_one_and_reason_is_asked_with_skip_button(self, dp, bot, session):
         app_id = await voting_app(dp, bot)
         await cast(dp, bot, tf.ADMIN_ID, "no", app_id)
         assert await dbm.count_votes(app_id) == (0, 1)
-        assert not session.sent_to(tf.ADMIN_ID)
+        dm = session.sent_to(tf.ADMIN_ID)
+        assert len(dm) == 1 and "sababini" in dm[0].text
+        buttons = [b.text for row in dm[0].reply_markup.keyboard for b in row]
+        assert buttons == [texts.SKIP_BUTTON]
+
+    async def test_member_reason_dm_has_no_skip_button(self, dp, bot, session):
+        app_id = await voting_app(dp, bot)
+        await cast(dp, bot, M[0], "no", app_id)
+        assert session.sent_to(M[0])[0].reply_markup is None
 
     async def test_member_no_vote_asks_reason_by_dm(self, dp, bot, session):
         app_id = await voting_app(dp, bot)
@@ -298,11 +306,35 @@ class TestReasonCapture:
         await feed(dp, bot, tf.private_message(M[0], "/help"))
         assert (await dbm.get_no_votes(app_id))[0]["reason"] is None
 
-    async def test_admin_text_is_never_a_reason(self, dp, bot, session):
+    async def test_admin_text_is_saved_as_reason(self, dp, bot, session):
         app_id = await voting_app(dp, bot)
         await cast(dp, bot, tf.ADMIN_ID, "no", app_id)
         await feed(dp, bot, tf.private_message(tf.ADMIN_ID, "admin fikri"))
-        assert (await dbm.get_no_votes(app_id))[0]["reason"] is None
+        assert (await dbm.get_no_votes(app_id))[0]["reason"] == "admin fikri"
+
+    async def test_admin_skip_button_skips_reason_and_is_not_asked_again(self, dp, bot, session):
+        app_id = await voting_app(dp, bot)
+        await cast(dp, bot, tf.ADMIN_ID, "no", app_id)
+        session.clear()
+        await feed(dp, bot, tf.private_message(tf.ADMIN_ID, texts.SKIP_BUTTON))
+        assert (await dbm.get_no_votes(app_id))[0]["reason"] == ""
+        assert len(session.sent_to(tf.ADMIN_ID)) == 1
+        session.clear()
+        await feed(dp, bot, tf.private_message(tf.ADMIN_ID, "/start"))
+        assert not any("sababini" in t for t in session.texts_to(tf.ADMIN_ID))
+
+    async def test_admin_start_reasks_pending_reason_with_skip_button(self, dp, bot, session):
+        app_id = await voting_app(dp, bot)
+        await cast(dp, bot, tf.ADMIN_ID, "no", app_id)
+        session.clear()
+        await feed(dp, bot, tf.private_message(tf.ADMIN_ID, "/start"))
+        reask = [m for m in session.sent_to(tf.ADMIN_ID) if "sababini" in m.text]
+        assert len(reask) == 1 and reask[0].reply_markup is not None
+
+    async def test_skip_text_from_a_regular_member_is_just_a_reason(self, dp, bot, session):
+        app_id = await self._no_vote(dp, bot)
+        await feed(dp, bot, tf.private_message(M[0], texts.SKIP_BUTTON))
+        assert (await dbm.get_no_votes(app_id))[0]["reason"] == texts.SKIP_BUTTON
 
     async def test_reason_after_voting_ended_is_not_accepted(self, dp, bot, session):
         app_id = await self._no_vote(dp, bot)
