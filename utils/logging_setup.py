@@ -9,7 +9,7 @@ FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 
 
 def setup_logging() -> None:
-    """Konsol + aylanuvchi fayl (DATA_DIR/logs/bot.log, 5 MB x 5). Daraja: LOG_LEVEL (standart INFO)."""
+    """Konsol + aylanuvchi fayl (DATA_DIR/logs/bot.log, 5 MB x 4 = ko'pi bilan 20 MB). Daraja: LOG_LEVEL (standart INFO)."""
     level = os.getenv("LOG_LEVEL", "INFO").upper()
     formatter = logging.Formatter(FORMAT)
 
@@ -23,7 +23,7 @@ def setup_logging() -> None:
         file_handler = RotatingFileHandler(
             os.path.join(log_dir, "bot.log"),
             maxBytes=5 * 1024 * 1024,
-            backupCount=5,
+            backupCount=3,
             encoding="utf-8",
         )
         file_handler.setFormatter(formatter)
@@ -33,3 +33,5 @@ def setup_logging() -> None:
         pass
 
     logging.basicConfig(level=level, handlers=handlers, force=True)
+    # har bir update uchun aiogram o'zi ham "handled" qatorini yozadi: bizning tg.in qatorlarimiz bilan takror
+    logging.getLogger("aiogram.event").setLevel(logging.WARNING)

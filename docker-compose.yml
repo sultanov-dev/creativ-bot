@@ -13,6 +13,12 @@ services:
       - no-new-privileges:true
     volumes:
       - bot-data:/data
+    # konsol (stdout) loglari Docker'da cheksiz o'sadi: eng ko'pi bilan 3 x 10 MB
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   bot-data:

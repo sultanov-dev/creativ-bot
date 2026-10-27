@@ -45,6 +45,14 @@ def _describe_update(update: Update) -> str:
     return " ".join(parts)
 
 
+def _is_group_chatter(event: TelegramObject) -> bool:
+    """Guruhdagi oddiy (buyruq bo'lmagan) matnli xabar."""
+    message = getattr(event, "message", None)
+    if message is None or message.chat.type not in ("group", "supergroup"):
+        return False
+    return not (message.text or "").startswith("/")
+
+
 class UpdateLogMiddleware(BaseMiddleware):
     """Kelayotgan har bir update: kim, qayerdan, nima; qancha vaqtda va ishlanganmi."""
 
@@ -55,7 +63,9 @@ class UpdateLogMiddleware(BaseMiddleware):
         data: dict[str, Any],
     ) -> Any:
         description = _describe_update(event) if isinstance(event, Update) else str(event)
-        incoming.info("← %s", description)
+        # oddiy guruh suhbati (buyruq emas) juda ko'p: faqat DEBUG da, prodda log shishib ketmasin
+        level = logging.DEBUG if _is_group_chatter(event) else logging.INFO
+        incoming.log(level, "← %s", description)
         started = time.monotonic()
         try:
             result = await handler(event, data)
@@ -64,7 +74,7 @@ class UpdateLogMiddleware(BaseMiddleware):
             raise
         ms = (time.monotonic() - started) * 1000
         state = "e'tiborsiz (handler topilmadi)" if result is UNHANDLED else "ishlandi"
-        incoming.info("✓ %s, %.0f ms", state, ms)
+        incoming.log(level, "✓ %s, %.0f ms", state, ms)
         return result
 
 
