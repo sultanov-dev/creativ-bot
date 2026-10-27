@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 from aiogram import Bot, Dispatcher
-from aiogram.exceptions import TelegramRetryAfter
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.methods import (
     BanChatMember, EditMessageText, GetChatMember, RestrictChatMember, SendMessage, SetMyCommands, UnbanChatMember,
 )
