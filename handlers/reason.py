@@ -1,10 +1,10 @@
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.filters import StateFilter
 from aiogram.types import Message, ReplyKeyboardRemove
 
 from database import get_pending_reason, set_vote_reason
 from texts import MODERATION_WARNING, SKIP_BUTTON
-from utils.admin import is_admin
+from utils.admin import is_reviewer
 from utils.moderation import is_abusive
 
 router = Router()
@@ -12,7 +12,7 @@ router.message.filter(F.chat.type == "private")
 
 
 @router.message(F.text, ~F.text.startswith("/"), StateFilter(None))
-async def capture_reason(message: Message):
+async def capture_reason(message: Message, bot: Bot):
     if message.from_user is None or message.text is None:
         return
 
@@ -21,7 +21,7 @@ async def capture_reason(message: Message):
         return
 
     app_id = pending["app_id"]
-    if is_admin(message.from_user.id) and message.text.strip() == SKIP_BUTTON:
+    if message.text.strip() == SKIP_BUTTON and await is_reviewer(bot, pending["group_id"], message.from_user.id):
         # o'tkazib yuborildi: bo'sh sabab "javob berilgan" degani, qayta so'ralmaydi va xulosaga kirmaydi
         await set_vote_reason(app_id, message.from_user.id, "")
         await message.answer("Yaxshi, o'tkazib yuborildi 👌", reply_markup=ReplyKeyboardRemove())

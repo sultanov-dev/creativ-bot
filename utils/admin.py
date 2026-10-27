@@ -1,12 +1,17 @@
 import asyncio
+import logging
 from html import escape
 
 from aiogram import Bot
 from aiogram.enums import ChatMemberStatus
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import CallbackQuery, Message
 
 from config import ADMIN_IDS
+
+logger = logging.getLogger(__name__)
+
+GROUP_ADMIN_STATUSES = (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR)
 
 
 async def get_user_status(bot: Bot, chat_id: int, user_id: int):
@@ -33,8 +38,28 @@ async def is_group_member(bot: Bot, chat_id: int, user_id: int) -> bool:
 
 
 def is_admin(user_id: int) -> bool:
-    """Bot admini: faqat ADMIN_IDS ro'yxati (.env) hisoblanadi."""
+    """Bot admini (guruh buyruqlarini bajaradi): faqat ADMIN_IDS ro'yxati (.env) hisoblanadi."""
     return user_id in ADMIN_IDS
+
+
+async def is_reviewer(bot: Bot, chat_id: int, user_id: int) -> bool:
+    """Anketa, ovoz va yakuniy qaror admini: guruhning Telegram admini (egasi ham) yoki ADMIN_IDS dagi bot admini.
+
+    Guruh buyruqlari bundan farqli: ularni faqat ADMIN_IDS (is_admin) bajaradi.
+    """
+    return is_admin(user_id) or await get_user_status(bot, chat_id, user_id) in GROUP_ADMIN_STATUSES
+
+
+async def reviewer_ids(bot: Bot, chat_id: int) -> list[int]:
+    """Shu guruhning anketa/qaror adminlari: Telegram guruh adminlari (botlarsiz) va ADMIN_IDS."""
+    ids = dict.fromkeys(ADMIN_IDS)
+    try:
+        for member in await bot.get_chat_administrators(chat_id):
+            if not member.user.is_bot:
+                ids[member.user.id] = None
+    except TelegramAPIError as e:
+        logger.warning("Guruh adminlari ro'yxatini olib bo'lmadi (chat_id=%s): %r", chat_id, e)
+    return list(ids)
 
 
 async def safe_send(bot: Bot, chat_id: int, text: str, **kwargs) -> bool:
@@ -45,10 +70,10 @@ async def safe_send(bot: Bot, chat_id: int, text: str, **kwargs) -> bool:
         return False
 
 
-async def notify_admins(bot: Bot, text: str, *, exclude: tuple[int, ...] = ()) -> None:
-    """Barcha adminlarga (exclude dagilardan tashqari) qisqa xabar; yetmaganlari jim o'tkaziladi."""
+async def notify_admins(bot: Bot, group_id: int, text: str, *, exclude: tuple[int, ...] = ()) -> None:
+    """Guruhning barcha adminlariga (exclude dagilardan tashqari) qisqa xabar; yetmaganlari jim o'tkaziladi."""
     await asyncio.gather(
-        *(safe_send(bot=bot, chat_id=a, text=text) for a in ADMIN_IDS if a not in exclude),
+        *(safe_send(bot=bot, chat_id=a, text=text) for a in await reviewer_ids(bot, group_id) if a not in exclude),
         return_exceptions=True,
     )
 

@@ -7,7 +7,6 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
-from config import ADMIN_IDS
 from database import (
     change_status,
     create_application,
@@ -31,7 +30,7 @@ from texts import (
     WRONG_NAME,
     WRONG_PHONE,
 )
-from utils.admin import safe_send
+from utils.admin import reviewer_ids, safe_send
 from utils.form_anketa import PROFILE_FIELDS, format_anketa, full_name_of
 from utils.moderation import is_abusive
 from utils.num_matcher import extract_number
@@ -201,8 +200,9 @@ async def _finish_application(message: Message, bot: Bot, state: FSMContext) -> 
         await message.answer(ERROR_GENERIC)
         return
 
-    if not ADMIN_IDS:
-        logger.error("ADMIN_IDS bo'sh: anketani ko'rib chiqadigan admin yo'q")
+    admins = await reviewer_ids(bot, group_id)
+    if not admins:
+        logger.error("Guruh %s uchun anketani ko'rib chiqadigan admin topilmadi", group_id)
         await state.clear()
         await message.answer(ERROR_GENERIC)
         return
@@ -241,7 +241,7 @@ async def _finish_application(message: Message, bot: Bot, state: FSMContext) -> 
                 text=private_anketa,
                 reply_markup=action_inline(app_id),
             )
-            for admin_id in ADMIN_IDS
+            for admin_id in admins
         )
     )
 

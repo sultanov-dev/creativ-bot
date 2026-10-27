@@ -9,6 +9,7 @@ from aiogram.enums import ChatMemberStatus
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramNetworkError, TelegramRetryAfter
 from aiogram.methods import (
     GetChat,
+    GetChatAdministrators,
     GetChatMember,
     GetChatMemberCount,
     GetMe,
@@ -84,6 +85,7 @@ class FakeSession(BaseSession):
         self.names: dict[int, str] = {}
         self.errors: dict[type, Any] = {}
         self.member_count = 42
+        self.group_admins: dict[int, list[int]] = {}  # chat_id -> Telegram guruh adminlari (GetChatMember ham shuni qaytaradi)
         self._ids = itertools.count(1000)
 
     async def close(self) -> None:  # pragma: no cover
@@ -131,7 +133,8 @@ class FakeSession(BaseSession):
         if isinstance(method, GetMe):
             return make_user(BOT_ID, "Bot", is_bot=True, username=BOT_USERNAME)
         if isinstance(method, GetChatMember):
-            status = self.statuses.get((int(method.chat_id), method.user_id), self.default_status)
+            default = "administrator" if method.user_id in self.group_admins.get(int(method.chat_id), []) else self.default_status
+            status = self.statuses.get((int(method.chat_id), method.user_id), default)
             user = make_user(method.user_id, self.names.get(method.user_id, f"U{method.user_id}"))
             if status == "left":
                 return ChatMemberLeft(status=ChatMemberStatus.LEFT, user=user)
@@ -158,6 +161,20 @@ class FakeSession(BaseSession):
                     can_pin_messages=False, can_manage_topics=False, until_date=now(),
                 )
             return ChatMemberMember(status=ChatMemberStatus.MEMBER, user=user)
+        if isinstance(method, GetChatAdministrators):
+            chat = int(method.chat_id)
+            ids = list(self.group_admins.get(chat, []))
+            ids += [u for (c, u), st in self.statuses.items() if c == chat and st in ("administrator", "creator") and u not in ids]
+            members = [self._result(GetChatMember(chat_id=chat, user_id=u)) for u in ids]
+            # haqiqiy Telegram botning o'zini ham qaytaradi: u anketa oluvchilar qatoriga kirmasligi kerak
+            members.append(ChatMemberAdministrator(
+                status=ChatMemberStatus.ADMINISTRATOR, user=make_user(BOT_ID, "Bot", is_bot=True, username=BOT_USERNAME),
+                can_be_edited=False, is_anonymous=False, can_manage_chat=True, can_delete_messages=True,
+                can_manage_video_chats=True, can_restrict_members=True, can_promote_members=False, can_change_info=True,
+                can_invite_users=True, can_post_stories=False, can_edit_stories=False, can_delete_stories=False,
+                can_send_welcome_messages=False,
+            ))
+            return members
         if isinstance(method, GetChatMemberCount):
             return self.member_count
         if isinstance(method, GetChat):

@@ -390,7 +390,7 @@ async def get_pending_reason(voter_id: int) -> dict | None:
     db = await get_db()
     cur = await db.execute(
         """
-        SELECT v.application_id AS app_id, a.full_name AS applicant_name
+        SELECT v.application_id AS app_id, a.full_name AS applicant_name, a.group_id AS group_id
         FROM votes v JOIN applications a ON a.id = v.application_id
         WHERE v.voter_id = ? AND v.vote = 'no' AND v.reason IS NULL
           AND v.created_at > datetime('now', '-1 day')

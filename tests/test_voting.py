@@ -268,7 +268,9 @@ class TestAdminDeliveryFallbacks:
         [(["yes", "yes", "no", "no", "yes"], "accepted"), (["yes", "no"], "rejected")],
     )
     async def test_no_admins_configured_majority_decides(self, db, bot, session, monkeypatch, no_ai, votes, status):
-        monkeypatch.setattr(voting, "ADMIN_IDS", [])
+        import utils.admin as admin_utils
+
+        monkeypatch.setattr(admin_utils, "ADMIN_IDS", [])
         app_id = await make_voting_app(votes=votes)
         await voting.finalize_due_votings(bot)
         assert await status_of(app_id) == status

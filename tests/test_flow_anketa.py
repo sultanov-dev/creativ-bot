@@ -202,9 +202,9 @@ class TestCompletion:
         assert_no_errors(session)
 
     async def test_no_admins_configured(self, dp, bot, session, monkeypatch):
-        import handlers.anketa as anketa
+        import utils.admin as admin_utils
 
-        monkeypatch.setattr(anketa, "ADMIN_IDS", [])
+        monkeypatch.setattr(admin_utils, "ADMIN_IDS", [])  # ADMIN_IDS ham, guruh adminlari ham yo'q
         await fill_form(dp, bot)
         assert session.texts_to(U)[-1] == texts.ERROR_GENERIC
         assert await dbm.get_active_application(U, tf.GROUP_ID) is None

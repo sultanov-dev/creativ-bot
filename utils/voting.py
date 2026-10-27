@@ -9,7 +9,7 @@ from aiogram.exceptions import (
     TelegramForbiddenError,
 )
 
-from config import ADMIN_IDS, VOTE_ACCEPT_PERCENT
+from config import VOTE_ACCEPT_PERCENT
 from database import change_status, count_votes, get_due_votings, get_no_votes
 from keyboards.decision import decision_inline
 from texts import (
@@ -18,7 +18,7 @@ from texts import (
     APPLICATION_REJECTED,
     FEEDBACK_INTRO,
 )
-from utils.admin import join_failed_text, notify_admins, safe_send, status_text
+from utils.admin import join_failed_text, notify_admins, reviewer_ids, safe_send, status_text
 from utils.join_requests import settle_join_request
 from utils.summary import feedback_for_applicant
 
@@ -74,14 +74,15 @@ async def _send_to_admins(bot: Bot, app: dict, yes: int, no: int) -> str:
     """Barcha adminlarga hisobot va Qabul/Rad tugmalarini yuboradi (👎 sabablari faqat confirm oynasida).
 
     SENT: kamida bitta adminga yetkazildi. UNREACHABLE: hech kimga yetkazib bo'lmaydi (/start bosmagan,
-    bloklagan yoki ADMIN_IDS bo'sh). RETRY: yetkazilmadi va vaqtinchalik xato bor (flood limit, tarmoq):
+    bloklagan yoki adminlar yo'q). RETRY: yetkazilmadi va vaqtinchalik xato bor (flood limit, tarmoq):
     keyingi aylanishda qayta uriniladi.
     """
-    if not ADMIN_IDS:
-        return UNREACHABLE
     try:
+        admins = await reviewer_ids(bot, app["group_id"])
+        if not admins:
+            return UNREACHABLE
         text = report_text(app)
-        results = await asyncio.gather(*(_send_one(bot, a, text, app["id"]) for a in ADMIN_IDS))
+        results = await asyncio.gather(*(_send_one(bot, a, text, app["id"]) for a in admins))
     except Exception:
         logger.exception("Ariza %s: adminlar hisobotini tayyorlashda xatolik", app["id"])
         return RETRY
@@ -183,11 +184,11 @@ async def _finalize_one(bot: Bot, app: dict) -> bool:
 
     # adminlarga natija statusi: "Ism Familiya guruhga qabul qilindi/qilinmadi" (qaror adminlarda bo'lsa, undan keyin)
     if new == "accepted":
-        await notify_admins(bot, status_text(app, True) if joined else join_failed_text(app))
+        await notify_admins(bot, app["group_id"], status_text(app, True) if joined else join_failed_text(app))
     elif new == "rejected":
-        await notify_admins(bot, status_text(app, False))
+        await notify_admins(bot, app["group_id"], status_text(app, False))
     elif new == "expired":
-        await notify_admins(bot, status_text(app, False, ": hech kim ovoz bermadi"))
+        await notify_admins(bot, app["group_id"], status_text(app, False, ": hech kim ovoz bermadi"))
 
     # AI xulosasi eng oxirida: guruhdagi ish (so'rov, xabarni o'chirish) AI kutishiga bog'liq emas
     if new == "rejected":

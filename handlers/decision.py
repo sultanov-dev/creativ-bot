@@ -8,7 +8,7 @@ from callbacks import DecisionCB
 from database import change_status, count_votes, get_application, get_no_votes
 from keyboards.decision import decision_confirm_inline, decision_inline
 from texts import APPLICATION_ACCEPTED, APPLICATION_ACCEPTED_NOT_JOINED
-from utils.admin import is_admin, join_failed_text, notify_admins, safe_send, status_text
+from utils.admin import is_reviewer, join_failed_text, notify_admins, safe_send, status_text
 from utils.join_requests import settle_join_request
 from utils.summary import summarize_reasons
 from utils.voting import rejection_note, report_text
@@ -43,6 +43,7 @@ async def _decide(call: CallbackQuery, bot: Bot, app: dict, accepted: bool) -> N
     # boshqa adminlarga ham natija statusi (qaror qilgan adminda xabar tahrirlandi)
     await notify_admins(
         bot,
+        app["group_id"],
         (status_text(app, accepted, f" (qaror: {who})") if joined else join_failed_text(app)),
         exclude=(call.from_user.id,),
     )
@@ -104,7 +105,7 @@ async def on_decision(call: CallbackQuery, callback_data: DecisionCB, bot: Bot):
         await call.answer("Kechirasiz, bu ariza topilmadi", show_alert=True)
         return
 
-    if not is_admin(call.from_user.id):
+    if not await is_reviewer(bot, app["group_id"], call.from_user.id):
         await call.answer("Yakuniy qarorni faqat adminlar qabul qiladi.", show_alert=True)
         return
 

@@ -5,7 +5,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import ReplyKeyboardRemove
 
-from config import ADMIN_IDS, VOTING_MINUTES
+from config import VOTING_MINUTES
 from database import (
     change_status,
     create_application,
@@ -21,7 +21,7 @@ from keyboards.action import action_inline
 from keyboards.vote import vote_inline
 from states import Form
 from texts import ALREADY_APPLIED, ERROR_GENERIC, REPEAT_APPLICATION_SENT, THANKS, VOTE_DEADLINE
-from utils.admin import safe_send
+from utils.admin import reviewer_ids, safe_send
 from utils.form_anketa import anketa_for_admins, format_anketa, full_name_of
 from utils.fsm import get_private_state
 from utils.timefmt import format_deadline
@@ -105,7 +105,10 @@ async def redeliver_undelivered(bot: Bot, storage: BaseStorage) -> int:
     for app in await get_undelivered_applications():
         text = anketa_for_admins(app["anketa"], app["phone"])
         results = await asyncio.gather(
-            *(safe_send(bot=bot, chat_id=a, text=text, reply_markup=action_inline(app["id"])) for a in ADMIN_IDS)
+            *(
+                safe_send(bot=bot, chat_id=a, text=text, reply_markup=action_inline(app["id"]))
+                for a in await reviewer_ids(bot, app["group_id"])
+            )
         )
         delivered = any(results)
         if delivered:

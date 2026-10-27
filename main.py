@@ -70,7 +70,7 @@ async def main():
     bot.session.middleware(RequestLogMiddleware())
     bot.session.middleware(AutoDeleteMiddleware())
     if not ADMIN_IDS:
-        logger.error("ADMIN_IDS bo'sh: anketalarni ko'rib chiqadigan va buyruq beradigan admin yo'q (.env ni tekshiring)")
+        logger.error("ADMIN_IDS bo'sh: guruh buyruqlarini (/ban, /finish...) hech kim bajara olmaydi (.env ni tekshiring)")
 
     dp = Dispatcher(storage=SQLiteStorage())
     dp.update.outer_middleware(UpdateLogMiddleware())

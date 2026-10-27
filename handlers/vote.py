@@ -7,7 +7,7 @@ from aiogram.types import CallbackQuery, Message
 from callbacks import VoteCB
 from database import add_vote, get_application, get_vote
 from keyboards.skip import skip_keyboard
-from utils.admin import is_admin, is_group_member, safe_send
+from utils.admin import is_group_member, is_reviewer, safe_send
 from utils.reason_text import reason_question
 
 router = Router()
@@ -87,7 +87,7 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
             chat_id=voter_id,
             text=reason_question(app["full_name"]),
             # adminga "o'tkazib yuborish" tugmasi ham beriladi
-            reply_markup=skip_keyboard() if is_admin(voter_id) else None,
+            reply_markup=skip_keyboard() if await is_reviewer(bot, group_id, voter_id) else None,
         )
         if not asked:
             note = (

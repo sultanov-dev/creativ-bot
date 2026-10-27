@@ -4,7 +4,7 @@ from aiogram.types import CallbackQuery
 from callbacks import ApplicantCB
 from database import change_status, get_application
 from texts import APPLICATION_REJECTED
-from utils.admin import is_admin, mark_done, safe_send
+from utils.admin import is_reviewer, mark_done, safe_send
 from utils.applications import open_voting
 from utils.join_requests import settle_join_request
 
@@ -21,7 +21,7 @@ async def reject(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
 
     user_id = app["user_id"]
 
-    if not is_admin(call.from_user.id):
+    if not await is_reviewer(bot, app["group_id"], call.from_user.id):
         await call.answer("Bu amal faqat adminlar uchun.", show_alert=True)
         return
 
@@ -47,7 +47,7 @@ async def accept(call: CallbackQuery, callback_data: ApplicantCB, bot: Bot):
 
     user_id = app["user_id"]
 
-    if not is_admin(call.from_user.id):
+    if not await is_reviewer(bot, app["group_id"], call.from_user.id):
         await call.answer("Bu amal faqat adminlar uchun.", show_alert=True)
         return
 

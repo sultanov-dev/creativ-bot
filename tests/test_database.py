@@ -235,7 +235,7 @@ class TestPendingReason:
 
     async def test_found_for_fresh_no_vote(self, db):
         a = await self._with_no()
-        assert await dbm.get_pending_reason(10) == {"app_id": a, "applicant_name": "Aziz Karimov"}
+        assert await dbm.get_pending_reason(10) == {"app_id": a, "applicant_name": "Aziz Karimov", "group_id": G}
         assert await dbm.get_pending_reason(11) is None  # boshqa ovoz beruvchi
 
     async def test_no_pending_reason_when_not_applicable(self, db):
