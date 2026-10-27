@@ -169,6 +169,7 @@ class TestLocalProfanityFilter:
         "блять", "БЛЯДЬ", "хуй", "хуйня", "пизда", "сука", "ебать",
         "siktir", "Sikaman seni", "qo'toq", "qotoq", "ko'tak", "jalab", "yeban", "dalbayob", "gandon", "amingni",
         "Siz juda qotoq ekansiz", "nega ... siktir",
+        "om", "OM", "Om", "omm", "ом", "sen om", "nega om!", "om.", "o'm"[:0] + "om, nima",
     ])
     def test_profanity_is_caught(self, text):
         assert has_profanity(text), text
@@ -178,6 +179,8 @@ class TestLocalProfanityFilter:
         "class", "salom", "Python va Django", "men 25 yoshdaman", "skala", "Scunthorpe", "analysis", "passion",
         "hello", "Husan", "Xushnud", "pedagog", "kotib", "Kotlin", "kot", "2024", "Men Django bilan ishlayman",
         "guruhga qo'shilmoqchiman, chunki o'rganishni xohlayman", "", "   ",
+        # "om" faqat butun so'z sifatida belgilanadi: uning ichida/boshida kelgan oddiy so'zlar toza
+        "omad", "omon", "omborxona", "Omar", "Omonov", "tom", "dom", "Rom", "kompyuter", "komil", "somsa", "omma",
     ])
     def test_normal_text_is_not_flagged(self, text):
         assert not has_profanity(text), text

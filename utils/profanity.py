@@ -23,6 +23,9 @@ def normalize(text: str) -> str:
     text = _INNER_MASK.sub("", text)
     words = []
     for word in re.findall(r"[a-z0-9@$!]+", text):
+        word = word.strip("@$!")  # gap oxiridagi/boshidagi tinish belgisi leet emas ("om!" -> "om")
+        if not word:
+            continue
         if re.search(r"[a-z]", word) and re.search(r"[0-9@$!]", word):
             word = word.translate(_LEET)  # faqat harf bilan aralash so'zlarda (25, 2024 o'zgarmaydi)
         words.append(re.sub(r"(.)\1+", r"\1", word.replace("h", "x")))
@@ -43,7 +46,7 @@ _PREFIX = _norm_list(
     "xuy xuev xuyn pidor pidar pidoras mudak mudil ebat ebal eban shlyux"
 )
 # faqat butun so'z
-_EXACT = frozenset(_norm_list("suka suki suchka ska fck"))
+_EXACT = frozenset(_norm_list("suka suki suchka ska fck om"))
 
 
 def _join_spelled(words: list[str]) -> list[str]:
