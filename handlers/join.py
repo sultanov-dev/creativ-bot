@@ -4,7 +4,7 @@ from aiogram import Bot, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import ChatJoinRequest
 
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
 
 from config import REJOIN_COOLDOWN_SECONDS
 from database import get_active_application, get_profile, last_application_status, rejoin_wait_seconds
@@ -43,11 +43,14 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
     # anketa hali tugamagan (ariza yaratilmagan): yangi so'rov uni boshidan boshlamaydi, davom ettirishni aytamiz
     current = await private_state.get_state()
     if current in FORM_STATES and (await private_state.get_data()).get("group_id") == request.chat.id:
-        await safe_send(bot=bot, chat_id=request.user_chat_id, text=FINISH_FORM_FIRST)
-        if current in REVIEW_STATES:
-            await show_review(bot, request.user_chat_id, private_state)
-        else:
-            await ask(bot, request.user_chat_id, current, delay=0.3)
+        try:
+            await bot.send_message(chat_id=request.user_chat_id, text=FINISH_FORM_FIRST)
+            if current in REVIEW_STATES:
+                await show_review(bot, request.user_chat_id, private_state)
+            else:
+                await ask(bot, request.user_chat_id, current, delay=0.3)
+        except (TelegramForbiddenError, TelegramBadRequest):
+            await _abort(bot, request, private_state)
         return
 
     # rad etilgandan keyin darhol qayta ariza berib, adminlarni charchatmaslik uchun qisqa kutish
@@ -67,6 +70,24 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
 
     # aks holda avval anketa to'ldirgan bo'lsa: ma'lumotlarni ko'rsatamiz, o'zgartirish yoki shunday qoldirishni so'raymiz
     profile = None if fresh_note else await get_profile(request.from_user.id)
+    try:
+        await _begin(bot, request, private_state, profile, fresh_note)
+    except (TelegramForbiddenError, TelegramBadRequest):
+        await _abort(bot, request, private_state)
+
+
+async def _abort(bot: Bot, request: ChatJoinRequest, private_state: FSMContext) -> None:
+    """Foydalanuvchiga yozib bo'lmadi (masalan, bot uzoq o'chiq turgani uchun so'rovdan keyingi ~5 daqiqalik oyna
+    yopilgan): holat tozalanadi va so'rov rad etiladi, shunda foydalanuvchi uni qayta yuborib, yangi oyna ochadi."""
+    logger.warning("Foydalanuvchi %s ga anketa boshlanishini yozib bo'lmadi: so'rov rad etildi", request.from_user.id)
+    await private_state.clear()
+    try:
+        await bot.decline_chat_join_request(chat_id=request.chat.id, user_id=request.from_user.id)
+    except TelegramAPIError:
+        pass
+
+
+async def _begin(bot: Bot, request: ChatJoinRequest, private_state: FSMContext, profile, fresh_note) -> None:
     if profile:
         await private_state.set_data(
             {

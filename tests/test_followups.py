@@ -217,3 +217,88 @@ class TestUnfinishedQuestionnaire:
         session.clear()
         await feed(dp, bot, tf.join_request(U))
         assert texts.FINISH_FORM_FIRST not in session.texts_to(U)
+
+
+class TestBotStoppedMidFlow:
+    async def test_welcome_cannot_be_sent_state_cleared_and_request_declined(self, dp, bot, session):
+        from aiogram.exceptions import TelegramForbiddenError
+        from aiogram.methods import SendMessage
+
+        session.errors[SendMessage] = lambda m: (
+            TelegramForbiddenError(method=m, message="Forbidden: bot can't initiate conversation")
+            if m.chat_id == U else None
+        )
+        await feed(dp, bot, tf.join_request(U))
+        ctx = dp.fsm.get_context(bot, chat_id=U, user_id=U)
+        assert await ctx.get_state() is None
+        assert [(m.chat_id, m.user_id) for m in session.of(DeclineChatJoinRequest)] == [(G, U)]
+        assert not session.sent_to(tf.DEVELOPER_ID)  # dasturchiga xato ketmadi
+
+    async def test_crash_after_application_created_keeps_answers_and_retry_reaches_admins(
+        self, dp, bot, session, monkeypatch
+    ):
+        import handlers.anketa as anketa
+
+        await feed(dp, bot, tf.join_request(U))
+        for a in ANSWERS_BEFORE_LAST:
+            await feed(dp, bot, tf.private_message(U, a))
+
+        real_send = anketa.safe_send
+
+        async def crashing(**kw):
+            raise RuntimeError("bot to'xtadi")
+
+        monkeypatch.setattr(anketa, "safe_send", crashing)
+        await feed(dp, bot, tf.private_message(U, "Qiziq"))
+        ctx = dp.fsm.get_context(bot, chat_id=U, user_id=U)
+        assert await ctx.get_state() == "Form:join_group"  # javoblar yo'qolmadi
+        pending = await dbm.get_active_application(U, G)
+        assert pending is not None and pending["status"] == "pending"
+        assert not session.sent_to(tf.ADMIN_ID)
+
+        monkeypatch.setattr(anketa, "safe_send", real_send)
+        session.clear()
+        await feed(dp, bot, tf.private_message(U, "Qiziq"))  # oxirgi javob qayta ishlanadi (redelivery)
+        assert len(session.sent_to(tf.ADMIN_ID)) == 1 and len(session.sent_to(tf.ADMIN2_ID)) == 1
+        assert await ctx.get_state() is None
+        assert texts.THANKS in session.texts_to(U)
+        d = await dbm.get_db()
+        assert (await (await d.execute("SELECT COUNT(*) FROM applications")).fetchone())[0] == 1  # dublikat yo'q
+
+    async def test_state_is_cleared_only_after_admins_got_it(self, dp, bot, session):
+        app_id = await start_application(dp, bot)
+        ctx = dp.fsm.get_context(bot, chat_id=U, user_id=U)
+        assert await ctx.get_state() is None and app_id
+        assert len(session.sent_to(tf.ADMIN_ID)) == 1
+
+    async def test_double_tap_on_last_answer_makes_one_application(self, dp, bot, session):
+        import asyncio
+
+        await feed(dp, bot, tf.join_request(U))
+        for a in ANSWERS_BEFORE_LAST:
+            await feed(dp, bot, tf.private_message(U, a))
+        session.clear()
+        await asyncio.gather(
+            feed(dp, bot, tf.private_message(U, "Qiziq")), feed(dp, bot, tf.private_message(U, "Qiziq"))
+        )
+        assert len(session.sent_to(tf.ADMIN_ID)) == 1
+        d = await dbm.get_db()
+        assert (await (await d.execute("SELECT COUNT(*) FROM applications")).fetchone())[0] == 1
+
+    async def test_no_admin_reachable_marks_failed_and_clears_state(self, dp, bot, session):
+        from aiogram.exceptions import TelegramForbiddenError
+        from aiogram.methods import SendMessage
+
+        await feed(dp, bot, tf.join_request(U))
+        for a in ANSWERS_BEFORE_LAST:
+            await feed(dp, bot, tf.private_message(U, a))
+        session.errors[SendMessage] = lambda m: (
+            TelegramForbiddenError(method=m, message="Forbidden") if m.chat_id in (tf.ADMIN_ID, tf.ADMIN2_ID) else None
+        )
+        await feed(dp, bot, tf.private_message(U, "Qiziq"))
+        assert await dbm.last_application_status(U, G) == "failed"
+        assert await dp.fsm.get_context(bot, chat_id=U, user_id=U).get_state() is None
+        assert session.texts_to(U)[-1] == texts.ERROR_GENERIC
+
+
+ANSWERS_BEFORE_LAST = ["Aziz Karimov", texts.SKIP_BUTTON, "25", "Dasturchi", "O'zim haqimda"]

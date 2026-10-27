@@ -39,6 +39,8 @@ logger = logging.getLogger(__name__)
 # 3 ta javob + ism Telegram'ning 4096 belgilik xabar chegarasiga sig'ishi uchun
 MAX_ANSWER_LEN = 800
 
+_finishing: set[int] = set()  # oxirgi javobi hozir ishlanayotgan foydalanuvchilar
+
 PHONE_RE = re.compile(r"^\+?[\d\s\-()]{7,25}$", re.ASCII)  # arab-hind kabi Unicode raqamlar o'tmasin
 
 
@@ -158,6 +160,22 @@ async def capture_join_group(message: Message, bot: Bot, state: FSMContext):
         await message.reply(MODERATION_WARNING)
         return
 
+    user_id = message.chat.id
+    if user_id in _finishing:
+        return  # ikki marta yuborilgan oxirgi javob dublikat ariza va admin xabarlarini yaratmasin
+    _finishing.add(user_id)
+    try:
+        await _finish_application(message, bot, state)
+    finally:
+        _finishing.discard(user_id)
+
+
+async def _finish_application(message: Message, bot: Bot, state: FSMContext) -> None:
+    """Oxirgi javobdan keyin: ariza yaratiladi va adminlarga yuboriladi, holat ENG OXIRIDA tozalanadi.
+
+    Bot shu oraliqda to'xtasa, holat va javoblar saqlanib qoladi: oxirgi javob qayta ishlanganda shu ariza
+    qayta ishlatiladi va adminlarga yetkaziladi (javoblar yo'qolmaydi, ariza adminlarsiz qolib ketmaydi).
+    """
     await state.update_data(join_group=message.text)
     if message.from_user is not None:
         # username so'ralmaydi: avtomatik olinadi va anketada ko'rsatilmaydi
@@ -168,31 +186,35 @@ async def capture_join_group(message: Message, bot: Bot, state: FSMContext):
         return
     group_id = data.get("group_id")
     user_id = message.chat.id
-    await state.clear()
 
     # birinchi anketa saqlanadi: shu foydalanuvchi qayta qo'shilsa, savollar takrorlanmaydi
     await save_profile(user_id, {k: data.get(k) for k in PROFILE_FIELDS})
+
+    if group_id is None:
+        logger.warning("group_id topilmadi, user_id=%s", user_id)
+        await state.clear()
+        await message.answer(ERROR_GENERIC)
+        return
+
+    if not ADMIN_IDS:
+        logger.error("ADMIN_IDS bo'sh: anketani ko'rib chiqadigan admin yo'q")
+        await state.clear()
+        await message.answer(ERROR_GENERIC)
+        return
 
     full_name = full_name_of(data)
     # guruhga (ovoz berish xabari) ketadigan variant telefonsiz; adminlar va arizachi telefonni ko'radi
     anketa = format_anketa(data)
     private_anketa = format_anketa(data, with_phone=True)
 
-    if group_id is None:
-        logger.warning("group_id topilmadi, user_id=%s", user_id)
-        await message.answer(ERROR_GENERIC)
-        return
-
-    if not ADMIN_IDS:
-        logger.error("ADMIN_IDS bo'sh: anketani ko'rib chiqadigan admin yo'q")
-        await message.answer(ERROR_GENERIC)
-        return
-
-    if await get_active_application(user_id, group_id):
+    existing = await get_active_application(user_id, group_id)
+    # faqat aynan shu anketadan yaratilgan pending ariza qayta ishlatiladi (oldingi urinish yiqilgan); boshqasi dublikat
+    if existing and not (existing["status"] == "pending" and existing["anketa"] == anketa):
+        await state.clear()
         await message.answer(ALREADY_APPLIED)
         return
-
-    app_id = await create_application(
+    # holat hali tozalanmagan bo'lsa, oldingi urinish tugamagan: o'sha ariza qayta ishlatiladi
+    app_id = existing["id"] if existing else await create_application(
         user_id,
         group_id,
         full_name,
@@ -201,6 +223,7 @@ async def capture_join_group(message: Message, bot: Bot, state: FSMContext):
         phone=data.get("phone"),
     )
     if app_id is None:
+        await state.clear()
         await message.answer(ALREADY_APPLIED)
         return
 
@@ -222,9 +245,11 @@ async def capture_join_group(message: Message, bot: Bot, state: FSMContext):
             "Hech bir admin anketani olmadi (botni start qilmagan bo'lishi mumkin)"
         )
         await change_status(app_id, old="pending", new="failed")
+        await state.clear()
         await message.answer(ERROR_GENERIC)
         return
 
+    await state.clear()  # eng oxirida: yuqoridagi qadamlar yiqilsa, javoblar yo'qolmaydi
     await message.answer(private_anketa)
     await message.answer(THANKS)
 
