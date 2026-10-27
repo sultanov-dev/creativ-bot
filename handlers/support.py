@@ -16,6 +16,8 @@ import texts
 from config import ADMIN_IDS, SUPPORT_MAX_TURNS, SUPPORT_TTL_HOURS
 from database import (
     add_support_message,
+    add_support_warning,
+    count_recent_escalations,
     create_support_chat,
     get_support_chat,
     get_support_messages,
@@ -25,6 +27,13 @@ from utils.admin import safe_send
 from utils.ai import AIError, ask_ai_tools
 from utils.ai_html import plain_text, sanitize_html
 from utils.lang import detect_lang
+from utils.moderation import is_abusive
+from utils.support_policy import (
+    DECLINE_CATEGORIES,
+    DECLINE_COOLDOWN_HOURS,
+    FORWARD_CATEGORIES,
+    MAX_ESCALATIONS_PER_DAY,
+)
 
 router = Router()
 router.message.filter(F.chat.type == "private")
@@ -57,9 +66,14 @@ ESCALATE_TOOL = {
         "parameters": {
             "type": "object",
             "properties": {
-                "summary": {"type": "string", "description": "Summary for the admin, in Uzbek: who wants what and all details."}
+                "summary": {
+                    "type": "string",
+                    "description": "Calm, factual summary for the admin, in Uzbek: who wants what and all details. "
+                    "No insults or sensitive data.",
+                },
+                "category": {"type": "string", "enum": list(FORWARD_CATEGORIES), "description": "Kind of the matter."},
             },
-            "required": ["summary"],
+            "required": ["summary", "category"],
         },
     },
 }
@@ -71,7 +85,22 @@ RESOLVE_TOOL = {
         "parameters": {"type": "object", "properties": {}},
     },
 }
-SUPPORT_TOOLS = [ESCALATE_TOOL, RESOLVE_TOOL]
+DECLINE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "decline",
+        "description": (
+            "The matter must NOT reach the admins (prohibited advertising, abuse, immoral offers, scam, spam, no stated "
+            "purpose, or still unclear). Write a short polite refusal as the reply text."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"category": {"type": "string", "enum": list(DECLINE_CATEGORIES)}},
+            "required": ["category"],
+        },
+    },
+}
+SUPPORT_TOOLS = [ESCALATE_TOOL, DECLINE_TOOL, RESOLVE_TOOL]
 
 # bir foydalanuvchining xabarlari ketma-ket ishlansin (AI javobi kelguncha yana yozsa, suhbat chalkashmasin)
 _locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
@@ -108,8 +137,12 @@ async def _notify_admins(bot: Bot, chat: dict, summary: str) -> int:
     return sum(r is True for r in results)
 
 
-async def _escalate(bot: Bot, chat: dict, summary: str, lang: str) -> None:
-    if not await set_support_status(chat["id"], "active", "escalated"):
+async def _escalate(bot: Bot, chat: dict, summary: str, category: str, lang: str) -> None:
+    if await count_recent_escalations(chat["user_id"], 24) >= MAX_ESCALATIONS_PER_DAY:
+        if await set_support_status(chat["id"], "active", "declined", "limit"):
+            await safe_send(bot, chat["user_id"], texts.SUPPORT_LIMIT[lang])
+        return
+    if not await set_support_status(chat["id"], "active", "escalated", category):
         return  # allaqachon uzatilgan yoki yopilgan
     if await _notify_admins(bot, chat, summary) == 0:
         # hech bir adminga yetmadi: foydalanuvchiga "yubordim" deb aytib bo'lmaydi
@@ -118,6 +151,26 @@ async def _escalate(bot: Bot, chat: dict, summary: str, lang: str) -> None:
         await safe_send(bot, chat["user_id"], texts.SUPPORT_ADMIN_UNAVAILABLE[lang])
         return
     await safe_send(bot, chat["user_id"], texts.SUPPORT_ESCALATED[lang])
+
+
+async def _decline(bot: Bot, chat: dict, category: str, reply_sent: bool, lang: str) -> None:
+    """Admin ko'rmaydigan masala: suhbat yopiladi, turi bazada saqlanadi (AI xatosini keyin ko'rish uchun)."""
+    if not await set_support_status(chat["id"], "active", "declined", category):
+        return
+    logger.info("Support so'rovi adminga yetkazilmadi (chat_id=%s, kategoriya=%s)", chat["id"], category)
+    if not reply_sent:
+        await safe_send(bot, chat["user_id"], texts.SUPPORT_DECLINED[lang])
+
+
+async def _accept(bot: Bot, chat: dict, text: str, lang: str) -> bool:
+    """Odobsiz xabar suhbat tarixiga (demak adminga xulosaga ham) kirmaydi: avval ogohlantirish, takrorlansa rad."""
+    if not await is_abusive(text):
+        return True
+    if await add_support_warning(chat["id"]) == 1:
+        await safe_send(bot, chat["user_id"], texts.SUPPORT_REPHRASE[lang])
+    else:
+        await _decline(bot, chat, "abuse", False, lang)
+    return False
 
 
 async def run_turn(bot: Bot, chat: dict) -> None:
@@ -144,13 +197,19 @@ async def run_turn(bot: Bot, chat: dict) -> None:
         await _send(bot, chat["user_id"], text)
         await add_support_message(chat["id"], "assistant", text)
 
+    decline = next((a for n, a in calls if n == "decline"), None)
     escalate = next((a for n, a in calls if n == "escalate_to_admin"), None)
     resolved = any(n == "resolve" for n, _ in calls)
+    if decline is not None:  # ikkalasi bo'lsa, xavfsizi: adminga yubormaymiz
+        category = str(decline.get("category") or "")
+        await _decline(bot, chat, category if category in DECLINE_CATEGORIES else "unclear", bool(text), lang)
+        return
     if escalate is None and last and not resolved:
         escalate = {}  # oxirgi navbatda AI hal qilmadi va qaror ham bermadi: baribir adminga
     if escalate is not None:
         summary = str(escalate.get("summary") or "").strip() or _fallback_summary(messages)
-        await _escalate(bot, chat, summary, lang)
+        category = str(escalate.get("category") or "")
+        await _escalate(bot, chat, summary, category if category in FORWARD_CATEGORIES else "other", lang)
     elif resolved:
         await set_support_status(chat["id"], "active", "resolved")
 
@@ -160,15 +219,25 @@ async def open_chat(bot: Bot, message: Message, text: str, reason: str = "") -> 
     user = message.from_user
     if user is None:
         return
+    if await get_support_chat(user.id, "declined", DECLINE_COOLDOWN_HOURS) is not None:
+        # yaqinda rad etilgan: AI'siz qisqa rad javobi
+        lang = detect_lang(text)
+        if await safe_send(bot, user.id, texts.SUPPORT_DECLINED[lang]):
+            with suppress(TelegramAPIError):
+                await message.reply(texts.SUPPORT_DM_SENT[lang])
+        return
     chat = await get_support_chat(user.id, "active", SUPPORT_TTL_HOURS)
     if chat is None:
         await create_support_chat(user.id, message.chat.id, message.chat.title, user.full_name, user.username, "active")
         chat = await get_support_chat(user.id, "active", SUPPORT_TTL_HOURS)
         if chat is None:
             return
-    content = f"{GROUP_PREFIX} {text[:MAX_TEXT]}"
-    if reason:
-        content += f"\n[AI taxmini: {reason[:300]}]"
+    if await is_abusive(text):
+        content = f"{GROUP_PREFIX} (odobsiz matn olib tashlandi)"  # na adminga, na AI xulosasiga o'tmaydi
+    else:
+        content = f"{GROUP_PREFIX} {text[:MAX_TEXT]}"
+        if reason:
+            content += f"\n[AI taxmini: {reason[:300]}]"
     await add_support_message(chat["id"], "user", content)
 
     async with _locks[user.id]:
@@ -216,8 +285,11 @@ async def _escalated_chat(message: Message) -> dict | bool:
 async def on_support_message(message: Message, bot: Bot, chat: dict):
     if message.from_user is None or message.text is None:
         return
+    text = message.text.strip()[:MAX_TEXT]
     async with _locks[message.from_user.id]:
-        await add_support_message(chat["id"], "user", message.text.strip()[:MAX_TEXT])
+        if not await _accept(bot, chat, text, detect_lang(text)):
+            return
+        await add_support_message(chat["id"], "user", text)
         try:
             await run_turn(bot, chat)
         except AIError:
