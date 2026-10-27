@@ -192,3 +192,51 @@ class TestPolicyPrompt:
             support_policy.DECLINE_CATEGORIES
         )
         assert [t["function"]["name"] for t in support.SUPPORT_TOOLS] == ["escalate_to_admin", "decline", "resolve"]
+
+
+class TestLimit:
+    @pytest.fixture(autouse=True)
+    def _small_limit(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(support, "SUPPORT_MAX_TURNS", 2)
+
+    async def _to_limit(self, dp, bot, group_ai, dm_ai) -> None:
+        await start_chat(dp, bot, group_ai, dm_ai)
+        dm_ai.answer = "Yana bir narsa?"
+        await dm(dp, bot, "bir")  # 1-xabar: hali limit emas
+
+    async def test_unsolved_conversation_is_declined_not_escalated(self, dp, bot, session, group_ai, dm_ai):
+        await self._to_limit(dp, bot, group_ai, dm_ai)
+        dm_ai.answer, dm_ai.tool_calls = "", []
+        await dm(dp, bot, "ikki")
+        assert not admin_notices(session)
+        assert session.texts_to(USER)[-1] == texts.SUPPORT_DECLINED["uz"]
+        assert (await get_support_chat(USER, "declined", 24))["category"] == "unclear"
+
+    async def test_final_turn_offers_only_resolve_and_decline(self, dp, bot, session, group_ai, dm_ai):
+        await self._to_limit(dp, bot, group_ai, dm_ai)
+        await dm(dp, bot, "ikki")
+        names = [t["function"]["name"] for t in dm_ai.tools[-1]]
+        assert names == ["decline", "resolve"]
+        assert texts.SUPPORT_LAST_TURN in [m["content"] for m in dm_ai.calls[-1]]
+
+    async def test_escalate_at_the_limit_is_still_declined(self, dp, bot, session, group_ai, dm_ai):
+        await self._to_limit(dp, bot, group_ai, dm_ai)
+        dm_ai.answer = "Adminga yuboraman."
+        dm_ai.tool_calls = [("escalate_to_admin", {"summary": "s", "category": "other"})]
+        await dm(dp, bot, "ikki")
+        assert not admin_notices(session) and await get_support_chat(USER, "declined", 24) is not None
+
+    async def test_resolve_at_the_limit_closes_the_chat(self, dp, bot, session, group_ai, dm_ai):
+        await self._to_limit(dp, bot, group_ai, dm_ai)
+        dm_ai.answer = "Hal bo'ldi."
+        dm_ai.tool_calls = [("resolve", {})]
+        await dm(dp, bot, "ikki")
+        assert await get_support_chat(USER, "resolved", 24) is not None and not admin_notices(session)
+
+    async def test_ai_failure_at_the_limit_declines(self, dp, bot, session, group_ai, dm_ai):
+        from utils.ai import AIError
+
+        await self._to_limit(dp, bot, group_ai, dm_ai)
+        dm_ai.error = AIError("xato")
+        await dm(dp, bot, "ikki")
+        assert not admin_notices(session) and await get_support_chat(USER, "declined", 24) is not None

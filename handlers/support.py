@@ -180,17 +180,19 @@ async def run_turn(bot: Bot, chat: dict) -> None:
     user_turns = sum(m["role"] == "user" and not m["content"].startswith(GROUP_PREFIX) for m in messages)
     last = user_turns >= SUPPORT_MAX_TURNS
     history = [{"role": "system", "content": texts.SUPPORT_SYSTEM_PROMPT}, *messages]
+    tools = SUPPORT_TOOLS
     if last:
-        # majburlamaymiz: AI oxirgi yechimini aytib resolve qilishi yoki escalate_to_admin qilishi mumkin
+        # limitga yetdi: adminga hech narsa bormaydi, AI faqat hal qiladi (resolve) yoki rad etadi (decline)
         history.append({"role": "system", "content": texts.SUPPORT_LAST_TURN})
+        tools = [DECLINE_TOOL, RESOLVE_TOOL]
 
     try:
         async with ChatActionSender.typing(bot=bot, chat_id=chat["user_id"]):
-            text, calls = await ask_ai_tools(history, SUPPORT_TOOLS)
+            text, calls = await ask_ai_tools(history, tools)
     except AIError:
         if not last:
             raise
-        text, calls = "", []  # limitga yetgan suhbat AI xatosi tufayli osilib qolmasin: summary o'zimizdan
+        text, calls = "", []  # limitga yetgan suhbat AI xatosi tufayli osilib qolmasin: rad etiladi
 
     lang = detect_lang(next((m["content"] for m in reversed(messages) if m["role"] == "user"), ""))
     if text:
@@ -200,12 +202,12 @@ async def run_turn(bot: Bot, chat: dict) -> None:
     decline = next((a for n, a in calls if n == "decline"), None)
     escalate = next((a for n, a in calls if n == "escalate_to_admin"), None)
     resolved = any(n == "resolve" for n, _ in calls)
+    if last and not resolved and decline is None:
+        decline = {"category": "unclear"}  # limitga yetdi va hal bo'lmadi: adminga bormaydi, suhbat rad etiladi
     if decline is not None:  # ikkalasi bo'lsa, xavfsizi: adminga yubormaymiz
         category = str(decline.get("category") or "")
         await _decline(bot, chat, category if category in DECLINE_CATEGORIES else "unclear", bool(text), lang)
         return
-    if escalate is None and last and not resolved:
-        escalate = {}  # oxirgi navbatda AI hal qilmadi va qaror ham bermadi: baribir adminga
     if escalate is not None:
         summary = str(escalate.get("summary") or "").strip() or _fallback_summary(messages)
         category = str(escalate.get("category") or "")

@@ -148,10 +148,9 @@ SUPPORT_SYSTEM_PROMPT = (
     "for lists use the • character or numbers."
 )
 SUPPORT_LAST_TURN = (
-    "This is the final message of the conversation: the limit of messages is reached. Decide now. "
-    "If your answer solves the user's problem, write the final answer and call resolve. "
-    "If it is not solved and the matter is legitimate, call escalate_to_admin with a full summary (in Uzbek) and "
-    "tell the user briefly that you are passing it to the admin. If the matter must not reach the admins, call decline. "
+    "This is the final message of the conversation: the limit of messages is reached. Nothing can be passed to the "
+    "admins any more. If your answer solves the user's problem, write the final answer and call resolve. "
+    "Otherwise call decline with category unclear and tell the user briefly that you could not solve it. "
     "Do not ask further questions."
 )
 SUPPORT_START_FIRST = {
