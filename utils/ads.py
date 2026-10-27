@@ -5,6 +5,7 @@ import logging
 import re
 
 from utils.ai import AIError, ask_ai
+from utils.url_check import analyze
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,11 @@ MAX_TEXT = 1500
 
 SYSTEM_PROMPT = (
     "You moderate a Telegram community of programmers (Uzbek in Latin or Cyrillic script, Russian, English). "
-    "Classify the user message and the links found in it (also hidden links, listed after the text).\n"
+    "Classify the user message and the links found in it (also hidden links, listed after the text). Each link comes "
+    "with a local analysis: its registered domain, the words split out of the domain and path, and warning signals "
+    "(lookalike = a brand imitated with digits or look-alike letters, brand-not-official = a brand name on a domain "
+    "that is not the brand's own, url-shortener, ip-address, punycode, risky-suffix, scam-words, userinfo-trick). "
+    "Signals are hints, not proof: e.g. a library site named after a brand can be fine.\n"
     "DANGER: a link that can harm members: phishing (fake login, Telegram, bank, payment or wallet pages; look-alike "
     "domains such as te1egram, g00gle, paypa1; punycode xn-- domains imitating a brand), scams (giveaways, free "
     "Telegram Premium, stars, NFT or gifts, prizes, 'double your money', investment returns), malware or cracked "
@@ -74,13 +79,18 @@ def find_urls(text: str, entities: list | None, markup: object | None = None) ->
     return list(dict.fromkeys(found))  # tartibni saqlab takrorlarni olib tashlaydi
 
 
+def _definitely_dangerous(urls: list[str]) -> bool:
+    """AI'siz xavfli: dastur fayliga havola yoki aniq soxta domen (te1egram, аррӏе, "telegram.org@boshqa-sayt")."""
+    return any(DANGEROUS_FILE_RE.search(u.rstrip(".,;:!?)»\"'")) or analyze(u).lookalike for u in urls)
+
+
 def classify(
     text: str, entities: list | None, *, forwarded_from_channel: bool = False, markup: object | None = None
 ) -> str | None:
     """"danger" (dastur fayliga havola), "definite" (aniq reklama), "candidate" (AI tekshirsin) yoki None (belgi yo'q)."""
     text = text or ""
     urls = find_urls(text, entities, markup)
-    if any(DANGEROUS_FILE_RE.search(u.rstrip(".,;:!?)»\"'")) for u in urls):
+    if _definitely_dangerous(urls):
         return "danger"
     if forwarded_from_channel or TG_LINK_RE.search(text) or any(TG_LINK_RE.search(u) for u in urls):
         return "definite"
@@ -93,7 +103,7 @@ async def ai_verdict(text: str, urls: list[str] | None = None) -> str | None:
     """AI: DANGER, AD yoki OK. AI ishlamasa yoki kech javob bersa None (xabar qoladi, fail-open)."""
     content = text[:MAX_TEXT]
     if urls:
-        content += "\n\nLinks:\n" + "\n".join(f"- {u[:300]}" for u in urls[:10])
+        content += "\n\nLinks:\n" + "\n".join(f"- {u[:300]} [{analyze(u).describe()[:400]}]" for u in urls[:10])
     try:
         answer = await asyncio.wait_for(
             ask_ai(
@@ -127,6 +137,6 @@ async def has_dangerous_link(text: str, entities: list | None = None) -> bool:
     urls = find_urls(text, entities)
     if not urls:
         return False
-    if any(DANGEROUS_FILE_RE.search(u.rstrip(".,;:!?)»\"'")) for u in urls):
+    if _definitely_dangerous(urls):
         return True
     return await ai_verdict(text, urls) == DANGER

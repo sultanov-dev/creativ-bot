@@ -57,7 +57,7 @@ class TestClassify:
         assert ads.classify(text, None) == "danger"
 
     @pytest.mark.parametrize("text", [
-        "salom.dev", "bit.ly/abc", "http://192.168.1.10/login", "ftp://files.example/x", "xn--80ak6aa92e.com",
+        "salom.dev", "bit.ly/abc", "http://192.168.1.10/login", "ftp://files.example/x", "xn--e1afmkfd.xn--p1ai",
         "my-site.pro/page", "https://any.unknown-tld.zz/path",
     ])
     def test_all_kinds_of_urls_go_to_ai(self, text):
