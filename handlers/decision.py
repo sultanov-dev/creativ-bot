@@ -4,9 +4,9 @@ from aiogram import Bot, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import CallbackQuery, Message
 
-from callbacks import CreatorCB
+from callbacks import DecisionCB
 from database import change_status, count_votes, get_application, get_no_votes
-from keyboards.creator import creator_confirm_inline, creator_inline
+from keyboards.decision import decision_confirm_inline, decision_inline
 from texts import APPLICATION_ACCEPTED, APPLICATION_ACCEPTED_NOT_JOINED
 from utils.admin import is_admin, join_failed_text, notify_admins, safe_send, status_text
 from utils.join_requests import settle_join_request
@@ -27,7 +27,7 @@ async def _edit(call: CallbackQuery, text: str, **kwargs) -> None:
 async def _decide(call: CallbackQuery, bot: Bot, app: dict, accepted: bool) -> None:
     """Yakuniy qaror: so'rov tasdiqlanadi yoki rad etiladi, arizachiga xabar boradi (rad etilsa AI xulosasi bilan)."""
     new = "accepted" if accepted else "rejected"
-    if not await change_status(app["id"], old="creator_review", new=new):
+    if not await change_status(app["id"], old="admin_decision", new=new):
         await call.answer("Bu ariza bo'yicha yakuniy qaror allaqachon qabul qilingan.", show_alert=True)
         return
 
@@ -84,11 +84,11 @@ async def _show_confirm(call: CallbackQuery, app: dict, accepted: bool) -> None:
             "Ishonchingiz komilmi? Arizani rad etasizmi?"
         )
 
-    await _edit(call, text, reply_markup=creator_confirm_inline(app["id"], accepted))
+    await _edit(call, text, reply_markup=decision_confirm_inline(app["id"], accepted))
 
 
-@router.callback_query(CreatorCB.filter())
-async def on_creator_decision(call: CallbackQuery, callback_data: CreatorCB, bot: Bot):
+@router.callback_query(DecisionCB.filter())
+async def on_decision(call: CallbackQuery, callback_data: DecisionCB, bot: Bot):
     """Ikkala tomon ham kerakli foizga yetmagan arizada qarorni istalgan admin qabul qiladi (birinchi bosgani amal qiladi).
 
     "Qabul"/"Rad" avval tasdiqlash oynasini ochadi (har doim); oynadagi "Ha" tugmasi (final_*) qaror beradi,
@@ -108,13 +108,13 @@ async def on_creator_decision(call: CallbackQuery, callback_data: CreatorCB, bot
         await call.answer("Yakuniy qarorni faqat adminlar qabul qiladi.", show_alert=True)
         return
 
-    if app["status"] != "creator_review":
+    if app["status"] != "admin_decision":
         await call.answer("Bu ariza bo'yicha yakuniy qaror allaqachon qabul qilingan.", show_alert=True)
         return
 
     if action == "back":
         await call.answer()
-        await _edit(call, report_text(app), reply_markup=creator_inline(app["id"]))
+        await _edit(call, report_text(app), reply_markup=decision_inline(app["id"]))
         return
 
     if action in ("accept", "reject"):

@@ -50,10 +50,10 @@ class TestExpireApplications:
         await expiry.expire_applications(bot)
         assert not session.of(EditMessageText)
 
-    async def test_creator_review_expires_after_days_without_admin_decision(self, db, bot, session):
+    async def test_admin_decision_expires_after_days_without_admin_decision(self, db, bot, session):
         a = await app()
         await dbm.start_voting(a, 10)
-        await dbm.change_status(a, "voting", "creator_review")
+        await dbm.change_status(a, "voting", "admin_decision")
         d = await dbm.get_db()
         await d.execute("UPDATE applications SET voting_ends_at = datetime('now', '-4 days') WHERE id = ?", (a,))
         await d.commit()

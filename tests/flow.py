@@ -5,7 +5,7 @@ from aiogram.types import Update
 
 import database as dbm
 import texts
-from callbacks import ApplicantCB, CreatorCB, VoteCB
+from callbacks import ApplicantCB, DecisionCB, VoteCB
 from tests import telegram_fakes as tf
 from tests.telegram_fakes import FakeSession
 
@@ -44,8 +44,8 @@ def applicant_cb(action, app_id):
     return ApplicantCB(action=action, app_id=app_id).pack()
 
 
-def creator_cb(action, app_id):
-    return CreatorCB(action=action, app_id=app_id).pack()
+def decision_cb(action, app_id):
+    return DecisionCB(action=action, app_id=app_id).pack()
 
 
 def vote_cb(vote, app_id):

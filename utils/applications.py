@@ -13,9 +13,10 @@ from database import (
     start_voting,
 )
 from keyboards.vote import vote_inline
-from texts import ALREADY_APPLIED, ERROR_GENERIC, REPEAT_APPLICATION_SENT
+from texts import ALREADY_APPLIED, ERROR_GENERIC, REPEAT_APPLICATION_SENT, VOTE_DEADLINE
 from utils.admin import safe_send
 from utils.form_anketa import format_anketa, full_name_of
+from utils.timefmt import format_deadline
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,8 @@ async def open_voting(bot: Bot, app: dict) -> bool:
         vote_msg = await bot.send_message(
             chat_id=app["group_id"],
             text=(
-                "🗳 <b>Yangi a'zo uchun ovoz berish</b>\n\n"
+                "🗳 <b>Yangi a'zo uchun ovoz berish</b>\n"
+                f"{VOTE_DEADLINE.format(when=format_deadline(VOTING_MINUTES))}\n\n"
                 f"{app['anketa']}"
             ),
             reply_markup=vote_inline(app_id=app["id"]),
@@ -41,7 +43,17 @@ async def open_voting(bot: Bot, app: dict) -> bool:
         await change_status(app_id=app["id"], old="voting", new="pending")
         return False
 
-    await set_vote_message(app_id=app["id"], message_id=vote_msg.message_id)
+    try:
+        await set_vote_message(app_id=app["id"], message_id=vote_msg.message_id)
+    except Exception:
+        # id yozilmasa xabar yetim qolardi: o'chiramiz va ariza qayta ko'rib chiqilishi uchun pending'ga qaytaramiz
+        logger.exception("Ariza %s: ovoz xabari id'sini yozib bo'lmadi", app["id"])
+        try:
+            await bot.delete_message(chat_id=app["group_id"], message_id=vote_msg.message_id)
+        except TelegramAPIError:
+            pass
+        await change_status(app_id=app["id"], old="voting", new="pending")
+        return False
     return True
 
 

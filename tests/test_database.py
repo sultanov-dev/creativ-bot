@@ -43,7 +43,7 @@ class TestCreateApplication:
         second = await new_app()
         assert second is not None and second != first
 
-    @pytest.mark.parametrize("open_status", ["pending", "voting", "creator_review"])
+    @pytest.mark.parametrize("open_status", ["pending", "voting", "admin_decision"])
     async def test_cannot_reapply_while_open(self, db, open_status):
         first = await new_app()
         d = await dbm.get_db()
@@ -195,10 +195,10 @@ class TestExpiredApplications:
         await age_application(a, 30)
         assert await dbm.get_expired_applications(3) == []
 
-    async def test_creator_review_expires_by_voting_end_not_creation(self, db):
+    async def test_admin_decision_expires_by_voting_end_not_creation(self, db):
         a = await new_app()
         await dbm.start_voting(a, 10)
-        await dbm.change_status(a, "voting", "creator_review")
+        await dbm.change_status(a, "voting", "admin_decision")
         await age_application(a, 30)  # yaratilgan sana ahamiyatsiz
         assert await dbm.get_expired_applications(3) == []
         d = await dbm.get_db()

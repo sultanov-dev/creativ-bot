@@ -56,7 +56,8 @@ async def init_db() -> None:
             last_name       TEXT,
             tg_username     TEXT,
             phone           TEXT,
-            join_resolved   INTEGER NOT NULL DEFAULT 1
+            join_resolved   INTEGER NOT NULL DEFAULT 1,
+            decided_at      TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS votes (
@@ -74,9 +75,12 @@ async def init_db() -> None:
             ON applications (user_id, group_id, status);
         -- bir vaqtda ikki xabar kelsa ham, bitta guruhga ikkita faol ariza bo'lmaydi
         DROP INDEX IF EXISTS idx_applications_active;
+        -- eski nom (creator roli endi yo'q): holat va indeks yangilanadi
+        UPDATE applications SET status = 'admin_decision' WHERE status = 'creator_review';
+        DROP INDEX IF EXISTS idx_applications_open;
         CREATE UNIQUE INDEX IF NOT EXISTS idx_applications_open
             ON applications (user_id, group_id)
-            WHERE status IN ('pending', 'voting', 'creator_review');
+            WHERE status IN ('pending', 'voting', 'admin_decision');
 
         -- foydalanuvchining birinchi anketasi: qayta qo'shilganda savollar takrorlanmaydi
         CREATE TABLE IF NOT EXISTS profiles (
@@ -111,6 +115,12 @@ async def init_db() -> None:
         await _add_column(db, "applications", column, "TEXT")
     # eski qatorlar uchun 1: ularning so'rovi allaqachon hal qilingan deb hisoblanadi
     await _add_column(db, "applications", "join_resolved", "INTEGER NOT NULL DEFAULT 1")
+    # qaror vaqti: qayta ariza kutish muddati va eski ma'lumotlarni o'chirish shundan hisoblanadi
+    await _add_column(db, "applications", "decided_at", "TIMESTAMP")
+    await db.execute(
+        "UPDATE applications SET decided_at = created_at WHERE decided_at IS NULL "
+        "AND status IN ('accepted', 'rejected', 'expired', 'failed', 'removed')"
+    )
     await db.execute(
         "UPDATE applications SET voting_ends_at = datetime('now', ?) "
         "WHERE status = 'voting' AND voting_ends_at IS NULL",
@@ -190,8 +200,8 @@ async def get_application_by_vote_message(group_id: int, message_id: int) -> dic
 
 
 async def get_expired_applications(days: int) -> list[dict]:
-    """Admin ko'rib chiqmagan (pending) yoki ovoz berish tugaganidan beri `days` kun creator javobini
-    kutayotgan (creator_review, ya'ni adminlar qaroriga) arizalar.
+    """Admin ko'rib chiqmagan (pending) yoki ovoz berish tugaganidan beri `days` kun adminlar javobini
+    kutayotgan (admin_decision, ya'ni adminlar qaroriga) arizalar.
 
     Ovoz berish bosqichidagi (voting) arizalar bu yerga kirmaydi: ularni `voting_ends_at` yopadi.
     """
@@ -199,7 +209,7 @@ async def get_expired_applications(days: int) -> list[dict]:
     cur = await db.execute(
         "SELECT * FROM applications WHERE "
         "(status = 'pending' AND created_at < datetime('now', ?)) OR "
-        "(status = 'creator_review' AND voting_ends_at < datetime('now', ?))",
+        "(status = 'admin_decision' AND voting_ends_at < datetime('now', ?))",
         (f"-{days} days", f"-{days} days"),
     )
     return [dict(r) for r in await cur.fetchall()]
@@ -210,7 +220,7 @@ async def get_active_application(user_id: int, group_id: int) -> dict | None:
     db = await get_db()
     cur = await db.execute(
         "SELECT * FROM applications WHERE user_id = ? AND group_id = ? "
-        "AND status IN ('pending', 'voting', 'creator_review') ORDER BY id DESC LIMIT 1",
+        "AND status IN ('pending', 'voting', 'admin_decision') ORDER BY id DESC LIMIT 1",
         (user_id, group_id),
     )
     row = await cur.fetchone()
@@ -223,9 +233,11 @@ async def change_status(app_id: int, old: str, new: str) -> bool:
     db = await get_db()
     cur = await db.execute(
         "UPDATE applications SET status = ?, "
-        "join_resolved = CASE WHEN ? IN ('accepted', 'rejected', 'expired') THEN 0 ELSE join_resolved END "
+        "join_resolved = CASE WHEN ? IN ('accepted', 'rejected', 'expired') THEN 0 ELSE join_resolved END, "
+        "decided_at = CASE WHEN ? IN ('accepted', 'rejected', 'expired', 'failed') "
+        "THEN datetime('now') ELSE decided_at END "
         "WHERE id = ? AND status = ?",
-        (new, new, app_id, old),
+        (new, new, new, app_id, old),
     )
     await db.commit()
     return cur.rowcount == 1
@@ -251,7 +263,8 @@ async def mark_removed(user_id: int, group_id: int) -> int:
     qayta qo'shilganda eski anketa bilan ovozga emas, yangi anketa va admin ko'rigiga boradi."""
     db = await get_db()
     cur = await db.execute(
-        "UPDATE applications SET status = 'removed' WHERE user_id = ? AND group_id = ? AND status = 'accepted'",
+        "UPDATE applications SET status = 'removed', decided_at = datetime('now') "
+        "WHERE user_id = ? AND group_id = ? AND status = 'accepted'",
         (user_id, group_id),
     )
     await db.commit()
@@ -451,3 +464,63 @@ async def last_application_status(user_id: int, group_id: int) -> str | None:
     )
     row = await cur.fetchone()
     return row["status"] if row else None
+
+
+async def rejoin_wait_seconds(user_id: int, group_id: int, cooldown: int) -> int:
+    """Oxirgi ariza rad etilgan/muddati o'tgan/ko'rib chiqilmagan bo'lsa, yangi ariza uchun qolgan soniyalar (0 = erkin)."""
+    if cooldown <= 0:
+        return 0
+    db = await get_db()
+    cur = await db.execute(
+        "SELECT status, CAST(strftime('%s', 'now') AS INTEGER) - CAST(strftime('%s', decided_at) AS INTEGER) AS age "
+        "FROM applications WHERE user_id = ? AND group_id = ? ORDER BY id DESC LIMIT 1",
+        (user_id, group_id),
+    )
+    row = await cur.fetchone()
+    if row is None or row["age"] is None or row["status"] not in ("rejected", "expired", "failed"):
+        return 0
+    return max(0, cooldown - row["age"])
+
+
+async def reset_orphan_votings() -> int:
+    """Ovoz xabari guruhga yuborilishi bilan bot to'xtagan arizalar (voting, lekin xabar id'si yo'q): pending'ga qaytadi.
+
+    Admin xabaridagi tugma saqlanib qolgani uchun qayta "Ovozga qo'yish" bosa oladi; guruhdagi eski yetim xabar
+    tugma bosilganda eskirgan deb o'chiriladi.
+    """
+    db = await get_db()
+    cur = await db.execute(
+        "UPDATE applications SET status = 'pending', voting_ends_at = NULL "
+        "WHERE status = 'voting' AND vote_message_id IS NULL"
+    )
+    await db.commit()
+    return cur.rowcount
+
+
+async def purge_old_data(days: int) -> int:
+    """Rad etilgan/muddati o'tgan/ko'rib chiqilmagan/chiqarilgan arizalarni `days` kundan keyin shaxsiy ma'lumotlari
+    (anketa, telefon, ovozlar, sabablar) bilan o'chiradi; boshqa arizasi qolmagan foydalanuvchining saqlangan anketasi ham o'chadi."""
+    if days <= 0:
+        return 0
+    db = await get_db()
+    cur = await db.execute(
+        "SELECT id, user_id FROM applications "
+        "WHERE status IN ('rejected', 'expired', 'failed', 'removed') AND decided_at < datetime('now', ?)",
+        (f"-{days} days",),
+    )
+    rows = await cur.fetchall()
+    if not rows:
+        return 0
+    ids = [r["id"] for r in rows]
+    users = {r["user_id"] for r in rows}
+    marks = ",".join("?" * len(ids))
+    await db.execute(f"DELETE FROM votes WHERE application_id IN ({marks})", ids)
+    await db.execute(f"DELETE FROM applications WHERE id IN ({marks})", ids)
+    for user_id in users:
+        await db.execute(
+            "DELETE FROM profiles WHERE user_id = ? "
+            "AND NOT EXISTS (SELECT 1 FROM applications WHERE user_id = ?)",
+            (user_id, user_id),
+        )
+    await db.commit()
+    return len(ids)

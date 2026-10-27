@@ -11,7 +11,7 @@ from aiogram.exceptions import (
 
 from config import ADMIN_IDS, VOTE_ACCEPT_PERCENT
 from database import change_status, count_votes, get_due_votings, get_no_votes
-from keyboards.creator import creator_inline
+from keyboards.decision import decision_inline
 from texts import (
     APPLICATION_ACCEPTED,
     APPLICATION_ACCEPTED_NOT_JOINED,
@@ -61,7 +61,7 @@ def report_text(app: dict) -> str:
 
 async def _send_one(bot: Bot, admin_id: int, text: str, app_id: int) -> str:
     try:
-        await bot.send_message(chat_id=admin_id, text=text, reply_markup=creator_inline(app_id))
+        await bot.send_message(chat_id=admin_id, text=text, reply_markup=decision_inline(app_id))
     except (TelegramBadRequest, TelegramForbiddenError):
         return UNREACHABLE
     except TelegramAPIError as e:
@@ -96,7 +96,7 @@ async def finalize_due_votings(bot: Bot) -> int:
     - hech kim ovoz bermagan: ariza yopiladi (expired)
     - "ha" kamida VOTE_ACCEPT_PERCENT %: avtomatik qabul
     - "yo'q" kamida VOTE_ACCEPT_PERCENT %: avtomatik rad (arizachiga AI xulosasi bilan)
-    - ikkala tomon ham yetmasa: adminlarga hisobot, qaror ularda (handlers/creator.py);
+    - ikkala tomon ham yetmasa: adminlarga hisobot, qaror ularda (handlers/decision.py);
       adminlarga yetkazib bo'lmasa, ko'pchilik ovoz hal qiladi.
     """
     due = await get_due_votings()
@@ -126,7 +126,7 @@ async def _finalize_one(bot: Bot, app: dict) -> bool:
     elif is_rejected(yes, no):
         new, result = "rejected", "❌ Rad etildi"
     else:
-        new, result = "creator_review", "🔎 Yakuniy qaror adminlarga yuborildi"
+        new, result = "admin_decision", "🔎 Yakuniy qaror adminlarga yuborildi"
         note = (
             "Guruh a'zolarining ovoz berishi yakunlandi. "
             "Yakuniy qarorni adminlar qabul qiladi, natijani shu yerda xabar qilamiz ⏳"
@@ -136,12 +136,12 @@ async def _finalize_one(bot: Bot, app: dict) -> bool:
     if not await change_status(app["id"], old="voting", new=new):
         return False
 
-    if new == "creator_review":
+    if new == "admin_decision":
         outcome = await _send_to_admins(bot, app, yes, no)
         if outcome == RETRY:
             # vaqtinchalik xato: ariza "voting" da qoladi (muddat tugagan, ovoz qabul qilinmaydi)
             # va keyingi aylanishda hisobot qayta yuboriladi
-            await change_status(app["id"], old="creator_review", new="voting")
+            await change_status(app["id"], old="admin_decision", new="voting")
             return False
         if outcome == UNREACHABLE:
             # adminlarga yetkazib bo'lmasa (/start bosmagan), ariza osilib qolmasligi uchun
@@ -151,7 +151,7 @@ async def _finalize_one(bot: Bot, app: dict) -> bool:
                 "Ariza %s: adminlarga yuborib bo'lmadi, ko'pchilik ovoz bo'yicha hal qilindi: %s",
                 app["id"], new,
             )
-            await change_status(app["id"], old="creator_review", new=new)
+            await change_status(app["id"], old="admin_decision", new=new)
             if new == "accepted":
                 result, note = "✅ Qabul qilindi", APPLICATION_ACCEPTED
             else:

@@ -11,6 +11,6 @@ class VoteCB(CallbackData, prefix="vote"):
     app_id: int
 
 
-class CreatorCB(CallbackData, prefix="creator"):
+class DecisionCB(CallbackData, prefix="decision"):
     action: str  # accept | reject | final_accept | final_reject | back
     app_id: int

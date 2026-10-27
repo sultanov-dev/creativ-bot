@@ -1,10 +1,12 @@
 import asyncio
 import logging
+import time
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 
-from database import change_status, get_expired_applications
+from config import DATA_RETENTION_DAYS
+from database import change_status, get_expired_applications, purge_old_data
 from utils.admin import safe_send
 from utils.join_requests import settle_join_request
 from utils.voting import finalize_due_votings
@@ -13,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 # admin shuncha kun ichida ko'rib chiqmasa, ariza muddati tugaydi (ovoz berish muddati alohida: VOTING_MINUTES)
 EXPIRE_DAYS = 3
+PURGE_INTERVAL = 3600  # eski ma'lumotlar tekshiruvi (soniya)
 CHECK_INTERVAL = 15  # ovoz muddati tugagach xabar ko'pi bilan shuncha soniyadan keyin o'chadi
 
 
@@ -51,10 +54,16 @@ async def expire_applications(bot: Bot) -> int:
 
 async def run_expiry_loop(bot: Bot) -> None:
     """Fon vazifasi: ishga tushganda va keyin har daqiqada tekshiradi; xato bo'lsa ham to'xtamaydi."""
+    last_purge = float("-inf")
     while True:
         try:
             await expire_applications(bot)
             await finalize_due_votings(bot)
+            if time.monotonic() - last_purge >= PURGE_INTERVAL:
+                last_purge = time.monotonic()
+                removed = await purge_old_data(DATA_RETENTION_DAYS)
+                if removed:
+                    logger.info("Saqlash muddati tugagan %s ta ariza ma'lumoti o'chirildi", removed)
         except Exception:
             logger.exception("Arizalar muddatini tekshirishda xatolik")
         await asyncio.sleep(CHECK_INTERVAL)

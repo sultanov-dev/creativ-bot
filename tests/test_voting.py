@@ -189,7 +189,7 @@ class TestFinalize:
     async def test_tie_goes_to_admins_with_buttons(self, db, bot, session):
         app_id = await make_voting_app(votes=["yes", "yes", "no", "no"])
         await voting.finalize_due_votings(bot)
-        assert await status_of(app_id) == "creator_review"
+        assert await status_of(app_id) == "admin_decision"
         assert not session.of(ApproveChatJoinRequest) and not session.of(DeclineChatJoinRequest)
         for admin in (ADMIN_ID, ADMIN2_ID):
             sent = session.sent_to(admin)
@@ -268,7 +268,7 @@ class TestFinalize:
         c = await make_voting_app(user_id=3, vote_message_id=3, votes=[])
         d = await make_voting_app(user_id=4, vote_message_id=4, votes=["yes", "no"])
         assert await voting.finalize_due_votings(bot) == 4
-        assert [await status_of(x) for x in (a, b, c, d)] == ["accepted", "rejected", "expired", "creator_review"]
+        assert [await status_of(x) for x in (a, b, c, d)] == ["accepted", "rejected", "expired", "admin_decision"]
 
 
 class TestAdminStatus:
@@ -416,20 +416,20 @@ class TestAdminDeliveryFallbacks:
         await voting.finalize_due_votings(bot)
         session.errors.clear()
         assert await voting.finalize_due_votings(bot) == 1
-        assert await status_of(app_id) == "creator_review"
+        assert await status_of(app_id) == "admin_decision"
 
     async def test_one_admin_reachable_is_enough(self, db, bot, session):
         session.errors[SendMessage] = lambda m: forbidden() if m.chat_id == ADMIN_ID else None
         app_id = await make_voting_app(votes=["yes", "no"])
         await voting.finalize_due_votings(bot)
-        assert await status_of(app_id) == "creator_review"
+        assert await status_of(app_id) == "admin_decision"
         assert len(session.sent_to(ADMIN2_ID)) == 1
 
     async def test_reachable_plus_flaky_admin_counts_as_sent(self, db, bot, session):
         session.errors[SendMessage] = lambda m: retry_after() if m.chat_id == ADMIN_ID else None
         app_id = await make_voting_app(votes=["yes", "no"])
         await voting.finalize_due_votings(bot)
-        assert await status_of(app_id) == "creator_review"
+        assert await status_of(app_id) == "admin_decision"
 
     async def test_non_telegram_error_while_notifying_admins_is_retried(self, db, bot, session):
         session.errors[SendMessage] = lambda m: RuntimeError("aiohttp") if m.chat_id in (ADMIN_ID, ADMIN2_ID) else None
@@ -494,4 +494,4 @@ async def test_low_percent_tie_goes_to_admins(db, bot, session, monkeypatch):
     monkeypatch.setattr(voting, "VOTE_ACCEPT_PERCENT", 50)
     app_id = await make_voting_app(votes=["yes", "no"])
     await voting.finalize_due_votings(bot)
-    assert await status_of(app_id) == "creator_review"
+    assert await status_of(app_id) == "admin_decision"

@@ -1,4 +1,4 @@
-"""Admin ko'rigi -> guruh ovozi -> natija -> creator (admin) qarori: butun hayot tsikli."""
+"""Admin ko'rigi -> guruh ovozi -> natija -> adminlar qarori: butun hayot tsikli."""
 import asyncio
 
 import pytest
@@ -14,7 +14,7 @@ from tests.flow import (
     applicant_cb,
     assert_no_errors,
     cast,
-    creator_cb,
+    decision_cb,
     declined,
     edits,
     feed,
@@ -485,7 +485,7 @@ class TestResultsEndToEnd:
         assert session.texts_to(U)[0] != texts.ALREADY_APPLIED
 
 
-class TestCreatorDecision:
+class TestAdminDecision:
     async def _tie(self, dp, bot):
         app_id = await voting_app(dp, bot)
         await cast(dp, bot, M[0], "yes", app_id)
@@ -502,7 +502,7 @@ class TestCreatorDecision:
         await cast(dp, bot, M[1], "no", app_id)
         await expire_voting(app_id)
         await finalize_due_votings(bot)
-        assert await status_of(app_id) == "creator_review"
+        assert await status_of(app_id) == "admin_decision"
 
     async def test_accept_shows_confirm_with_ai_summary_and_no_decision_yet(self, dp, bot, session, monkeypatch):
         import utils.summary as summary
@@ -512,46 +512,46 @@ class TestCreatorDecision:
 
         monkeypatch.setattr(summary, "ask_ai", fake_ai)
         app_id = await self._tie(dp, bot)
-        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("accept", app_id)))
-        assert await status_of(app_id) == "creator_review"
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, decision_cb("accept", app_id)))
+        assert await status_of(app_id) == "admin_decision"
         confirm = edits(session)[-1]
         assert "Qabul qilishni tasdiqlang" in confirm.text and "Asosiy e'tiroz" in confirm.text
         data = [b.callback_data for row in confirm.reply_markup.inline_keyboard for b in row]
-        assert data == [f"creator:final_accept:{app_id}", f"creator:back:{app_id}"]
+        assert data == [f"decision:final_accept:{app_id}", f"decision:back:{app_id}"]
 
     async def test_reject_shows_confirm_with_yes_count(self, dp, bot, session):
         app_id = await self._tie(dp, bot)
-        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("reject", app_id)))
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, decision_cb("reject", app_id)))
         confirm = edits(session)[-1]
         assert "Rad etishni tasdiqlang" in confirm.text and "<b>1</b>" in confirm.text
-        assert await status_of(app_id) == "creator_review"
+        assert await status_of(app_id) == "admin_decision"
 
     async def test_back_returns_to_report(self, dp, bot, session):
         app_id = await self._tie(dp, bot)
-        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("reject", app_id)))
-        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("back", app_id)))
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, decision_cb("reject", app_id)))
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, decision_cb("back", app_id)))
         assert "Rad etishni tasdiqlang" not in edits(session)[-1].text and "Ism" in edits(session)[-1].text
 
     async def test_admin_decision_notifies_the_other_admins_with_status(self, dp, bot, session):
         app_id = await self._tie(dp, bot)
-        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("accept", app_id)))
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, decision_cb("accept", app_id)))
         session.clear()
-        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("final_accept", app_id)))
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, decision_cb("final_accept", app_id)))
         other = session.texts_to(tf.ADMIN2_ID)
         assert len(other) == 1 and "guruhga qabul qilindi" in other[0] and "qaror:" in other[0]
         assert not any("guruhga qabul" in t for t in session.texts_to(tf.ADMIN_ID))  # qaror qilganda xabar tahrirlanadi
 
     async def test_admin_rejection_notifies_the_other_admins_with_status(self, dp, bot, session):
         app_id = await self._tie(dp, bot)
-        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("reject", app_id)))
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, decision_cb("reject", app_id)))
         session.clear()
-        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("final_reject", app_id)))
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, decision_cb("final_reject", app_id)))
         other = session.texts_to(tf.ADMIN2_ID)
         assert len(other) == 1 and "guruhga qabul qilinmadi" in other[0]
 
     async def test_final_accept(self, dp, bot, session):
         app_id = await self._tie(dp, bot)
-        await feed(dp, bot, tf.callback(tf.ADMIN2_ID, creator_cb("final_accept", app_id)))
+        await feed(dp, bot, tf.callback(tf.ADMIN2_ID, decision_cb("final_accept", app_id)))
         assert await status_of(app_id) == "accepted"
         assert session.of(ApproveChatJoinRequest)[0].user_id == U
         assert session.texts_to(U) == [texts.APPLICATION_ACCEPTED]
@@ -565,24 +565,24 @@ class TestCreatorDecision:
 
         monkeypatch.setattr(summary, "ask_ai", fake_ai)
         app_id = await self._tie(dp, bot)
-        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("final_reject", app_id)))
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, decision_cb("final_reject", app_id)))
         assert await status_of(app_id) == "rejected" and declined(session)
         note = session.texts_to(U)[0]
         assert "Umumiy fikr" in note and "Yoshi kichik" not in note
 
     async def test_first_admin_wins(self, dp, bot, session):
         app_id = await self._tie(dp, bot)
-        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("final_accept", app_id)))
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, decision_cb("final_accept", app_id)))
         session.clear()
-        await feed(dp, bot, tf.callback(tf.ADMIN2_ID, creator_cb("final_reject", app_id)))
+        await feed(dp, bot, tf.callback(tf.ADMIN2_ID, decision_cb("final_reject", app_id)))
         assert "allaqachon" in last_alert(session).text
         assert await status_of(app_id) == "accepted" and not declined(session)
 
     async def test_simultaneous_final_decisions_apply_once(self, dp, bot, session):
         app_id = await self._tie(dp, bot)
         await asyncio.gather(
-            feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("final_accept", app_id))),
-            feed(dp, bot, tf.callback(tf.ADMIN2_ID, creator_cb("final_reject", app_id))),
+            feed(dp, bot, tf.callback(tf.ADMIN_ID, decision_cb("final_accept", app_id))),
+            feed(dp, bot, tf.callback(tf.ADMIN2_ID, decision_cb("final_reject", app_id))),
         )
         assert len(session.texts_to(U)) == 1
         assert await status_of(app_id) in ("accepted", "rejected")
@@ -590,29 +590,29 @@ class TestCreatorDecision:
     async def test_non_admin_cannot_decide(self, dp, bot, session):
         app_id = await self._tie(dp, bot)
         for action in ("accept", "reject", "final_accept", "final_reject", "back"):
-            await feed(dp, bot, tf.callback(M[0], creator_cb(action, app_id)))
+            await feed(dp, bot, tf.callback(M[0], decision_cb(action, app_id)))
             assert "faqat adminlar" in last_alert(session).text
-        assert await status_of(app_id) == "creator_review"
+        assert await status_of(app_id) == "admin_decision"
 
     async def test_unknown_action_is_ignored(self, dp, bot, session):
         app_id = await self._tie(dp, bot)
-        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("explode", app_id)))
-        assert await status_of(app_id) == "creator_review"
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, decision_cb("explode", app_id)))
+        assert await status_of(app_id) == "admin_decision"
 
     async def test_unknown_application(self, dp, bot, session):
-        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("final_accept", 9999)))
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, decision_cb("final_accept", 9999)))
         assert "topilmadi" in last_alert(session).text
 
     async def test_buttons_on_application_not_in_review_are_refused(self, dp, bot, session):
         app_id = await voting_app(dp, bot)  # hali "voting"
         for action in ("accept", "final_accept", "final_reject"):
-            await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb(action, app_id)))
+            await feed(dp, bot, tf.callback(tf.ADMIN_ID, decision_cb(action, app_id)))
         assert await status_of(app_id) == "voting"
 
     async def test_summary_survives_ai_outage(self, dp, bot, session):
         # AI sozlanmagan (API_URL .invalid): xulosa o'rniga sabablarning o'zi ko'rsatiladi
         app_id = await self._tie(dp, bot)
-        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("accept", app_id)))
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, decision_cb("accept", app_id)))
         text = edits(session)[-1].text
         assert "Yoshi kichik" in text and "Qabul qilishni tasdiqlang" in text
         assert_no_errors(session)
@@ -625,13 +625,13 @@ class TestCreatorDecision:
 
         monkeypatch.setattr(summary, "ask_ai", fake_ai)
         app_id = await self._tie(dp, bot)
-        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("accept", app_id)))
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, decision_cb("accept", app_id)))
         text = edits(session)[-1].text
         assert "<script>" not in text and "&lt;script&gt;" in text
 
     async def test_admin_name_is_escaped_in_result(self, dp, bot, session):
         app_id = await self._tie(dp, bot)
-        raw = tf.callback(tf.ADMIN_ID, creator_cb("final_accept", app_id)).model_dump(
+        raw = tf.callback(tf.ADMIN_ID, decision_cb("final_accept", app_id)).model_dump(
             mode="json", by_alias=True, exclude_none=True
         )
         raw["callback_query"]["from"]["first_name"] = "<i>Admin</i>"

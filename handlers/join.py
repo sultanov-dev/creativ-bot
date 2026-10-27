@@ -4,14 +4,18 @@ from aiogram import Bot, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import ChatJoinRequest
 
-from database import get_active_application, get_profile, last_application_status
+from aiogram.exceptions import TelegramAPIError
+
+from config import REJOIN_COOLDOWN_SECONDS
+from database import get_active_application, get_profile, last_application_status, rejoin_wait_seconds
 from handlers.profile import show_review
 from states import Form
-from texts import ALREADY_APPLIED, REJOIN_NOTES
+from texts import ALREADY_APPLIED, REJOIN_COOLDOWN, REJOIN_NOTES
 from utils.admin import safe_send
 from utils.fsm import get_private_state
 from utils.get_welcome import welcome_text
 from utils.questions import ask
+from utils.timefmt import format_wait
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -24,6 +28,17 @@ async def join_request(request: ChatJoinRequest, bot: Bot, state: FSMContext):
         await safe_send(
             bot=bot, chat_id=request.user_chat_id, text=ALREADY_APPLIED
         )
+        return
+
+    # rad etilgandan keyin darhol qayta ariza berib, adminlarni charchatmaslik uchun qisqa kutish
+    wait = await rejoin_wait_seconds(request.from_user.id, request.chat.id, REJOIN_COOLDOWN_SECONDS)
+    if wait:
+        try:
+            # kutilayotgan so'rov qolsa, foydalanuvchi keyin yangisini yubora olmaydi
+            await bot.decline_chat_join_request(chat_id=request.chat.id, user_id=request.from_user.id)
+        except TelegramAPIError:
+            pass
+        await safe_send(bot=bot, chat_id=request.user_chat_id, text=REJOIN_COOLDOWN.format(wait=format_wait(wait)))
         return
 
     private_state = get_private_state(

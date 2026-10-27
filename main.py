@@ -8,7 +8,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from aiohttp import web
 
 from config import ADMIN_IDS, WEB_HOST, WEB_PORT, WEBHOOK_PATH, WEBHOOK_SECRET, WEBHOOK_URL
-from database import close_db, get_known_group_ids, init_db
+from database import close_db, get_known_group_ids, init_db, reset_orphan_votings
 from handlers import get_routers
 from utils.ai import close_session as close_ai_session
 from utils.autodelete import AutoDeleteMiddleware, restore_pending_deletes
@@ -82,6 +82,8 @@ async def main():
     await asyncio.gather(*(setup_group_commands(bot, g) for g in await get_known_group_ids()))
     await restore_pending_deletes(bot)
     try:
+        if await reset_orphan_votings():
+            logger.warning("Ovoz xabari yuborilmagan arizalar pending'ga qaytarildi")
         await recover_unresolved(bot)  # bot to'xtagani uchun bajarilmay qolgan approve/decline
     except Exception:
         logger.exception("To'xtab qolgan so'rovlarni tiklashda xatolik")

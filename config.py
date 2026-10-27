@@ -31,6 +31,13 @@ if not 1 <= VOTE_ACCEPT_PERCENT <= 100:
 # botning guruhga yozgan xabarlari shuncha soniyadan keyin o'chadi (0 = o'chirmaslik); ovoz berish xabari bundan mustasno
 AUTO_DELETE_SECONDS = int(os.getenv("AUTO_DELETE_SECONDS") or 30)
 
+# rad etilgan/muddati o'tgan arizadan keyin yangi ariza berish uchun kutish (soniya; 0 = cheklovsiz)
+REJOIN_COOLDOWN_SECONDS = int(os.getenv("REJOIN_COOLDOWN_SECONDS") or 120)
+# rad etilgan, muddati o'tgan yoki chiqarilgan foydalanuvchi ma'lumotlari shuncha kun saqlanadi, keyin o'chadi (0 = o'chirmaslik)
+DATA_RETENTION_DAYS = int(os.getenv("DATA_RETENTION_DAYS") or 30)
+if REJOIN_COOLDOWN_SECONDS < 0 or DATA_RETENTION_DAYS < 0:
+    raise ValueError("REJOIN_COOLDOWN_SECONDS va DATA_RETENTION_DAYS manfiy bo'lmasligi kerak")
+
 # AI xizmati (OpenAI formatidagi chat/completions API)
 API_URL = os.getenv("API_URL", "")
 API_TOKEN = os.getenv("API_TOKEN", "")

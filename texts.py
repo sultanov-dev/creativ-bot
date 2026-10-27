@@ -9,6 +9,8 @@ APPLICATION_ACCEPTED_NOT_JOINED = (
     "Arizangiz qabul qilindi, lekin guruhga qo'shilish so'rovingiz topilmadi. "
     "Iltimos, guruhga qayta qo'shilish so'rovini yuboring."
 )
+REJOIN_COOLDOWN = "Yangi ariza uchun {wait} kuting, so'ng guruhga qo'shilish so'rovini qayta yuboring."
+VOTE_DEADLINE = "⏳ Ovoz berish {when} tugaydi."
 REJOIN_NOTES = {
     "rejected": REJOIN_AFTER_REJECTION,
     "expired": REJOIN_AFTER_EXPIRED,

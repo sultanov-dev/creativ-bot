@@ -319,7 +319,7 @@ class TestFinish:
         assert len(dm) == 1 and dm[0].reply_markup is not None  # faqat qaror tugmali hisobot
         assert not any("🏁" in t or "Ovoz berish yakunlandi" in t for t in session.texts_to(A))
         assert replies(session) == ["🏁 Ovoz berish yakunlandi."]
-        assert await status_of(app_id) == "creator_review"
+        assert await status_of(app_id) == "admin_decision"
 
     async def test_accepted_finish_gives_only_the_status_to_admin(self, dp, bot, session):
         app_id, msg = await self._voting(dp, bot)

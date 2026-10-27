@@ -96,7 +96,7 @@ class TestJoinRequestResult:
         assert "guruhga qabul qilindi" in session.texts_to(tf.ADMIN_ID)[0]
 
     async def test_admin_decision_with_failed_approve_warns(self, dp, bot, session):
-        from tests.flow import creator_cb
+        from tests.flow import decision_cb
 
         app_id = await start_application(dp, bot)
         await admin_accept(dp, bot, app_id)
@@ -106,11 +106,11 @@ class TestJoinRequestResult:
             await cast(dp, bot, uid, "no", app_id)
         await expire_voting(app_id)
         await finalize_due_votings(bot)
-        assert await status_of(app_id) == "creator_review"
+        assert await status_of(app_id) == "admin_decision"
         session.clear()
         session.errors[ApproveChatJoinRequest] = lambda m: TelegramBadRequest(method=m, message="gone")
         session.statuses[(G, U)] = "left"
-        await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("final_accept", app_id)))
+        await feed(dp, bot, tf.callback(tf.ADMIN_ID, decision_cb("final_accept", app_id)))
         assert session.texts_to(U) == [texts.APPLICATION_ACCEPTED_NOT_JOINED]
         assert any("qo'shib bo'lmadi" in t for t in session.texts_to(tf.ADMIN2_ID))
 

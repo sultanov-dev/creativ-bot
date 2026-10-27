@@ -13,6 +13,7 @@ os.environ.update(
         "VOTING_MINUTES": "10",
         "VOTE_ACCEPT_PERCENT": "60",
         "AUTO_DELETE_SECONDS": "120",
+        "REJOIN_COOLDOWN_SECONDS": "0",
         "API_URL": "https://ai.invalid/v1/chat/completions",
         "API_TOKEN": "test-token",
         "API_MODEL": "test-model",
