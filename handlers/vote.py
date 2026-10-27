@@ -6,7 +6,7 @@ from aiogram.types import CallbackQuery
 
 from callbacks import VoteCB
 from database import add_vote, get_application, get_vote
-from utils.admin import is_group_member, safe_send
+from utils.admin import is_admin, is_group_member, safe_send
 
 router = Router()
 
@@ -60,7 +60,8 @@ async def on_vote(call: CallbackQuery, callback_data: VoteCB, bot: Bot):
     # tugmalar hamma uchun bir xil, shuning uchun tanlovni ogohlantirish oynasida aniq ko'rsatamiz
     chosen = VOTE_LABELS[callback_data.vote]
     note, alert = f"✅ Ovozingiz qabul qilindi: «{chosen}». Rahmat!", True
-    if callback_data.vote == "no":
+    # adminlardan sabab so'ralmaydi (ularning ovozi shunchaki hisobga olinadi)
+    if callback_data.vote == "no" and not is_admin(voter_id):
         asked = await safe_send(
             bot=bot,
             chat_id=voter_id,

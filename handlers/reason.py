@@ -3,6 +3,7 @@ from aiogram.filters import StateFilter
 from aiogram.types import Message
 
 from database import get_pending_reason, set_vote_reason
+from utils.admin import is_admin
 
 router = Router()
 router.message.filter(F.chat.type == "private")
@@ -11,6 +12,9 @@ router.message.filter(F.chat.type == "private")
 @router.message(F.text, ~F.text.startswith("/"), StateFilter(None))
 async def capture_reason(message: Message):
     if message.from_user is None or message.text is None:
+        return
+
+    if is_admin(message.from_user.id):
         return
 
     pending = await get_pending_reason(message.from_user.id)
