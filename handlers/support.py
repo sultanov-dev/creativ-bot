@@ -153,13 +153,20 @@ async def _escalate(bot: Bot, chat: dict, summary: str, category: str, lang: str
     await safe_send(bot, chat["user_id"], texts.SUPPORT_ESCALATED[lang])
 
 
-async def _decline(bot: Bot, chat: dict, category: str, reply_sent: bool, lang: str) -> None:
-    """Admin ko'rmaydigan masala: suhbat yopiladi, turi bazada saqlanadi (AI xatosini keyin ko'rish uchun)."""
+async def _decline(bot: Bot, chat: dict, category: str, lang: str, text: str = "") -> None:
+    """Admin ko'rmaydigan masala: suhbat yopiladi, turi bazada saqlanadi (AI xatosini keyin ko'rish uchun).
+
+    Foydalanuvchiga AI matni emas, kategoriyaga mos qat'iy matn yuboriladi: AI "adminga yuboraman" deb yozib,
+    aslida hech narsa yuborilmagan bo'lmasin. `text` faqat AI qaror bermagan (limit/xato) holat uchun.
+    """
     if not await set_support_status(chat["id"], "active", "declined", category):
         return
     logger.info("Support so'rovi adminga yetkazilmadi (chat_id=%s, kategoriya=%s)", chat["id"], category)
-    if not reply_sent:
-        await safe_send(bot, chat["user_id"], texts.SUPPORT_DECLINED[lang])
+    if text:
+        await _send(bot, chat["user_id"], text)
+    else:
+        notice = texts.SUPPORT_DECLINED_BY_CATEGORY.get(category, texts.SUPPORT_DECLINED)
+        await safe_send(bot, chat["user_id"], notice[lang])
 
 
 async def _accept(bot: Bot, chat: dict, text: str, lang: str) -> bool:
@@ -169,7 +176,7 @@ async def _accept(bot: Bot, chat: dict, text: str, lang: str) -> bool:
     if await add_support_warning(chat["id"]) == 1:
         await safe_send(bot, chat["user_id"], texts.SUPPORT_REPHRASE[lang])
     else:
-        await _decline(bot, chat, "abuse", False, lang)
+        await _decline(bot, chat, "abuse", lang)
     return False
 
 
@@ -195,24 +202,29 @@ async def run_turn(bot: Bot, chat: dict) -> None:
         text, calls = "", []  # limitga yetgan suhbat AI xatosi tufayli osilib qolmasin: rad etiladi
 
     lang = detect_lang(next((m["content"] for m in reversed(messages) if m["role"] == "user"), ""))
-    if text:
-        await _send(bot, chat["user_id"], text)
-        await add_support_message(chat["id"], "assistant", text)
-
     decline = next((a for n, a in calls if n == "decline"), None)
     escalate = next((a for n, a in calls if n == "escalate_to_admin"), None)
     resolved = any(n == "resolve" for n, _ in calls)
-    if last and not resolved and decline is None:
-        decline = {"category": "unclear"}  # limitga yetdi va hal bo'lmadi: adminga bormaydi, suhbat rad etiladi
+    implicit = last and not resolved and decline is None  # limitga yetdi va AI hal qilmadi, qaror ham bermadi
+    if implicit:
+        decline = {"category": "unclear"}
+
     if decline is not None:  # ikkalasi bo'lsa, xavfsizi: adminga yubormaymiz
         category = str(decline.get("category") or "")
-        await _decline(bot, chat, category if category in DECLINE_CATEGORIES else "unclear", bool(text), lang)
+        category = category if category in DECLINE_CATEGORIES else "unclear"
+        await _decline(bot, chat, category, lang, text if implicit and text else "")
         return
     if escalate is not None:
+        # AI matni yuborilmaydi: foydalanuvchi faqat bot haqiqatan nima qilganini o'qiydi (_escalate)
         summary = str(escalate.get("summary") or "").strip() or _fallback_summary(messages)
         category = str(escalate.get("category") or "")
         await _escalate(bot, chat, summary, category if category in FORWARD_CATEGORIES else "other", lang)
-    elif resolved:
+        return
+
+    if text:
+        await _send(bot, chat["user_id"], text)
+        await add_support_message(chat["id"], "assistant", text)
+    if resolved:
         await set_support_status(chat["id"], "active", "resolved")
 
 

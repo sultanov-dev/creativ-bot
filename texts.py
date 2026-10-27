@@ -131,11 +131,14 @@ SUPPORT_SYSTEM_PROMPT = (
     "complaint (about a member or an admin), payment (money problems), safety (abuse, threats), appeal (ban or access "
     "decision), data_removal, suggestion, allowed_ad (an advertisement that is not in the prohibited list below), "
     "other (any other legitimate matter), or the user insists on a human admin after you tried to help. "
-    "Call decline (the admins will NOT see it) with a short polite refusal text, without accusing the user, "
-    "when the matter is: prohibited_ad (advertising any of: "
+    "Call decline (the admins will NOT see it) when the matter is: prohibited_ad (advertising any of: "
     + "; ".join(PROHIBITED_ADS)
     + "; music and concert advertising IS allowed), abuse (insults, obscene words), indecent (immoral offers), "
     "scam, spam, no_purpose, or unclear (you asked two clarifying questions and it is still not clear). "
+    "The category must describe the FINAL matter: once the user has told what it is about, never use no_purpose "
+    "(for example betting or casino advertising is prohibited_ad). "
+    "When you call decline or escalate_to_admin, the bot sends its own fixed message to the user and ignores your "
+    "reply text, so never write that you pass something to the admins unless you call escalate_to_admin. "
     "Never forward doubtful matters: ask, and if it stays doubtful, decline. "
     "If a legitimate complaint is written rudely, ask the user to restate it politely before escalating. "
     "In summary write, in Uzbek, a calm, factual and positive account of what the user wants and all details the "
@@ -170,6 +173,21 @@ SUPPORT_DECLINED = {
     "uz_cyr": "Кечирасиз, бу масалани админга етказа олмайман. Бошқа саволингиз бўлса, ёзинг 🙏",
     "ru": "Извините, я не могу передать этот вопрос администратору. Если есть другой вопрос, пишите 🙏",
     "en": "Sorry, I can't pass this on to the admins. If you have another question, just write 🙏",
+}
+# decline: foydalanuvchiga AI matni emas, shu qat'iy matn yuboriladi (AI "adminga yuboraman" deb yozib qo'ymasin)
+SUPPORT_DECLINED_BY_CATEGORY = {
+    "prohibited_ad": {
+        "uz": "Kechirasiz, bunday reklama guruhimizda qabul qilinmaydi va adminga yetkazilmaydi 🙏",
+        "uz_cyr": "Кечирасиз, бундай реклама гуруҳимизда қабул қилинмайди ва админга етказилмайди 🙏",
+        "ru": "Извините, такая реклама в нашей группе не принимается и администратору не передаётся 🙏",
+        "en": "Sorry, this kind of advertising is not accepted in our group and will not be passed to the admins 🙏",
+    },
+    "no_purpose": {
+        "uz": "Nima haqida gaplashmoqchi ekaningizni bilmasdan, adminga yetkaza olmayman. Masalani aniq yozib, qayta urinib ko'ring 🙏",
+        "uz_cyr": "Нима ҳақида гаплашмоқчи эканингизни билмасдан, админга етказа олмайман. Масалани аниқ ёзиб, қайта уриниб кўринг 🙏",
+        "ru": "Не зная, о чём вы хотите поговорить, я не могу передать это администратору. Опишите вопрос чётко и попробуйте снова 🙏",
+        "en": "Without knowing what you want to talk about I can't pass it to the admins. Please describe the matter clearly and try again 🙏",
+    },
 }
 SUPPORT_REPHRASE = {
     "uz": "Iltimos, odobli yozing. Masalangizni qayta, hurmat bilan bayon qiling 🙏",

@@ -83,9 +83,11 @@ def admin_notices(session) -> list[str]:
 class TestGatekeeper:
     async def test_escalation_reaches_admins_without_category_label(self, dp, bot, session, group_ai, dm_ai):
         await start_chat(dp, bot, group_ai, dm_ai)
-        dm_ai.answer = "Adminga yubordim."
+        dm_ai.answer = "AI yozgan matn"
         dm_ai.tool_calls = [("escalate_to_admin", {"summary": "Tolov qaytmadi", "category": "payment"})]
         await dm(dp, bot, "Pulim qaytmadi")
+        assert "AI yozgan matn" not in session.texts_to(USER)  # foydalanuvchi faqat botning qat'iy xabarini o'qiydi
+        assert session.texts_to(USER)[-1] == texts.SUPPORT_ESCALATED["uz"]
         notices = admin_notices(session)
         assert len(notices) == len(ADMIN_IDS) and "Tolov qaytmadi" in notices[0]
         assert "payment" not in notices[0] and "ategoriya" not in notices[0]
@@ -106,20 +108,30 @@ class TestGatekeeper:
 
     async def test_decline_keeps_the_matter_from_admins_and_logs_the_category(self, dp, bot, session, group_ai, dm_ai):
         await start_chat(dp, bot, group_ai, dm_ai)
-        dm_ai.answer = "Bunday reklamani qabul qilmaymiz."
+        dm_ai.answer = "Adminga yuboraman."  # AI decline bilan zid matn yozsa ham foydalanuvchiga bormaydi
         dm_ai.tool_calls = [("decline", {"category": "prohibited_ad"})]
         await dm(dp, bot, "Kazino reklamasini bermoqchiman")
         assert not admin_notices(session)
-        assert session.texts_to(USER)[-1] == "Bunday reklamani qabul qilmaymiz."
+        user_texts = session.texts_to(USER)
+        assert "Adminga yuboraman." not in user_texts
+        assert user_texts[-1] == texts.SUPPORT_DECLINED_BY_CATEGORY["prohibited_ad"]["uz"]
         chat = await get_support_chat(USER, "declined", 24)
         assert chat is not None and chat["category"] == "prohibited_ad"
 
-    async def test_decline_without_text_sends_the_generic_refusal(self, dp, bot, session, group_ai, dm_ai):
+    async def test_decline_text_matches_the_category(self, dp, bot, session, group_ai, dm_ai):
         await start_chat(dp, bot, group_ai, dm_ai)
         dm_ai.answer = ""
         dm_ai.tool_calls = [("decline", {"category": "no_purpose"})]
         await dm(dp, bot, "admin kerak")
-        assert session.texts_to(USER)[-1] == texts.SUPPORT_DECLINED["uz"] and not admin_notices(session)
+        assert session.texts_to(USER)[-1] == texts.SUPPORT_DECLINED_BY_CATEGORY["no_purpose"]["uz"]
+        assert not admin_notices(session)
+
+    async def test_other_categories_use_the_generic_refusal(self, dp, bot, session, group_ai, dm_ai):
+        await start_chat(dp, bot, group_ai, dm_ai)
+        dm_ai.answer = ""
+        dm_ai.tool_calls = [("decline", {"category": "spam"})]
+        await dm(dp, bot, "arzon telefon sotaman")
+        assert session.texts_to(USER)[-1] == texts.SUPPORT_DECLINED["uz"]
 
     async def test_unknown_categories_fall_back_safely(self, dp, bot, session, group_ai, dm_ai):
         await start_chat(dp, bot, group_ai, dm_ai)
