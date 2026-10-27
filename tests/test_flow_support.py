@@ -127,6 +127,21 @@ def _moderation(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(support, "is_abusive", fake)
 
 
+@pytest.fixture(autouse=True)
+def link_ai(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
+    """Havola AI'si o'rniga: manzilda 'evil' bo'lsa xavfli; chaqiruvlar (havolalar ro'yxati) yoziladi."""
+    from utils import ads
+
+    calls: list[list[str]] = []
+
+    async def fake(text: str, urls: list[str] | None = None) -> str | None:
+        calls.append(list(urls or []))
+        return ads.DANGER if any("evil" in u for u in urls or []) else None
+
+    monkeypatch.setattr(ads, "ai_verdict", fake)
+    return calls
+
+
 async def dm(dp, bot, text: str) -> None:
     await feed(dp, bot, tf.private_message(USER, text))
 
@@ -252,6 +267,30 @@ class TestGatekeeper:
         await dm(dp, bot, "BADWORD yana")
         assert session.texts_to(USER)[-1] == texts.SUPPORT_DECLINED["uz"] and not dm_ai.calls
         assert (await get_support_chat(USER, "declined", 24))["category"] == "abuse" and not admin_notices(session)
+
+    async def test_dangerous_link_gets_one_warning_then_decline(self, dp, bot, session, group_ai, dm_ai, link_ai):
+        await start_chat(dp, bot, group_ai, dm_ai)
+        await dm(dp, bot, "Mana dalil: https://evil.example/login")
+        assert session.texts_to(USER)[-1] == texts.SUPPORT_LINK_DANGER["uz"] and not dm_ai.calls
+        assert link_ai == [["https://evil.example/login"]]
+        await dm(dp, bot, "yana https://evil.example/x")
+        assert session.texts_to(USER)[-1] == texts.SUPPORT_DECLINED["uz"] and not dm_ai.calls
+        assert (await get_support_chat(USER, "declined", 24))["category"] == "scam" and not admin_notices(session)
+
+    async def test_dangerous_link_never_enters_the_history(self, dp, bot, session, group_ai, dm_ai):
+        await start_chat(dp, bot, group_ai, dm_ai)
+        await dm(dp, bot, "yuklang https://files.example/app.apk")  # dastur fayli: AI'siz xavfli
+        assert session.texts_to(USER)[-1] == texts.SUPPORT_LINK_DANGER["uz"]
+        await dm(dp, bot, "Kechirasiz, to'lov o'tmadi")
+        sent = [m["content"] for m in dm_ai.calls[-1]]
+        assert not any("app.apk" in c for c in sent) and any("to'lov o'tmadi" in c for c in sent)
+
+    async def test_safe_link_and_plain_text_pass(self, dp, bot, session, group_ai, dm_ai, link_ai):
+        await start_chat(dp, bot, group_ai, dm_ai)
+        await dm(dp, bot, "Xato shu yerda: https://github.com/a/b/issues/1")
+        await dm(dp, bot, "Oddiy matn, havolasiz")
+        assert link_ai == [["https://github.com/a/b/issues/1"]]  # havolasiz xabar AI'ga bormaydi
+        assert len(dm_ai.calls) == 2
 
     async def test_abusive_text_never_enters_the_history(self, dp, bot, session, group_ai, dm_ai):
         await start_chat(dp, bot, group_ai, dm_ai)

@@ -220,6 +220,12 @@ SUPPORT_IDLE = {
     "ru": "Чтобы поговорить с администратором, упомяните бота в группе, например: @{username} хочу поговорить с админом 👋",
     "en": "To talk to an admin, mention the bot in the group, for example: @{username} I want to talk to an admin 👋",
 }
+SUPPORT_LINK_DANGER = {
+    "uz": "Xabaringizdagi havola xavfli deb topildi, shuning uchun uni qabul qila olmayman. Masalangizni havolasiz yozing 🙏",
+    "uz_cyr": "Хабарингиздаги ҳавола хавфли деб топилди, шунинг учун уни қабул қила олмайман. Масалангизни ҳаволасиз ёзинг 🙏",
+    "ru": "Ссылка в вашем сообщении признана опасной, поэтому я не могу её принять. Опишите вопрос без ссылки 🙏",
+    "en": "The link in your message looks dangerous, so I can't accept it. Please describe your matter without the link 🙏",
+}
 SUPPORT_REPHRASE = {
     "uz": "Iltimos, odobli yozing. Masalangizni qayta, hurmat bilan bayon qiling 🙏",
     "uz_cyr": "Илтимос, одобли ёзинг. Масалангизни қайта, ҳурмат билан баён қилинг 🙏",

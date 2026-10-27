@@ -116,3 +116,17 @@ async def ai_verdict(text: str, urls: list[str] | None = None) -> str | None:
     if re.search(r"\bAD\b", head):
         return AD
     return None
+
+
+async def has_dangerous_link(text: str, entities: list | None = None) -> bool:
+    """Lichkadagi suhbat uchun: xabardagi havola xavflimi. Havola bo'lmasa AI chaqirilmaydi; AI ishlamasa False.
+
+    Reklama hukmi bu yerda e'tiborga olinmaydi: lichkada reklamani support AI o'z qoidalari bilan hal qiladi
+    (ruxsat etilgan reklama adminga yetadi), Telegram havolasi esa shikoyat dalili bo'lishi mumkin.
+    """
+    urls = find_urls(text, entities)
+    if not urls:
+        return False
+    if any(DANGEROUS_FILE_RE.search(u.rstrip(".,;:!?)»\"'")) for u in urls):
+        return True
+    return await ai_verdict(text, urls) == DANGER

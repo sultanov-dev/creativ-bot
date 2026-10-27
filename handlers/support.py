@@ -29,6 +29,7 @@ from utils.autodelete import keep_messages, schedule_delete
 from utils.ai import AIError, ask_ai, ask_ai_tools
 from utils.ai_html import plain_text, sanitize_html
 from utils.lang import detect_lang
+from utils.ads import has_dangerous_link
 from utils.moderation import is_abusive
 from utils.support_policy import (
     BLOCKING_CATEGORIES,
@@ -202,13 +203,18 @@ async def _say(bot: Bot, chat: dict, history: list[dict], outcome: str, fallback
     await add_support_message(chat["id"], "assistant", text)
 
 
-async def _accept(bot: Bot, chat: dict, text: str, lang: str) -> bool:
-    """Odobsiz xabar suhbat tarixiga (demak adminga xulosaga ham) kirmaydi: avval ogohlantirish, takrorlansa rad."""
-    if not await is_abusive(text):
+async def _accept(bot: Bot, chat: dict, text: str, lang: str, entities: list | None = None) -> bool:
+    """Odobsiz xabar yoki xavfli havola suhbat tarixiga (demak adminga xulosaga ham) kirmaydi: avval ogohlantirish,
+    takrorlansa rad (ikkalasi bitta ogohlantirish hisobida)."""
+    if await is_abusive(text):
+        warning, category = texts.SUPPORT_REPHRASE, "abuse"
+    elif await has_dangerous_link(text, entities):
+        warning, category = texts.SUPPORT_LINK_DANGER, "scam"
+    else:
         return True
     if await add_support_warning(chat["id"]) == 1:
-        await safe_send(bot, chat["user_id"], texts.SUPPORT_REPHRASE[lang])
-    elif await _decline(chat, "abuse", close=True):
+        await safe_send(bot, chat["user_id"], warning[lang])
+    elif await _decline(chat, category, close=True):
         await safe_send(bot, chat["user_id"], texts.SUPPORT_DECLINED[lang])
     return False
 
@@ -361,7 +367,7 @@ async def on_support_message(message: Message, bot: Bot, chat: dict):
         return
     text = message.text.strip()[:MAX_TEXT]
     async with _locks[message.from_user.id]:
-        if not await _accept(bot, chat, text, detect_lang(text)):
+        if not await _accept(bot, chat, text, detect_lang(text), message.entities):
             return
         await add_support_message(chat["id"], "user", text)
         try:
