@@ -18,24 +18,27 @@ LONG_ANSWER = "\n".join("satr " + "x" * 100 for _ in range(150))  # ~16000 belgi
 
 
 class FakeAsk:
-    """handlers.ai.ask_ai o'rniga: chaqiruvlarni yozadi, javob/xatoni test belgilaydi."""
+    """handlers.ai.ask_ai_tools o'rniga: chaqiruvlarni yozadi, javob/xatoni test belgilaydi."""
 
     def __init__(self) -> None:
         self.calls: list[list[dict[str, str]]] = []
+        self.tools: list[list[dict]] = []
         self.answer = "Javob matni"
+        self.tool_calls: list[tuple[str, dict]] = []  # AI chaqiradigan tool'lar (masalan contact_admin)
         self.error: Exception | None = None
 
-    async def __call__(self, messages: list[dict[str, str]]) -> str:
+    async def __call__(self, messages: list[dict[str, str]], tools: list[dict], **kw) -> tuple[str, list[tuple[str, dict]]]:
         self.calls.append(messages)
+        self.tools.append(tools)
         if self.error:
             raise self.error
-        return self.answer
+        return self.answer, self.tool_calls
 
 
 @pytest.fixture
 def fake_ai(monkeypatch: pytest.MonkeyPatch) -> FakeAsk:
     fake = FakeAsk()
-    monkeypatch.setattr(ai_handler, "ask_ai", fake)
+    monkeypatch.setattr(ai_handler, "ask_ai_tools", fake)
     return fake
 
 
@@ -230,11 +233,11 @@ class TestWaitingForAI:
 
         from aiogram.methods import SendChatAction
 
-        async def slow_ai(messages):
+        async def slow_ai(messages, tools, **kw):
             await asyncio.sleep(0.1)  # kutish paytida "yozmoqda..." belgisi chiqishi uchun
-            return "Javob"
+            return "Javob", []
 
-        monkeypatch.setattr(ai_handler, "ask_ai", slow_ai)
+        monkeypatch.setattr(ai_handler, "ask_ai_tools", slow_ai)
         await say(dp, bot, f"{BOT} salom")
         assert any(m.chat_id == G and m.action == "typing" for m in session.of(SendChatAction))
 
@@ -275,3 +278,29 @@ class TestSystemMessagesInQuestionLanguage:
     def test_every_language_has_every_message(self):
         for table in (texts.AI_TOO_LONG, texts.AI_COOLDOWN, texts.AI_ERROR):
             assert set(table) == {"uz", "uz_cyr", "ru", "en"}
+
+
+class TestAdminHandoffTool:
+    async def test_contact_admin_tool_is_offered_to_the_ai(self, dp, bot, session, fake_ai):
+        await say(dp, bot, f"{BOT} salom")
+        assert fake_ai.tools == [[ai_handler.CONTACT_ADMIN_TOOL]]
+
+    async def test_contact_admin_call_opens_private_chat_and_posts_nothing_in_group(
+        self, dp, bot, session, fake_ai, monkeypatch
+    ):
+        opened: list[tuple[str, str]] = []
+
+        async def open_chat(bot_, message, question, reason):
+            opened.append((question, reason))
+
+        monkeypatch.setattr(ai_handler, "open_chat", open_chat)
+        fake_ai.answer = ""
+        fake_ai.tool_calls = [("contact_admin", {"reason": "to'lov muammosi"})]
+        await say(dp, bot, f"{BOT} adminga yozmoqchiman")
+        assert opened == [("adminga yozmoqchiman", "to'lov muammosi")]
+        assert not bot_replies(session)
+
+    async def test_empty_answer_without_tool_call_gets_generic_error(self, dp, bot, session, fake_ai):
+        fake_ai.answer = ""
+        await say(dp, bot, f"{BOT} salom")
+        assert bot_replies(session)[0].text == texts.AI_ERROR["uz"]

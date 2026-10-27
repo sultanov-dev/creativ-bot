@@ -201,7 +201,7 @@ def test_module_wires_expected_routers():
     from handlers import errors, get_routers
 
     routers = get_routers()
-    assert len(routers) == len({id(r) for r in routers}) == 13
+    assert len(routers) == len({id(r) for r in routers}) == 14
     assert routers[0] is errors.router  # errors birinchi: boshqa routerlardagi xatolar ham unga tushadi
     for r in routers:
         r._parent_router = None
