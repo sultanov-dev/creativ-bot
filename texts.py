@@ -96,14 +96,7 @@ AI_COOLDOWN = {
     "ru": "Подождите немного, предыдущий вопрос ещё обрабатывается ⏳",
     "en": "Please wait a moment, your previous question is still being processed ⏳",
 }
-# AI xabarlari savol tilida (utils/lang.detect_lang): AI_LOADING, AI_TOO_LONG, AI_COOLDOWN, AI_ERROR.
-# AI javobi kelguncha ko'rsatiladigan xabar: savol qaysi tilda bo'lsa, shu tilda (utils/lang.detect_lang)
-AI_LOADING = {
-    "uz": "⏳ Javob tayyorlanmoqda…",
-    "uz_cyr": "⏳ Жавоб тайёрланмоқда…",
-    "ru": "⏳ Готовлю ответ…",
-    "en": "⏳ Preparing the answer…",
-}
+# AI xabarlari savol tilida (utils/lang.detect_lang): AI_TOO_LONG, AI_COOLDOWN, AI_ERROR.
 AI_ERROR = {
     "uz": "Kechirasiz, hozir javob bera olmayapman. Iltimos, birozdan keyin qayta urinib ko'ring.",
     "uz_cyr": "Кечирасиз, ҳозир жавоб бера олмаяпман. Илтимос, бироздан кейин қайта уриниб кўринг.",

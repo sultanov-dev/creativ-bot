@@ -14,7 +14,6 @@ from utils.lang import detect_lang
 G = tf.GROUP_ID
 USER = 50
 BOT = f"@{tf.BOT_USERNAME}"
-LOADING_TEXTS = set(texts.AI_LOADING.values())
 LONG_ANSWER = "\n".join("satr " + "x" * 100 for _ in range(150))  # ~16000 belgi
 
 
@@ -46,16 +45,7 @@ async def say(dp, bot, text: str, *, user: int = USER, reply=None, mention_in_te
 
 
 def bot_replies(session) -> list[SendMessage]:
-    """Bot javoblari ("yuklanmoqda" xabarlarisiz)."""
-    return [m for m in session.of(SendMessage) if m.chat_id == G and m.text not in LOADING_TEXTS]
-
-
-def loading_messages(session) -> list[SendMessage]:
-    return [m for m in session.of(SendMessage) if m.chat_id == G and m.text in LOADING_TEXTS]
-
-
-def deleted_in_group(session) -> list[DeleteMessage]:
-    return [m for m in session.of(DeleteMessage) if m.chat_id == G]
+    return [m for m in session.of(SendMessage) if m.chat_id == G]
 
 
 def bad_request(m: TelegramMethod, message: str) -> TelegramBadRequest:
@@ -93,7 +83,7 @@ class TestTriggering:
 
     async def test_empty_question_gets_hint(self, dp, bot, session, fake_ai):
         await say(dp, bot, BOT)
-        assert not fake_ai.calls and not loading_messages(session)
+        assert not fake_ai.calls
         text = bot_replies(session)[0].text
         assert text is not None and "Savolingizni yozing" in text and tf.BOT_USERNAME in text
 
@@ -174,8 +164,6 @@ class TestAnswerDelivery:
         attempts: list[SendMessage] = []
 
         def reject_once(m: SendMessage) -> TelegramBadRequest | None:
-            if m.text in LOADING_TEXTS:
-                return None
             attempts.append(m)
             return bad_request(m, "can't parse entities") if len(attempts) == 1 else None
 
@@ -230,28 +218,25 @@ class TestFailures:
         assert len(session.texts_to(tf.DEVELOPER_ID)) == 1
 
 
-class TestLoadingState:
-    async def test_loading_is_shown_before_answer_and_removed_after(self, dp, bot, session, fake_ai):
+class TestWaitingForAI:
+    async def test_only_the_answer_is_sent_while_waiting_for_ai(self, dp, bot, session, fake_ai):
         await say(dp, bot, f"{BOT} salom")
-        sent = [m for m in session.of(SendMessage) if m.chat_id == G]
-        assert sent[0].text in LOADING_TEXTS and sent[0].reply_parameters is not None
-        assert sent[1].text == "Javob matni"
-        assert len(deleted_in_group(session)) == 1  # faqat "yuklanmoqda" o'chdi, javob qoldi
+        sent = bot_replies(session)
+        assert [m.text for m in sent] == ["Javob matni"]
+        assert not session.of(DeleteMessage)  # hech qanday vaqtinchalik xabar yuborilmaydi/o'chirilmaydi
 
-    async def test_loading_removed_when_ai_fails(self, dp, bot, session, fake_ai):
-        fake_ai.error = AIError("down")
+    async def test_typing_action_is_shown(self, dp, bot, session, monkeypatch):
+        import asyncio
+
+        from aiogram.methods import SendChatAction
+
+        async def slow_ai(messages):
+            await asyncio.sleep(0.1)  # kutish paytida "yozmoqda..." belgisi chiqishi uchun
+            return "Javob"
+
+        monkeypatch.setattr(ai_handler, "ask_ai", slow_ai)
         await say(dp, bot, f"{BOT} salom")
-        assert len(deleted_in_group(session)) == 1
-        assert bot_replies(session)[0].text == texts.AI_ERROR["uz"]
-
-    async def test_failed_loading_message_does_not_break_the_answer(self, dp, bot, session, fake_ai):
-        def only_loading_fails(m: SendMessage) -> TelegramBadRequest | None:
-            return bad_request(m, "x") if m.text in LOADING_TEXTS else None
-
-        session.errors[SendMessage] = only_loading_fails
-        await say(dp, bot, f"{BOT} salom")
-        assert bot_replies(session)[0].text == "Javob matni"
-        assert not session.of(DeleteMessage)
+        assert any(m.chat_id == G and m.action == "typing" for m in session.of(SendChatAction))
 
 
 QUESTIONS = [
@@ -264,9 +249,8 @@ QUESTIONS = [
 
 class TestSystemMessagesInQuestionLanguage:
     @pytest.mark.parametrize("lang,question,padding", QUESTIONS)
-    async def test_loading_cooldown_error_and_too_long(self, dp, bot, session, fake_ai, lang, question, padding):
+    async def test_cooldown_error_and_too_long(self, dp, bot, session, fake_ai, lang, question, padding):
         await say(dp, bot, f"{BOT} {question}")
-        assert [m.text for m in loading_messages(session)] == [texts.AI_LOADING[lang]]
         await say(dp, bot, f"{BOT} {question}")
         assert bot_replies(session)[-1].text == texts.AI_COOLDOWN[lang]
         ai_handler._last_ask.clear()
@@ -289,5 +273,5 @@ class TestSystemMessagesInQuestionLanguage:
         assert detect_lang(text) == lang
 
     def test_every_language_has_every_message(self):
-        for table in (texts.AI_LOADING, texts.AI_TOO_LONG, texts.AI_COOLDOWN, texts.AI_ERROR):
+        for table in (texts.AI_TOO_LONG, texts.AI_COOLDOWN, texts.AI_ERROR):
             assert set(table) == {"uz", "uz_cyr", "ru", "en"}
