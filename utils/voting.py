@@ -52,17 +52,9 @@ async def rejection_note(app_id: int) -> str:
     return APPLICATION_REJECTED
 
 
-def report_text(app: dict, yes: int, no: int) -> str:
-    """Adminlarga boradigan hisobot: anketa (telefon bilan) va 👍/👎 soni."""
-    return (
-        "⚖️ <b>Ovoz berish yakunlandi: qaror sizda</b>\n\n"
-        f"{app['anketa']}"
-        + (f"📞 <b>Telefon:</b> {escape(app['phone'])}\n" if app.get("phone") else "")
-        + "\n"
-        f"Ovozlar: <b>{yes}</b> 👍 / <b>{no}</b> 👎\n\n"
-        "Ikkala tomon ham kerakli foizga yetmadi. Arizani qabul qilasizmi yoki rad etasizmi? "
-        "Qarorni istalgan admin qabul qiladi."
-    )
+def report_text(app: dict) -> str:
+    """Adminlarga boradigan xabar: faqat anketa (telefon bilan); qaror tugmalar orqali."""
+    return f"{app['anketa']}" + (f"📞 <b>Telefon:</b> {escape(app['phone'])}\n" if app.get("phone") else "")
 
 
 async def _send_one(bot: Bot, admin_id: int, text: str, app_id: int) -> str:
@@ -86,7 +78,7 @@ async def _send_to_admins(bot: Bot, app: dict, yes: int, no: int) -> str:
     if not ADMIN_IDS:
         return UNREACHABLE
     try:
-        text = report_text(app, yes, no)
+        text = report_text(app)
         results = await asyncio.gather(*(_send_one(bot, a, text, app["id"]) for a in ADMIN_IDS))
     except Exception:
         logger.exception("Ariza %s: adminlar hisobotini tayyorlashda xatolik", app["id"])

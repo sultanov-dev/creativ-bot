@@ -102,11 +102,11 @@ class TestReportText:
     APP = {"anketa": "👤 <b>Ism:</b> A B\n", "phone": None}
 
     def test_without_phone(self):
-        t = voting.report_text(self.APP, 2, 3)
-        assert "Telefon" not in t and "<b>2</b> 👍 / <b>3</b> 👎" in t
+        t = voting.report_text(self.APP)
+        assert t == self.APP["anketa"]  # ortiqcha sarlavha, foiz yoki ovoz soni yo'q
 
     def test_phone_is_html_escaped(self):
-        t = voting.report_text({**self.APP, "phone": "<b>x</b>"}, 1, 1)
+        t = voting.report_text({**self.APP, "phone": "<b>x</b>"})
         assert "&lt;b&gt;x&lt;/b&gt;" in t and "<b>x</b>" not in t.split("Telefon:</b>")[1].split("\n")[0]
 
 

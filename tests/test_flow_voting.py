@@ -504,7 +504,7 @@ class TestCreatorDecision:
         app_id = await self._tie(dp, bot)
         await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("reject", app_id)))
         await feed(dp, bot, tf.callback(tf.ADMIN_ID, creator_cb("back", app_id)))
-        assert "qaror sizda" in edits(session)[-1].text
+        assert "Rad etishni tasdiqlang" not in edits(session)[-1].text and "Ism" in edits(session)[-1].text
 
     async def test_final_accept(self, dp, bot, session):
         app_id = await self._tie(dp, bot)

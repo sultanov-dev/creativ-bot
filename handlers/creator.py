@@ -107,8 +107,7 @@ async def on_creator_decision(call: CallbackQuery, callback_data: CreatorCB, bot
 
     if action == "back":
         await call.answer()
-        yes, no = await count_votes(app["id"])
-        await _edit(call, report_text(app, yes, no), reply_markup=creator_inline(app["id"]))
+        await _edit(call, report_text(app), reply_markup=creator_inline(app["id"]))
         return
 
     if action in ("accept", "reject"):
