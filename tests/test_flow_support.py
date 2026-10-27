@@ -92,6 +92,18 @@ class TestGatekeeper:
         chat = await get_support_chat(USER, "escalated", 24)
         assert chat is not None and chat["category"] == "payment"
 
+    async def test_problem_solved_by_the_ai_never_reaches_the_admins(self, dp, bot, session, group_ai, dm_ai):
+        await start_chat(dp, bot, group_ai, dm_ai)
+        dm_ai.answer = "Mana yechim. Yana savol bormi?"
+        dm_ai.tool_calls = []
+        await dm(dp, bot, "Botga qanday qo'shilaman?")
+        dm_ai.answer = "Marhamat!"
+        dm_ai.tool_calls = [("resolve", {})]
+        await dm(dp, bot, "Rahmat, tushundim")
+        assert not admin_notices(session)
+        chat = await get_support_chat(USER, "resolved", 24)
+        assert chat is not None and await get_support_chat(USER, "escalated", 24) is None
+
     async def test_decline_keeps_the_matter_from_admins_and_logs_the_category(self, dp, bot, session, group_ai, dm_ai):
         await start_chat(dp, bot, group_ai, dm_ai)
         dm_ai.answer = "Bunday reklamani qabul qilmaymiz."
