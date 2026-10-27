@@ -73,7 +73,7 @@ class TestAutoDelete:
         assert reload_config(AUTO_DELETE_SECONDS="0").AUTO_DELETE_SECONDS == 0
 
     def test_default(self, reload_config):
-        assert reload_config(AUTO_DELETE_SECONDS="").AUTO_DELETE_SECONDS == 120
+        assert reload_config(AUTO_DELETE_SECONDS="").AUTO_DELETE_SECONDS == 30
 
 
 class TestWebhook:

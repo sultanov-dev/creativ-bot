@@ -293,5 +293,5 @@ async def finish(message: Message, bot: Bot):
     await finalize_due_votings(bot)
 
     # natija adminlarga alohida xabar bilan yuborilmaydi (kerak bo'lsa, qaror hisoboti o'zi keladi);
-    # guruhdagi qisqa javob 2 daqiqada o'chadi
+    # guruhdagi qisqa javob AUTO_DELETE_SECONDS dan keyin o'chadi
     await message.reply("🏁 Ovoz berish yakunlandi.")
