@@ -542,13 +542,17 @@ async def create_support_chat(
     return cur.lastrowid
 
 
-async def get_support_chat(user_id: int, status: str, ttl_hours: int) -> dict | None:
-    """Foydalanuvchining shu holatdagi oxirgi suhbati (oxirgi xabaridan ttl_hours dan oshmagan)."""
+async def get_support_chat(
+    user_id: int, status: str, ttl_hours: int, categories: tuple[str, ...] | None = None
+) -> dict | None:
+    """Foydalanuvchining shu holatdagi oxirgi suhbati (oxirgi xabaridan ttl_hours dan oshmagan; categories bo'lsa, shu turdagi)."""
     db = await get_db()
+    marks = ",".join("?" * len(categories)) if categories else ""
     cur = await db.execute(
         "SELECT * FROM support_chats WHERE user_id = ? AND status = ? AND updated_at > datetime('now', ?) "
-        "ORDER BY id DESC LIMIT 1",
-        (user_id, status, f"-{ttl_hours} hours"),
+        + (f"AND category IN ({marks}) " if categories else "")
+        + "ORDER BY id DESC LIMIT 1",
+        (user_id, status, f"-{ttl_hours} hours", *(categories or ())),
     )
     row = await cur.fetchone()
     return dict(row) if row else None

@@ -40,5 +40,8 @@ PROHIBITED_ADS = (
 
 # bir foydalanuvchining adminga uzatishlari: kuniga ko'pi bilan shuncha
 MAX_ESCALATIONS_PER_DAY = 3
-# rad etilgan foydalanuvchi shuncha soat ichida qayta urinsa, AI'siz qisqa rad javobi oladi
+# rad etilgan foydalanuvchi shuncha soat ichida qayta urinsa, AI'siz qisqa rad javobi oladi, lekin faqat quyidagi
+# sabablar bilan yopilgan bo'lsa: haqorat va kunlik limit. Boshqa rad etishlar (masalan, taqiqlangan reklama,
+# noaniq masala) foydalanuvchini to'smaydi: u yangi suhbat ochib, masalasini qayta tushuntira oladi
 DECLINE_COOLDOWN_HOURS = 24
+BLOCKING_CATEGORIES = ("abuse", "limit")

@@ -31,6 +31,7 @@ from utils.ai_html import plain_text, sanitize_html
 from utils.lang import detect_lang
 from utils.moderation import is_abusive
 from utils.support_policy import (
+    BLOCKING_CATEGORIES,
     DECLINE_CATEGORIES,
     DECLINE_COOLDOWN_HOURS,
     FORWARD_CATEGORIES,
@@ -44,6 +45,7 @@ logger = logging.getLogger(__name__)
 MAX_TEXT = 2000
 GROUP_PREFIX = "[Guruhdagi xabar]"
 WAIT_NOTICE_INTERVAL = 60
+IDLE_NOTICE_INTERVAL = 10  # suhbati yo'q foydalanuvchiga: qisqa, aks holda bot "o'lib qolgandek" ko'rinadi
 
 # guruhda AI shu tool'ni chaqirsa, bot foydalanuvchining lichkasiga yozadi (guruhda javob yozilmaydi)
 CONTACT_ADMIN_TOOL = {
@@ -111,13 +113,13 @@ _last_idle: dict[int, float] = {}
 _LAST_WAIT_MAX = 1000
 
 
-def _throttled(store: dict[int, float], user_id: int) -> bool:
-    """Bir foydalanuvchiga avtomatik eslatma daqiqada ko'pi bilan bir marta (takroriy xabarlarga javob yog'ilmasin)."""
+def _throttled(store: dict[int, float], user_id: int, interval: float = WAIT_NOTICE_INTERVAL) -> bool:
+    """Bir foydalanuvchiga avtomatik eslatma `interval` soniyada ko'pi bilan bir marta (takroriy xabarlarga javob yog'ilmasin)."""
     now = time.monotonic()
-    if now - store.get(user_id, -WAIT_NOTICE_INTERVAL) < WAIT_NOTICE_INTERVAL:
+    if now - store.get(user_id, -interval) < interval:
         return True
     if len(store) >= _LAST_WAIT_MAX:
-        for uid in [u for u, t in store.items() if now - t >= WAIT_NOTICE_INTERVAL]:
+        for uid in [u for u, t in store.items() if now - t >= interval]:
             del store[uid]
     store[user_id] = now
     return False
@@ -280,8 +282,10 @@ async def open_chat(bot: Bot, message: Message, text: str, reason: str = "") -> 
     user = message.from_user
     if user is None:
         return
-    if await get_support_chat(user.id, "declined", DECLINE_COOLDOWN_HOURS) is not None:
-        # yaqinda rad etilgan: AI'siz qisqa rad javobi
+    blocked = await get_support_chat(user.id, "declined", DECLINE_COOLDOWN_HOURS, BLOCKING_CATEGORIES)
+    if blocked is not None:
+        # haqorat yoki kunlik limit tufayli yopilgan: AI'siz qisqa rad javobi
+        logger.info("Support: foydalanuvchi bloklangan (chat_id=%s, kategoriya=%s), AI chaqirilmadi", blocked["id"], blocked["category"])
         lang = detect_lang(text)
         if await safe_send(bot, user.id, texts.SUPPORT_DECLINED[lang]):
             await _reply_in_group(bot, message, texts.SUPPORT_DM_SENT[lang])
@@ -375,10 +379,12 @@ async def _idle_user(message: Message) -> bool:
 @router.message(F.text, ~F.text.startswith("/"), StateFilter(None), _idle_user)
 async def on_idle_message(message: Message, bot: Bot):
     """Suhbat yopilgan (rad etilgan, hal bo'lgan, muddati o'tgan) yoki hech qachon ochilmagan: bot jim turmasin."""
-    if message.from_user is None or message.text is None or _throttled(_last_idle, message.from_user.id):
+    if message.from_user is None or message.text is None:
+        return
+    if _throttled(_last_idle, message.from_user.id, IDLE_NOTICE_INTERVAL):
         return
     lang = detect_lang(message.text)
-    if await get_support_chat(message.from_user.id, "declined", DECLINE_COOLDOWN_HOURS) is not None:
+    if await get_support_chat(message.from_user.id, "declined", DECLINE_COOLDOWN_HOURS, BLOCKING_CATEGORIES) is not None:
         await message.answer(texts.SUPPORT_DECLINED[lang])
         return
     me = await bot.me()

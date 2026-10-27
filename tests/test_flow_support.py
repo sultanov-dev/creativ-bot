@@ -6,7 +6,7 @@ import handlers.ai as ai_handler
 import handlers.support as support
 import texts
 from config import ADMIN_IDS
-from database import get_support_chat
+from database import create_support_chat, get_support_chat, set_support_status
 from tests import telegram_fakes as tf
 from tests.flow import feed
 from tests.test_flow_ai import BOT, USER, FakeAsk, bot_replies, say
@@ -348,6 +348,36 @@ class TestIdleReplies:
     async def test_bot_admins_are_not_answered(self, dp, bot, session):
         await feed(dp, bot, tf.private_message(ADMIN_IDS[0], "salom"))
         assert not session.texts_to(ADMIN_IDS[0])
+
+
+class TestStaleDeclined:
+    """Eski versiyada rad etish suhbatni yopardi: bazada qolgan bunday yozuvlar foydalanuvchini 24 soat to'smasin."""
+
+    async def _old_declined(self, category: str) -> None:
+        chat_id = await create_support_chat(USER, tf.GROUP_ID, "G", "U50", None, "active")
+        assert await set_support_status(chat_id, "active", "declined", category)
+
+    @pytest.mark.parametrize("category", ["no_purpose", "prohibited_ad", "unclear", "indecent"])
+    async def test_old_decline_does_not_block_a_new_conversation(self, dp, bot, session, group_ai, dm_ai, category):
+        await self._old_declined(category)
+        await say(dp, bot, f"{BOT} admin bilan gaplashmoqchiman")
+        assert dm_ai.calls and session.texts_to(USER) == ["Salom! Nima bo'ldi?"]  # tayyor rad matni emas, AI yozadi
+        assert [m.text for m in bot_replies(session)] == [texts.SUPPORT_DM_SENT["uz"]]
+
+    async def test_old_decline_does_not_make_the_idle_reply_a_refusal(self, dp, bot, session):
+        support._last_idle.clear()
+        await self._old_declined("no_purpose")
+        await dm(dp, bot, "salom")
+        assert session.texts_to(USER) == [texts.SUPPORT_IDLE["uz"].format(username=tf.BOT_USERNAME)]
+
+    @pytest.mark.parametrize("category", ["abuse", "limit"])
+    async def test_abuse_and_limit_closures_still_block(self, dp, bot, session, group_ai, dm_ai, category):
+        await self._old_declined(category)
+        await say(dp, bot, f"{BOT} admin bilan gaplashmoqchiman")
+        assert not dm_ai.calls and session.texts_to(USER) == [texts.SUPPORT_DECLINED["uz"]]
+
+    async def test_idle_reply_interval_is_short(self):
+        assert support.IDLE_NOTICE_INTERVAL <= 10
 
 
 class TestLimit:
