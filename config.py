@@ -47,6 +47,8 @@ if FORM_TTL_HOURS < 0:
 API_URL = os.getenv("API_URL", "")
 API_TOKEN = os.getenv("API_TOKEN", "")
 API_MODEL = os.getenv("API_MODEL", "")
+# AI xizmati rasmni (OpenAI formatidagi image_url) qabul qilsa 1: shubhali rasm/stiker AI'ga ham ko'rsatiladi
+AI_VISION = os.getenv("AI_VISION", "0").strip().lower() in ("1", "true", "yes")
 
 # foydalanuvchi bilan lichkadagi AI suhbat: shuncha xabarda hal bo'lmasa, summary bilan adminlarga uzatiladi
 SUPPORT_MAX_TURNS = int(os.getenv("SUPPORT_MAX_TURNS") or 10)

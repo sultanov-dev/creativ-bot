@@ -132,6 +132,12 @@ async def init_db() -> None:
             value TEXT NOT NULL,
             updated_at INTEGER
         );
+
+        CREATE TABLE IF NOT EXISTS media_verdicts (
+            file_unique_id TEXT PRIMARY KEY,
+            verdict        TEXT NOT NULL,
+            created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
     """)
     # eski bazalar uchun: CREATE TABLE IF NOT EXISTS mavjud jadvalga ustun qo'shmaydi
     await _add_column(db, "applications", "voting_ends_at", "TIMESTAMP")
@@ -619,6 +625,10 @@ async def purge_old_data(days: int) -> int:
         (f"-{days} days",),
     )
     await db.execute("DELETE FROM support_chats WHERE updated_at < datetime('now', ?)", (f"-{days} days",))
+    # "toza" natijalar eskiradi (model/sozlama o'zgarishi mumkin); "nsfw" natijalar saqlanib qoladi
+    await db.execute(
+        "DELETE FROM media_verdicts WHERE verdict = 'clean' AND created_at < datetime('now', ?)", (f"-{days} days",)
+    )
     await db.commit()
     cur = await db.execute(
         "SELECT id, user_id FROM applications "
@@ -641,6 +651,22 @@ async def purge_old_data(days: int) -> int:
         )
     await db.commit()
     return len(ids)
+
+
+async def get_media_verdict(file_unique_id: str) -> str | None:
+    """Bu fayl (stiker, rasm, video) avval tekshirilgan bo'lsa, natijasi ("nsfw" / "clean")."""
+    db = await get_db()
+    cur = await db.execute("SELECT verdict FROM media_verdicts WHERE file_unique_id = ?", (file_unique_id,))
+    row = await cur.fetchone()
+    return row["verdict"] if row else None
+
+
+async def save_media_verdict(file_unique_id: str, verdict: str) -> None:
+    db = await get_db()
+    await db.execute(
+        "INSERT OR REPLACE INTO media_verdicts (file_unique_id, verdict) VALUES (?, ?)", (file_unique_id, verdict)
+    )
+    await db.commit()
 
 
 async def mark_admins_notified(app_id: int) -> None:

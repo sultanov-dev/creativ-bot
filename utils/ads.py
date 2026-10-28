@@ -43,7 +43,7 @@ SYSTEM_PROMPT = (
     "You moderate a Telegram community of programmers (Uzbek in Latin or Cyrillic script, Russian, English). "
     "Classify the user message and the links found in it (also hidden links, listed after the text). Each link comes "
     "with a local analysis: its registered domain, the words split out of the domain and path, and warning signals "
-    "(lookalike = a brand imitated with digits or look-alike letters, brand-not-official = a brand name on a domain "
+    "(adult-words = possibly an adult site, lookalike = a brand imitated with digits or look-alike letters, brand-not-official = a brand name on a domain "
     "that is not the brand's own, url-shortener, ip-address, punycode, risky-suffix, scam-words, userinfo-trick). "
     "Signals are hints, not proof: e.g. a library site named after a brand can be fine. A message may be a post "
     "forwarded from a channel (the channel is named first): sharing a useful on-topic post is OK, a post whose aim is "
@@ -83,8 +83,13 @@ def find_urls(text: str, entities: list | None, markup: object | None = None) ->
 
 
 def _definitely_dangerous(urls: list[str]) -> bool:
-    """AI'siz xavfli: dastur fayliga havola yoki aniq soxta domen (te1egram, аррӏе, "telegram.org@boshqa-sayt")."""
-    return any(DANGEROUS_FILE_RE.search(u.rstrip(".,;:!?)»\"'")) or analyze(u).lookalike for u in urls)
+    """AI'siz xavfli: dastur fayliga havola, aniq soxta domen (te1egram, аррӏе, "telegram.org@boshqa-sayt") yoki 18+ sayt."""
+    return any(DANGEROUS_FILE_RE.search(u.rstrip(".,;:!?)»\"'")) or _forged_or_adult(u) for u in urls)
+
+
+def _forged_or_adult(url: str) -> bool:
+    info = analyze(url)
+    return info.lookalike or info.adult
 
 
 def classify(

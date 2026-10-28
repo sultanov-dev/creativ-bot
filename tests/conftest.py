@@ -17,6 +17,7 @@ os.environ.update(
         "API_URL": "https://ai.invalid/v1/chat/completions",
         "API_TOKEN": "test-token",
         "API_MODEL": "test-model",
+        "AI_VISION": "0",
         "WEBHOOK_URL": "",
         "WEBHOOK_PATH": "",
         "WEBHOOK_SECRET": "",

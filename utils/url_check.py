@@ -49,6 +49,16 @@ RISKY_SUFFIXES = frozenset((
     "xyz", "top", "click", "icu", "buzz", "cyou", "monster", "rest", "tk", "ml", "ga", "cf", "gq", "win", "bet",
     "casino", "xxx", "porn", "sex", "adult", "loan", "bid", "pw",
 ))
+# 18+ sayt: domen nomida shu so'z bo'lsa yoki domen oxiri shunday bo'lsa — AI'siz xavfli (yo'l qismi hisobga
+# olinmaydi: wikipedia.org/wiki/Sex_education kabi sahifalar oddiy). "sex" bu yerda yo'q: sussex, essex kabi
+# nomlarda ham uchraydi, u faqat AI uchun belgi (adult-words)
+ADULT_WORDS = frozenset((
+    "porn", "porno", "porntube", "xxx", "hentai", "nsfw", "pornhub", "xvideos", "xnxx", "xhamster", "onlyfans",
+    "brazzers", "redtube", "youporn", "chaturbate", "stripchat", "bongacams", "spankbang", "eporner", "rule34",
+    "erotic", "erotica", "nudes", "camgirl", "camgirls",
+))
+ADULT_HINT_WORDS = frozenset(("sex", "sexy", "seks", "nude", "intim", "escort", "milf", "dating"))
+ADULT_SUFFIXES = frozenset(("xxx", "porn", "sex", "adult"))
 SCAM_WORDS = frozenset((
     "free", "gift", "gifts", "prize", "bonus", "premium", "giveaway", "airdrop", "claim", "verify", "verification",
     "login", "signin", "wallet", "casino", "bet", "betting", "jackpot", "porn", "xxx", "sex", "nft", "stars",
@@ -56,7 +66,7 @@ SCAM_WORDS = frozenset((
     "besplatno", "podarok", "vyigrysh", "zarabotok", "aksiya",
 ))
 # lug'atga qo'shiladigan so'zlar (eng yuqori ustuvorlik): o'zbekcha/ruscha lotincha so'zlar va brendlar
-_EXTRA_WORDS = sorted(SCAM_WORDS | set(BRANDS) | {
+_EXTRA_WORDS = sorted(SCAM_WORDS | ADULT_WORDS | ADULT_HINT_WORDS | set(BRANDS) | {
     "ishlash", "ishla", "daromad", "kanal", "guruh", "obuna", "chegirma", "kredit", "tekin", "yutuqli", "olish",
     "uz", "uzb", "toshkent", "dostavka", "skidka", "kripto", "signal", "signallar",
 })
@@ -89,6 +99,7 @@ class UrlInfo:
     words: list[str] = field(default_factory=list)
     signals: list[str] = field(default_factory=list)
     lookalike: bool = False  # aniq soxtalik: AI'siz xavfli
+    adult: bool = False  # 18+ sayt: AI'siz xavfli
 
     def describe(self) -> str:
         """AI uchun bir qator: asosiy domen, so'zlar va belgilar."""
@@ -163,6 +174,15 @@ def analyze(url: str) -> UrlInfo:
             for brand in sorted(b for b in leet if len(b) >= 5):
                 info.signals.append(f"lookalike {brand}")
                 info.lookalike = True
+
+    host_words = set(_split(name))
+    suffix = info.domain.rsplit(".", 1)[-1] if "." in info.domain else ""
+    adult = sorted(host_words & ADULT_WORDS) + ([f".{suffix}"] if suffix in ADULT_SUFFIXES else [])
+    if adult:
+        info.signals.append("adult " + " ".join(adult))
+        info.adult = True
+    elif host_words & ADULT_HINT_WORDS:
+        info.signals.append("adult-words " + " ".join(sorted(host_words & ADULT_HINT_WORDS)))
 
     path = unquote(f"{parts.path} {parts.query}")
     info.words = _split(name) + _split(path)
