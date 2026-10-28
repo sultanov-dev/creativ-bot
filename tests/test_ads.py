@@ -98,7 +98,7 @@ def ai(monkeypatch) -> FakeAI:
 class TestAiVerdict:
     @pytest.mark.parametrize("answer,expected", [
         ("AD", ads.AD), ("ad", ads.AD), ("**AD**", ads.AD), ("DANGER", ads.DANGER), ("danger.", ads.DANGER),
-        ("OK", None), ("ADVICE", None), ("DANGEROUS", None), ("", None),
+        ("OK", ads.OK), ("ADVICE", None), ("DANGEROUS", None), ("", None),
         (AIError("503"), None),  # AI yiqilsa xabar qoladi
     ])
     async def test_parsing(self, ai, answer, expected):
@@ -214,3 +214,50 @@ class TestExemptions:
         session.errors[DeleteMessage] = lambda m: tf.bad_request("can't delete", m)
         await post(dp, bot, "t.me/spam")  # xato ko'tarilmaydi
         assert session.texts_to(G) == []  # o'chirib bo'lmadi: ogohlantirish ham yuborilmaydi
+
+
+class TestTelegramLinks:
+    """t.me havolalari: avval bot o'zi tekshiradi, aniq bo'lmasa AI; AI har safar chaqirilmaydi."""
+
+    @pytest.mark.parametrize("text", [
+        "https://t.me/+AbCdEf guruhga kiring",            # yopiq guruhga taklif
+        "Ajoyib bot t.me/earnbot?start=ref123 ishlatib ko'ring",  # referal havola
+        "Python haqida kanalimiz bor t.me/pyuz",          # aniq reklama so'zi
+        "👉 t.me/pyuz",                                     # izohsiz havola
+    ])
+    def test_obvious_cases_are_decided_without_ai(self, text):
+        assert ads.classify(text, None) == "definite"
+
+    def test_explained_link_goes_to_ai(self):
+        assert ads.classify("Shu postda asyncio yaxshi tushuntirilgan t.me/pythonuz/1234", None) == "telegram"
+
+    @pytest.mark.parametrize("text", ["Yuqorida javob bor t.me/c/1234567/89", "mana t.me/ourgroup/55"])
+    def test_link_to_this_group_is_not_suspicious(self, text):
+        assert ads.classify(text, None, chat_id=-1001234567, chat_username="OurGroup") is None
+
+    async def test_useful_post_stays_when_ai_says_ok(self, dp, bot, session, ai):
+        ai.answer = "OK"
+        await post(dp, bot, "Shu postda asyncio yaxshi tushuntirilgan t.me/pythonuz/1234")
+        assert deleted(session) == [] and len(ai.calls) == 1
+
+    async def test_ai_ad_verdict_is_remembered_for_the_same_channel(self, dp, bot, session, ai):
+        ai.answer = "AD"
+        await post(dp, bot, "Zo'r materiallar shu yerda t.me/spamkanal/10", message_id=801)
+        await post(dp, bot, "Yana bir qiziq narsa bor t.me/SpamKanal/11", message_id=802)
+        assert deleted(session) == [801, 802] and len(ai.calls) == 1  # ikkinchisi AI'siz
+
+    async def test_ai_down_deletes_a_foreign_telegram_link(self, dp, bot, session, ai):
+        ai.answer = AIError("503")
+        await post(dp, bot, "Shu postda asyncio yaxshi tushuntirilgan t.me/pythonuz/1234")
+        assert deleted(session) == [800]
+
+    async def test_ai_down_does_not_poison_the_memory(self, dp, bot, session, ai):
+        ai.answer = AIError("503")
+        await post(dp, bot, "Shu postda asyncio yaxshi tushuntirilgan t.me/pythonuz/1234", message_id=801)
+        ai.answer = "OK"
+        await post(dp, bot, "Bu postda esa generatorlar haqida t.me/pythonuz/1235", message_id=802)
+        assert deleted(session) == [801] and len(ai.calls) == 2
+
+    async def test_link_to_a_message_of_this_group_costs_no_ai_call(self, dp, bot, session, ai):
+        await post(dp, bot, "Javob yuqorida t.me/c/1234567890/5")  # tf.GROUP_ID = -1001234567890
+        assert deleted(session) == [] and ai.calls == []

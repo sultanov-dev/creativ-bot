@@ -5,14 +5,14 @@ import logging
 import re
 
 from utils.ai import AIError, ask_ai
+from utils import tg_links
 from utils.url_check import analyze
 
 logger = logging.getLogger(__name__)
 
-# Telegram guruh/kanal/bot havolalari: targ'ibotning eng keng tarqalgan usuli
-TG_LINK_RE = re.compile(
-    r"(?<![\w.])(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me|telegram\.dog|telesco\.pe)/|tg://", re.IGNORECASE
-)
+# Telegram guruh/kanal/bot havolalari: targ'ibotning eng keng tarqalgan usuli, lekin foydali bo'lishi ham mumkin
+# (dasturlash kanalining posti, guruhdagi xabar): avval bot o'zi tekshiradi, aniq bo'lmasa AI (utils/tg_links.py)
+TG_SCHEME_RE = re.compile(r"tg://", re.IGNORECASE)
 # har qanday boshqa havola yoki domen (fayl nomlari, masalan main.py yoki config.json, havola hisoblanmaydi);
 # Telegram o'zi aniqlagan havolalar (url / text_link entity) istalgan domen bilan find_urls'da qo'shiladi
 URL_RE = re.compile(
@@ -63,6 +63,7 @@ SYSTEM_PROMPT = (
 
 AD = "ad"
 DANGER = "danger"
+OK = "ok"
 
 
 def find_urls(text: str, entities: list | None, markup: object | None = None) -> list[str]:
@@ -85,22 +86,41 @@ def _definitely_dangerous(urls: list[str]) -> bool:
 
 
 def classify(
-    text: str, entities: list | None, *, forwarded_from_channel: bool = False, markup: object | None = None
+    text: str,
+    entities: list | None,
+    *,
+    forwarded_from_channel: bool = False,
+    markup: object | None = None,
+    chat_id: int | None = None,
+    chat_username: str | None = None,
 ) -> str | None:
-    """"danger" (dastur fayliga havola), "definite" (aniq reklama), "candidate" (AI tekshirsin) yoki None (belgi yo'q)."""
+    """Mahalliy saralash (AI'siz):
+
+    "danger" (dastur fayli, soxta domen), "definite" (aniq reklama), "telegram" (begona Telegram havolasi, aniq
+    belgi yo'q: AI hal qiladi, AI ishlamasa o'chiriladi), "candidate" (boshqa shubha: AI hal qiladi, AI ishlamasa
+    qoladi) yoki None (belgi yo'q). Shu guruhning o'z xabari/havolasi hech qachon shubha emas.
+    """
     text = text or ""
     urls = find_urls(text, entities, markup)
     if _definitely_dangerous(urls):
         return "danger"
-    if forwarded_from_channel or TG_LINK_RE.search(text) or any(TG_LINK_RE.search(u) for u in urls):
+    if forwarded_from_channel or TG_SCHEME_RE.search(text) or any(TG_SCHEME_RE.match(u) for u in urls):
         return "definite"
-    if urls or PHONE_RE.search(text) or PROMO_RE.search(text):
+    links = [(u, tg_links.parse(u)) for u in urls]
+    own = {u for u, link in links if link is not None and tg_links.is_own(link, chat_id, chat_username)}
+    foreign_tg = [link for u, link in links if link is not None and u not in own]
+    other_urls = [u for u, link in links if link is None]
+    if foreign_tg:
+        if tg_links.obvious_ad(text, [u for u, link in links if link is not None and u not in own], foreign_tg):
+            return "definite"
+        return "telegram"
+    if other_urls or PHONE_RE.search(text) or PROMO_RE.search(text):
         return "candidate"
     return None
 
 
 async def ai_verdict(text: str, urls: list[str] | None = None) -> str | None:
-    """AI: DANGER, AD yoki OK. AI ishlamasa yoki kech javob bersa None (xabar qoladi, fail-open)."""
+    """AI: DANGER, AD yoki OK. AI ishlamasa, kech yoki tushunarsiz javob bersa None (qaror chaqiruvchida)."""
     content = text[:MAX_TEXT]
     if urls:
         content += "\n\nLinks:\n" + "\n".join(f"- {u[:300]} [{analyze(u).describe()[:400]}]" for u in urls[:10])
@@ -125,6 +145,8 @@ async def ai_verdict(text: str, urls: list[str] | None = None) -> str | None:
         return DANGER
     if re.search(r"\bAD\b", head):
         return AD
+    if re.search(r"\bOK\b", head):
+        return OK
     return None
 
 

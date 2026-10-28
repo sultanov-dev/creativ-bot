@@ -8,6 +8,7 @@ from aiogram.types import Message
 
 from texts import AD_NOTICE, LINK_DANGER_NOTICE
 from utils.admin import get_user_status, is_admin
+from utils import tg_links
 from utils.ads import AD, DANGER, ai_verdict, classify, find_urls
 
 router = Router()
@@ -45,7 +46,14 @@ async def is_advertisement(message: Message, bot: Bot) -> dict | bool:
     """Filtr: reklama yoki xavfli havola bo'lsa {"verdict": ...}, aks holda False (boshqa routerlar, masalan AI, xabarni ko'radi)."""
     text = message.text or message.caption or ""
     entities = message.entities or message.caption_entities
-    kind = classify(text, entities, forwarded_from_channel=_from_channel(message), markup=message.reply_markup)
+    kind = classify(
+        text,
+        entities,
+        forwarded_from_channel=_from_channel(message),
+        markup=message.reply_markup,
+        chat_id=message.chat.id,
+        chat_username=message.chat.username,
+    )
     if kind is None:
         return False
     if await _exempt(bot, message):
@@ -54,8 +62,20 @@ async def is_advertisement(message: Message, bot: Bot) -> dict | bool:
         return {"verdict": DANGER}
     if kind == "definite":
         return {"verdict": AD}
-    verdict = await ai_verdict(text, find_urls(text, entities, message.reply_markup))
-    return {"verdict": verdict} if verdict else False
+    urls = find_urls(text, entities, message.reply_markup)
+    verdict = await ai_verdict(text, urls)
+    tg = [
+        link
+        for link in map(tg_links.parse, urls)
+        if link is not None and not tg_links.is_own(link, message.chat.id, message.chat.username)
+    ]
+    if verdict in (AD, DANGER):
+        tg_links.remember_ad(tg)  # shu manzil yana kelsa, AI chaqirilmaydi
+        return {"verdict": verdict}
+    if verdict is None and kind == "telegram":
+        # AI ishlamadi: begona Telegram havolasi avvalgidek o'chiriladi (uzilish reklamaga yo'l ochmasin)
+        return {"verdict": AD}
+    return False
 
 
 @router.message(is_advertisement)

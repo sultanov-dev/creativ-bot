@@ -53,7 +53,7 @@ async def db(tmp_path, monkeypatch):
 def _reset_module_state():
     """Modullardagi xotira keshlari testlar orasida sizib o'tmasin."""
     from handlers import ai, errors
-    from utils import autodelete, members
+    from utils import autodelete, members, tg_links
 
     def clear():
         members._seen.clear()
@@ -61,6 +61,7 @@ def _reset_module_state():
         ai._ai_messages.clear()
         errors._last_alert.clear()
         autodelete._tasks.clear()
+        tg_links._blocked.clear()
 
     clear()
     yield
