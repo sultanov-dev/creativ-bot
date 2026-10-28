@@ -12,6 +12,7 @@ from keyboards.profile import FIELD_BY_LABEL, FIELD_LABELS, confirm_keyboard, fi
 from states import Form
 from texts import (
     ANKETA_CONFIRM,
+    ANKETA_CHECKING,
     ANKETA_NEEDS_FIX,
     ANKETA_REVIEW_UNAVAILABLE,
     PROFILE_BACK_BUTTON,
@@ -92,6 +93,9 @@ async def confirm_and_submit(message: Message, bot: Bot, state: FSMContext) -> N
         return  # ikki marta bosilgan tugma dublikat ariza va admin xabarlarini yaratmasin
     _finishing.add(user_id)
     try:
+        # tugmalar darhol yopiladi: tekshiruv bir necha soniya (AI sekin bo'lsa ko'proq) davom etadi, qayta-qayta
+        # bosilmasin; natijaga qarab tugmalar qaytadi (keyinroq qayta bosish) yoki savol/rahmat xabari keladi
+        await message.answer(ANKETA_CHECKING, reply_markup=ReplyKeyboardRemove())
         if await ai_check_passed(bot, user_id, state):
             await submit_application(message, bot, state)
     finally:

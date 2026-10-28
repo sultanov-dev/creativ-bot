@@ -173,7 +173,7 @@ class TestCompletion:
             msg = session.sent_to(admin)[0]
             assert "+998901234567" in (msg.text or "") and msg.reply_markup is not None
         mine = session.texts_to(U)
-        assert mine[-1] == texts.THANKS and "+998901234567" in mine[-2]
+        assert mine[-3:-1] == [mine[-3], texts.ANKETA_CHECKING] and "+998901234567" in mine[-3] and mine[-1] == texts.THANKS
         assert session.sent_to(tf.GROUP_ID) == []  # hali ovozga qo'yilmagan
         assert (await state_of(dp, bot)) == (None, {})
         assert_no_errors(session)
@@ -217,7 +217,7 @@ class TestCompletion:
         await at_step(dp, bot, 6)  # anketa ko'rsatilgan, hali tasdiqlanmagan
         await dbm.create_application(U, tf.GROUP_ID, "A B", "x\n")  # shu orada boshqa ariza paydo bo'ldi
         await feed(dp, bot, tf.private_message(U, texts.ANKETA_CONFIRM_BUTTON))
-        assert session.texts_to(U) == [texts.ALREADY_APPLIED]
+        assert session.texts_to(U) == [texts.ANKETA_CHECKING, texts.ALREADY_APPLIED]
         assert session.sent_to(tf.ADMIN_ID) == []
 
     async def test_admin_gets_vote_and_reject_buttons_with_clear_texts(self, dp, bot, session):

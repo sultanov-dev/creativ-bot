@@ -78,6 +78,7 @@ ANKETA_NEEDS_FIX = (
     "{problems}\n\n"
     "Iltimos, shu joylarni qayta to'ldiring 👇"
 )
+ANKETA_CHECKING = "⏳ Anketangiz tekshirilmoqda, biroz kuting..."
 ANKETA_REVIEW_UNAVAILABLE = (
     "⏳ Hozir anketangizni tekshirib bo'lmadi. Anketangiz saqlanib turibdi: "
     "iltimos, birozdan keyin pastdagi tugmani qayta bosing 👇"

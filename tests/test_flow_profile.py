@@ -117,7 +117,7 @@ class TestKeep:
         session.errors[SendMessage] = lambda m: tf.bad_request("Bad Request: chat not found", m) if m.chat_id != U else None
         session.clear()
         await say(dp, bot, texts.PROFILE_KEEP_BUTTON)
-        assert session.texts_to(U) == [texts.ERROR_GENERIC]
+        assert session.texts_to(U) == [texts.ANKETA_CHECKING, texts.ERROR_GENERIC]
         assert await dbm.get_active_application(U, tf.GROUP_ID) is None and not session.sent_to(tf.GROUP_ID)
         # ariza "failed" bo'ldi: qayta qo'shilganda eski ma'lumot ko'rsatilmaydi, anketa boshidan
         session.errors.clear()
@@ -130,14 +130,14 @@ class TestKeep:
         await dbm.create_application(U, tf.GROUP_ID, "A B", "x\n")  # shu orada boshqa ariza paydo bo'ldi
         session.clear()
         await say(dp, bot, texts.PROFILE_KEEP_BUTTON)
-        assert session.texts_to(U) == [texts.ALREADY_APPLIED]
+        assert session.texts_to(U) == [texts.ANKETA_CHECKING, texts.ALREADY_APPLIED]
 
     async def test_keep_without_group_id_in_state(self, dp, bot, session):
         ctx = dp.fsm.get_context(bot, chat_id=U, user_id=U)
         await ctx.set_state(Form.review)
         await ctx.set_data({"full_name": "Aziz Karimov"})
         await say(dp, bot, texts.PROFILE_KEEP_BUTTON)
-        assert session.texts_to(U) == [texts.ERROR_GENERIC]
+        assert session.texts_to(U) == [texts.ANKETA_CHECKING, texts.ERROR_GENERIC]
         assert (await state_of(dp, bot))[0] is None
 
     async def test_legacy_profile_with_first_and_last_name_works(self, dp, bot, session):

@@ -1,6 +1,6 @@
 """Yangi anketa: oxirida foydalanuvchiga ko'rsatiladi (Tasdiqlash / O'zgartirish), tasdiqlangach AI tekshiradi."""
 import pytest
-from aiogram.types import ReplyKeyboardMarkup
+from aiogram.types import ReplyKeyboardMarkup, ReplyKeyboardRemove
 
 import database as dbm
 import texts
@@ -46,6 +46,8 @@ class TestConfirmView:
         assert len(review_ai.calls) == 1
         assert await dbm.get_active_application(U, G) is not None and len(session.sent_to(tf.ADMIN_ID)) == 1
         assert session.texts_to(U)[-1] == texts.THANKS
+        checking = session.sent_to(U)[0]  # bosilishi bilan tugmalar yopiladi: qayta-qayta bosib bo'lmaydi
+        assert checking.text == texts.ANKETA_CHECKING and isinstance(checking.reply_markup, ReplyKeyboardRemove)
 
     async def test_other_text_asks_to_use_buttons(self, dp, bot, session):
         await at_confirm(dp, bot, session)
@@ -74,7 +76,8 @@ class TestAiFindsProblems:
         review_ai.answer = "job=nonsense; about=hazil"  # noma'lum kod: umumiy sabab
         await at_confirm(dp, bot, session)
         await say(dp, bot, CONFIRM)
-        notice, question = session.texts_to(U)
+        checking, notice, question = session.texts_to(U)
+        assert checking == texts.ANKETA_CHECKING  # tugmalar darhol yopildi
         assert FIELD_LABELS["job"] in notice and texts.ANKETA_REVIEW_REASONS["nonsense"] in notice  # sababni bot yozadi
         assert texts.ANKETA_REVIEW_REASON_DEFAULT in notice
         assert FIELD_LABELS["about"] in notice and question == texts.ASK_JOB
@@ -123,7 +126,8 @@ class TestLocalCheck:
         await fill_form(dp, bot, U, answers, confirm=False)
         session.clear()
         await say(dp, bot, CONFIRM)
-        notice, question = session.texts_to(U)
+        checking, notice, question = session.texts_to(U)
+        assert checking == texts.ANKETA_CHECKING  # tugmalar darhol yopildi
         assert FIELD_LABELS["job"] in notice and FIELD_LABELS["join_group"] in notice
         assert FIELD_LABELS["about"] not in notice and question == texts.ASK_JOB
         assert not review_ai.calls and await dbm.get_active_application(U, G) is None  # AI chaqirilmadi
