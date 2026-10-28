@@ -2,9 +2,15 @@ from utils.support_policy import PROHIBITED_ADS
 
 ASK_FULL_NAME = "Ism va familiyangizni yozing, masalan: Aziz Karimov."
 ASK_PHONE = "Telefon raqamingiz?"
-REJOIN_AFTER_REJECTION = "Avvalgi arizangiz rad etilgan edi. Anketani yangidan to'ldiring."
-REJOIN_AFTER_EXPIRED = "Oxirgi arizangizning muddati o'tgan. Anketani qaytadan to'ldiring."
-REJOIN_AFTER_FAILED = "Oxirgi arizangiz ko'rib chiqilmadi. Anketani qaytadan to'ldiring."
+REJOIN_AFTER_REJECTION = (
+    "Avvalgi arizangiz rad etilgan edi. Anketani yangidan to'ldiring."
+)
+REJOIN_AFTER_EXPIRED = (
+    "Oxirgi arizangizning muddati o'tgan. Anketani qaytadan to'ldiring."
+)
+REJOIN_AFTER_FAILED = (
+    "Oxirgi arizangiz ko'rib chiqilmadi. Anketani qaytadan to'ldiring."
+)
 # oxirgi arizasi shu holatlarda bo'lsa, eski ma'lumotlar ko'rsatilmaydi: anketa boshidan, tegishli xabar bilan
 REJOIN_AFTER_REMOVED = "Guruhdan chiqarilgansiz. Anketani yangidan to'ldiring."
 APPLICATION_ACCEPTED_NOT_JOINED = (
@@ -22,9 +28,13 @@ REJOIN_NOTES = {
     "removed": REJOIN_AFTER_REMOVED,
 }
 AD_NOTICE = "⚠️ {name}, guruhda reklama taqiqlangan. Xabaringiz o'chirildi."
-NSFW_NOTICE = "⚠️ {name}, guruhda 18+ va nomaqbul kontent taqiqlangan. Xabaringiz o'chirildi."
+NSFW_NOTICE = (
+    "⚠️ {name}, guruhda 18+ va nomaqbul kontent taqiqlangan. Xabaringiz o'chirildi."
+)
 LINK_DANGER_NOTICE = "⚠️ {name}, xabaringizda xavfli havola bor edi, u o'chirildi. Bunday havolalarni ochmang."
-MODERATION_WARNING = "Kechirasiz, matnda nomaqbul so'zlar bor. Iltimos, hurmat bilan qayta yozing."
+MODERATION_WARNING = (
+    "Kechirasiz, matnda nomaqbul so'zlar bor. Iltimos, hurmat bilan qayta yozing."
+)
 SKIP_BUTTON = "⏭ O'tkazib yuborish"
 PHONE_BUTTON = "📱 Raqamni ulashish"
 WRONG_NAME = (
@@ -37,15 +47,19 @@ WRONG_PHONE = (
 )
 WRONG_CONTACT = "Kechirasiz, faqat o'zingizning raqamingizni yuborishingiz mumkin."
 ASK_AGE = "Yoshingiz nechida?"
-ASK_JOB = "Kasbingiz nima? Qaysi yo'nalishda ishlaysiz?"
+ASK_JOB = "Qaysi yo'nalishda ishlaysiz?"
 ASK_ABOUT = "O'zingiz haqingizda qisqacha gapirib bering."
-ASK_REASON = "Nega aynan bizning guruhga qo'shilmoqchisiz?"
+ASK_REASON = "Nega guruhga qo'shilmoqchisiz?"
 
 WRONG_AGE = "Kechirasiz, yoshingiz to'g'ri ko'rinmadi. 10 dan 100 gacha son yozing."
 ONLY_TEXT = "Kechirasiz, javobni faqat matn ko'rinishida qabul qila olaman ✍️"
-TOO_LONG = "Kechirasiz, javob juda uzun. Iltimos, 800 belgidan oshirmay, qisqaroq yozing ✍️"
-ERROR_GENERIC = "Kechirasiz, xatolik yuz berdi. Iltimos, birozdan keyin qayta urinib ko'ring."
-ALREADY_APPLIED = "Arizangiz allaqachon ko'rib chiqilmoqda. Natijani kutib turing ⏳"
+TOO_LONG = (
+    "Kechirasiz, javob juda uzun. Iltimos, 800 belgidan oshirmay, qisqaroq yozing ✍️"
+)
+ERROR_GENERIC = (
+    "Kechirasiz, xatolik yuz berdi. Iltimos, birozdan keyin qayta urinib ko'ring."
+)
+ALREADY_APPLIED = "Arizangiz allaqachon ko'rib chiqilmoqda. Natijani kuting ⏳"
 THANKS = "Javoblaringiz uchun rahmat! 😊 Arizangiz guruh adminlariga yuborildi."
 
 PROFILE_REVIEW = (
@@ -72,15 +86,13 @@ PROFILE_KEEP_BUTTON = "✅ Shunday qoldirish"
 PROFILE_BACK_BUTTON = "⬅️ Orqaga"
 
 REPEAT_APPLICATION_SENT = (
-    "Arizangiz guruh a'zolari ovoziga qo'yildi 🗳\n"
-    "Natijani shu yerda xabar qilamiz, sabr qiling ⏳"
+    "Arizangiz guruhda ovozga qo'yildi 🗳\nNatijani shu yerda xabar qilamiz ⏳"
 )
 
 APPLICATION_ACCEPTED = "Tabriklaymiz, arizangiz qabul qilindi! Guruhga xush kelibsiz 🎉"
 FEEDBACK_INTRO = "Guruh a'zolarining umumiy fikri haqida qisqacha:"
 APPLICATION_REJECTED = (
-    "Qiziqishingiz uchun rahmat. Afsuski, arizangiz bu safar rad etildi. "
-    "Sizga omad tilaymiz!"
+    "Qiziqishingiz uchun rahmat. Afsuski, arizangiz rad etildi. Sizga omad tilaymiz!"
 )
 
 AI_SYSTEM_PROMPT = (
@@ -116,8 +128,8 @@ AI_COOLDOWN = {
 }
 # AI xabarlari savol tilida (utils/lang.detect_lang): AI_TOO_LONG, AI_COOLDOWN, AI_ERROR.
 AI_ERROR = {
-    "uz": "Kechirasiz, hozir javob bera olmayapman. Iltimos, birozdan keyin qayta urinib ko'ring.",
-    "uz_cyr": "Кечирасиз, ҳозир жавоб бера олмаяпман. Илтимос, бироздан кейин қайта уриниб кўринг.",
+    "uz": "Kechirasiz, hozir javob bera olmayman. Iltimos, birozdan keyin qayta urinib ko'ring.",
+    "uz_cyr": "Кечирасиз, ҳозир жавоб бера олмайман. Илтимос, бироздан кейин қайта уриниб кўринг.",
     "ru": "Извините, сейчас я не могу ответить. Пожалуйста, попробуйте ещё раз чуть позже.",
     "en": "Sorry, I can't answer right now. Please try again in a little while.",
 }
@@ -216,7 +228,8 @@ SUPPORT_OUTCOME_CLOSED = (
 )
 SUPPORT_OUTCOME_ESCALATED = (
     "Result: escalate_to_admin was executed, your summary is being passed to the admins right now. Write one short "
-    "reply: confirm that the matter is passed to the admins and that they will contact the user personally." + _PLAIN
+    "reply: confirm that the matter is passed to the admins and that they will contact the user personally."
+    + _PLAIN
 )
 SUPPORT_OUTCOME_LIMIT = (
     "Result: the daily limit of messages to the admins is reached and nothing was passed. Write one short reply: "
@@ -286,8 +299,8 @@ SUPPORT_ESCALATED = {
     "en": "I have passed your matter to an admin 🙏 They will contact you themselves as soon as possible.",
 }
 SUPPORT_WAIT = {
-    "uz": "Masalangiz adminga yuborilgan, admin javobini kuting ⏳",
-    "uz_cyr": "Масалангиз админга юборилган, админ жавобини кутинг ⏳",
+    "uz": "Masalangiz adminga yuborildi",
+    "uz_cyr": "Масалангиз админга юборилди",
     "ru": "Ваш вопрос уже передан администратору, ожидайте ответа ⏳",
     "en": "Your matter has already been sent to an admin, please wait for their reply ⏳",
 }
@@ -299,7 +312,7 @@ SUPPORT_ADMIN_UNAVAILABLE = {
 }
 SUPPORT_ADMIN_NOTICE = (
     "🆘 <b>Foydalanuvchi siz bilan gaplashmoqchi</b>\n"
-    "👤 <a href=\"tg://user?id={user_id}\">{name}</a>{username}\n"
+    '👤 <a href="tg://user?id={user_id}">{name}</a>{username}\n'
     "💬 Guruh: {group}\n\n"
     "<b>Xulosa:</b>\n{summary}"
 )
