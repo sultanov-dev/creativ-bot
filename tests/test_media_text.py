@@ -2,7 +2,6 @@
 import cv2
 import numpy as np
 import pytest
-from aiogram.methods import DeleteMessage
 
 import database as dbm
 from tests import telegram_fakes as tf

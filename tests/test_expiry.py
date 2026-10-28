@@ -4,6 +4,8 @@ import asyncio
 from collections.abc import Awaitable, Callable
 
 import pytest
+
+from tests.table import check
 from aiogram import Bot
 from aiogram.methods import (
     DeclineChatJoinRequest,
@@ -107,12 +109,15 @@ class TestExpireApplications:
         assert await expiry.expire_applications(bot) == 1
         assert await status_of(a) == "expired"
 
-    @pytest.mark.parametrize("final", ["accepted", "rejected", "expired", "failed"])
-    async def test_finished_applications_are_ignored(self, db, bot, session, final):
-        a = await make_app(age_days=10)
-        await dbm.change_status(a, "pending", final)
+    async def test_finished_applications_are_ignored(self, db, bot, session):
+        finals = ["accepted", "rejected", "expired", "failed"]
+        apps = []
+        for user, final in enumerate(finals, start=1):
+            a = await make_app(user=user, age_days=10)
+            await dbm.change_status(a, "pending", final)
+            apps.append(a)
         assert await expiry.expire_applications(bot) == 0
-        assert await status_of(a) == final
+        assert [await status_of(a) for a in apps] == finals
 
     async def test_status_changed_meanwhile_is_skipped(
         self, db, bot, session, monkeypatch
@@ -213,29 +218,9 @@ class TestLoop:
 
 
 class TestFormatting:
-    @pytest.mark.parametrize(
-        "seconds,text",
-        [
-            (45, "45 soniya"),
-            (60, "1 daqiqa"),
-            (80, "1 daqiqa 20 soniya"),
-            (0, "1 soniya"),
-        ],
-    )
-    def test_wait(self, seconds, text):
-        assert format_wait(seconds) == text
-
-    @pytest.mark.parametrize(
-        "minutes,text",
-        [
-            (10, "10 daqiqada"),
-            (90, "90 daqiqada"),
-            (120, "2 soatda"),
-            (2880, "2 kunda"),
-        ],
-    )
-    def test_deadline(self, minutes, text):
-        assert format_deadline(minutes) == text
+    def test_wait_and_deadline_texts(self):
+        check(format_wait, [(45, "45 soniya"), (60, "1 daqiqa"), (80, "1 daqiqa 20 soniya"), (0, "1 soniya")])
+        check(format_deadline, [(10, "10 daqiqada"), (90, "90 daqiqada"), (120, "2 soatda"), (2880, "2 kunda")])
 
     async def test_vote_message_states_deadline_from_config(self, dp, bot, session):
         app_id = await start_application(dp, bot)

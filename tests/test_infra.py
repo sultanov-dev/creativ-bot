@@ -35,28 +35,28 @@ SECRET = "a" * 32
 WEBHOOK = {"WEBHOOK_URL": "https://x.uz", "WEBHOOK_SECRET": SECRET}
 
 
-@pytest.mark.parametrize("raw,expected", [(" 1, 2 ,3 ", [1, 2, 3]), ("", []), ("1,,2,", [1, 2]), ("-5", [-5])])
-def test_admin_ids_parsing(reload_config, raw, expected):
-    assert reload_config(ADMIN_IDS=raw).ADMIN_IDS == expected
+VALID = {"ADMIN_IDS": "1001,1002", "VOTING_MINUTES": "10", "VOTE_ACCEPT_PERCENT": "60", "AUTO_DELETE_SECONDS": "120"}
 
 
-@pytest.mark.parametrize("name,value,expected", [
-    ("VOTING_MINUTES", "1", 1), ("VOTING_MINUTES", "10080", 10080), ("VOTING_MINUTES", "", 10),
-    ("VOTE_ACCEPT_PERCENT", "1", 1), ("VOTE_ACCEPT_PERCENT", "100", 100), ("VOTE_ACCEPT_PERCENT", "", 60),
-    ("AUTO_DELETE_SECONDS", "0", 0), ("AUTO_DELETE_SECONDS", "", 30),
-])
-def test_numeric_settings_ok_and_defaults(reload_config, name, value, expected):
-    assert getattr(reload_config(**{name: value}), name) == expected
+def test_settings_parsing_and_defaults(reload_config):
+    for raw, expected in [(" 1, 2 ,3 ", [1, 2, 3]), ("", []), ("1,,2,", [1, 2]), ("-5", [-5])]:
+        assert reload_config(**VALID | {"ADMIN_IDS": raw}).ADMIN_IDS == expected, raw
+    for name, value, expected in [
+        ("VOTING_MINUTES", "1", 1), ("VOTING_MINUTES", "10080", 10080), ("VOTING_MINUTES", "", 10),
+        ("VOTE_ACCEPT_PERCENT", "1", 1), ("VOTE_ACCEPT_PERCENT", "100", 100), ("VOTE_ACCEPT_PERCENT", "", 60),
+        ("AUTO_DELETE_SECONDS", "0", 0), ("AUTO_DELETE_SECONDS", "", 30),
+    ]:
+        assert getattr(reload_config(**VALID | {name: value}), name) == expected, (name, value)
 
 
-@pytest.mark.parametrize("name,value", [
-    ("ADMIN_IDS", "1,abc"),
-    ("VOTING_MINUTES", "0"), ("VOTING_MINUTES", "-1"), ("VOTING_MINUTES", "10081"), ("VOTING_MINUTES", "abc"),
-    ("VOTE_ACCEPT_PERCENT", "0"), ("VOTE_ACCEPT_PERCENT", "101"), ("VOTE_ACCEPT_PERCENT", "-5"),
-])
-def test_invalid_values_fail_fast(reload_config, name, value):
-    with pytest.raises(ValueError):
-        reload_config(**{name: value})
+def test_invalid_values_fail_fast(reload_config):
+    for name, value in [
+        ("ADMIN_IDS", "1,abc"),
+        ("VOTING_MINUTES", "0"), ("VOTING_MINUTES", "-1"), ("VOTING_MINUTES", "10081"), ("VOTING_MINUTES", "abc"),
+        ("VOTE_ACCEPT_PERCENT", "0"), ("VOTE_ACCEPT_PERCENT", "101"), ("VOTE_ACCEPT_PERCENT", "-5"),
+    ]:
+        with pytest.raises(ValueError):  # boshqa qiymatlar to'g'ri: aynan shu qiymat rad etiladi
+            reload_config(**VALID | {name: value})
 
 
 class TestWebhookConfig:
@@ -68,18 +68,17 @@ class TestWebhookConfig:
         cfg = reload_config(WEBHOOK_URL="  https://bot.example.uz/  ", WEBHOOK_SECRET=SECRET, WEBHOOK_PATH="/hook")
         assert cfg.WEBHOOK_URL == "https://bot.example.uz" and cfg.WEBHOOK_PATH == "/hook"
 
-    @pytest.mark.parametrize("extra", [
-        {"WEBHOOK_URL": "http://bot.example.uz"},  # faqat https
-        {"WEBHOOK_PATH": "hook"},  # "/" bilan boshlanishi shart
-        *({"WEBHOOK_SECRET": s} for s in ["", "short", "a" * 15, "a" * 257, "bad secret bad secret!", "a" * 15 + "%"]),
-    ])
-    def test_invalid_webhook_settings_rejected(self, reload_config, extra):
-        with pytest.raises(ValueError):
-            reload_config(**WEBHOOK | extra)
-
-    @pytest.mark.parametrize("secret", ["a" * 16, "a" * 256, "AbC_-" * 4])
-    def test_boundary_secrets_accepted(self, reload_config, secret):
-        reload_config(**WEBHOOK | {"WEBHOOK_SECRET": secret})
+    def test_invalid_webhook_settings_rejected_boundaries_accepted(self, reload_config):
+        base = WEBHOOK | {"WEBHOOK_PATH": "/webhook"}
+        for extra in [
+            {"WEBHOOK_URL": "http://bot.example.uz"},  # faqat https
+            {"WEBHOOK_PATH": "hook"},  # "/" bilan boshlanishi shart
+            *({"WEBHOOK_SECRET": s} for s in ["", "short", "a" * 15, "a" * 257, "bad secret bad secret!", "a" * 15 + "%"]),
+        ]:
+            with pytest.raises(ValueError):
+                reload_config(**base | extra)
+        for secret in ["a" * 16, "a" * 256, "AbC_-" * 4]:
+            reload_config(**base | {"WEBHOOK_SECRET": secret})
 
 
 def test_env_file_cannot_override_test_environment():
@@ -181,10 +180,10 @@ async def test_webhook_rejects_missing_secret(client):
     assert (await client.post("/webhook", json=UPDATE)).status == 401
 
 
-@pytest.mark.parametrize("secret", ["wrong", "", WEB_SECRET[:-1], WEB_SECRET + "x", WEB_SECRET.upper()])
-async def test_webhook_rejects_wrong_secret(client, secret):
-    resp = await client.post("/webhook", json=UPDATE, headers={"X-Telegram-Bot-Api-Secret-Token": secret})
-    assert resp.status == 401
+async def test_webhook_rejects_wrong_secret(client):
+    for secret in ["wrong", "", WEB_SECRET[:-1], WEB_SECRET + "x", WEB_SECRET.upper()]:
+        resp = await client.post("/webhook", json=UPDATE, headers={"X-Telegram-Bot-Api-Secret-Token": secret})
+        assert resp.status == 401, secret
 
 
 async def test_webhook_accepts_correct_secret(client):

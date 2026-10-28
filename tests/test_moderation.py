@@ -12,6 +12,7 @@ from tests.flow import ANSWERS, feed, start_application, state_of
 from utils import moderation
 from utils.ai import AIError
 from utils.profanity import has_profanity, normalize
+from tests.table import acheck, same
 
 U = 1
 
@@ -38,15 +39,17 @@ def ai(monkeypatch):
 
 
 class TestIsAbusive:
-    @pytest.mark.parametrize("answer,expected", [
-        ("BAD", True), ("bad", True), (" Bad.\n", True), ("**BAD**", True), ("The text is BAD", True),
-        ("bad - obscene", True),
-        ("OK", False), ("ok.", False), ("", False), ("yo'q", False), ("BADGE", False), ("fine", False),
-        ("abadon", False),
-    ])
-    async def test_answer_parsing(self, ai, answer, expected):
-        ai.answer = answer
-        assert await moderation.is_abusive("matn") is expected
+    async def test_answer_parsing(self, ai):
+        async def verdict(answer: str) -> bool:
+            ai.answer = answer
+            return await moderation.is_abusive("matn")
+
+        await acheck(verdict, [
+            ("BAD", True), ("bad", True), (" Bad.\n", True), ("**BAD**", True), ("The text is BAD", True),
+            ("bad - obscene", True),
+            ("OK", False), ("ok.", False), ("", False), ("yo'q", False), ("BADGE", False), ("fine", False),
+            ("abadon", False),
+        ])
 
     async def test_obvious_profanity_is_caught_locally_even_when_ai_is_down(self, ai):
         ai.answer = AIError("503")
@@ -142,25 +145,23 @@ class TestAnketaChecksFreeText:
 
 
 class TestLocalProfanityFilter:
-    @pytest.mark.parametrize("text", [
-        *"fuck you|f*ck|fuuuck|FUCK|f u c k|motherfucker|shit|bitch|asshole".split("|"),
-        *"блять|БЛЯДЬ|хуй|хуйня|пизда|сука|ебать".split("|"),
-        *"siktir|Sikaman seni|qo'toq|qotoq|ko'tak|jalab|yeban|dalbayob|gandon|amingni".split("|"),
-        "Siz juda qotoq ekansiz", "nega ... siktir", *"om|OM|omm|ом|sen om|nega om!|om, nima".split("|"),
-    ])
-    def test_profanity_is_caught(self, text):
-        assert has_profanity(text), text
+    def test_profanity_is_caught(self):
+        same(has_profanity, [
+            *"fuck you|f*ck|fuuuck|FUCK|f u c k|motherfucker|shit|bitch|asshole".split("|"),
+            *"блять|БЛЯДЬ|хуй|хуйня|пизда|сука|ебать".split("|"),
+            *"siktir|Sikaman seni|qo'toq|qotoq|ko'tak|jalab|yeban|dalbayob|gandon|amingni".split("|"),
+            "Siz juda qotoq ekansiz", "nega ... siktir", *"om|OM|omm|ом|sen om|nega om!|om, nima".split("|"),
+        ], True)
 
-    @pytest.mark.parametrize("text", [
-        *"Aziz Karimov|dasturchi|sikl bilan ishlash|for sikli|harom emas|Nigeria|assistant|class|salom".split("|"),
-        *"Python va Django|men 25 yoshdaman|skala|Scunthorpe|analysis|passion|hello|Husan|Xushnud|pedagog".split("|"),
-        *"kotib|Kotlin|kot|2024|Men Django bilan ishlayman||   ".split("|"),
-        "guruhga qo'shilmoqchiman, chunki o'rganishni xohlayman",
-        # "om" faqat butun so'z sifatida belgilanadi: uning ichida/boshida kelgan oddiy so'zlar toza
-        *"omad|omon|omborxona|Omar|Omonov|tom|dom|Rom|kompyuter|komil|somsa|omma".split("|"),
-    ])
-    def test_normal_text_is_not_flagged(self, text):
-        assert not has_profanity(text), text
+    def test_normal_text_is_not_flagged(self):
+        same(has_profanity, [
+            *"Aziz Karimov|dasturchi|sikl bilan ishlash|for sikli|harom emas|Nigeria|assistant|class|salom".split("|"),
+            *"Python va Django|men 25 yoshdaman|skala|Scunthorpe|analysis|passion|hello|Husan|Xushnud|pedagog".split("|"),
+            *"kotib|Kotlin|kot|2024|Men Django bilan ishlayman||   ".split("|"),
+            "guruhga qo'shilmoqchiman, chunki o'rganishni xohlayman",
+            # "om" faqat butun so'z sifatida belgilanadi: uning ichida/boshida kelgan oddiy so'zlar toza
+            *"omad|omon|omborxona|Omar|Omonov|tom|dom|Rom|kompyuter|komil|somsa|omma".split("|"),
+        ], False)
 
     def test_normalize_handles_cyrillic_leet_and_repeats(self):
         assert normalize("БЛЯДЬ") == "blyad" and normalize("Fuuuck") == "fuck"

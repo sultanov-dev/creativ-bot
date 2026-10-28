@@ -14,6 +14,7 @@ from aiogram.methods import (
 
 import database as dbm
 import texts
+from tests.table import check
 from tests.flow import make_voting_app, set_full_name, status_of
 from tests.telegram_fakes import (
     ADMIN2_ID,
@@ -46,38 +47,33 @@ def no_ai(summary_ai) -> None:
 class TestThresholds:
     """VOTE_ACCEPT_PERCENT=60 (conftest)."""
 
-    @pytest.mark.parametrize(
-        "yes,no,accepted,rejected",
-        [
-            (0, 0, False, False),
-            (1, 0, True, False),
-            (0, 1, False, True),
-            (3, 2, True, False),  # 60% aniq chegarada qabul (butun son hisobi)
-            (2, 3, False, True),  # "yo'q" 60% ga yetdi -> rad
-            (1, 1, False, False),
-            (59, 41, False, False),
-            (60, 40, True, False),
-            (40, 60, False, True),
-            (41, 59, False, False),
-            (299, 201, False, False),  # 59.8%
-            (300, 200, True, False),
-            (100, 0, True, False),
-            (0, 100, False, True),
-        ],
-    )
-    def test_matrix(self, yes, no, accepted, rejected):
-        assert is_accepted(yes, no) is accepted
-        assert is_rejected(yes, no) is rejected
+    def test_matrix(self):
+        check(lambda yes, no: (is_accepted(yes, no), is_rejected(yes, no)), [
+            ((0, 0), (False, False)),
+            ((1, 0), (True, False)),
+            ((0, 1), (False, True)),
+            ((3, 2), (True, False)),  # 60% aniq chegarada qabul (butun son hisobi)
+            ((2, 3), (False, True)),  # "yo'q" 60% ga yetdi -> rad
+            ((1, 1), (False, False)),
+            ((59, 41), (False, False)),
+            ((60, 40), (True, False)),
+            ((40, 60), (False, True)),
+            ((41, 59), (False, False)),
+            ((299, 201), (False, False)),  # 59.8%
+            ((300, 200), (True, False)),
+            ((100, 0), (True, False)),
+            ((0, 100), (False, True)),
+        ])
 
-    @pytest.mark.parametrize("percent", [1, 20, 40, 50])
-    def test_low_percent(self, monkeypatch, percent):
+    def test_low_percent(self, monkeypatch):
         """Past foizda ham: durang hech kimga yetmaydi (adminlarga), ozchilik hech qachon qabul qilinmaydi."""
-        monkeypatch.setattr(voting, "VOTE_ACCEPT_PERCENT", percent)
-        assert not is_accepted(5, 5) and not is_rejected(5, 5)
-        for yes, no in [(1, 2), (2, 3), (4, 5), (0, 1)]:
-            assert not is_accepted(yes, no) and is_rejected(yes, no)
-        for yes, no in [(2, 1), (3, 2), (5, 4)]:
-            assert is_accepted(yes, no) and not is_rejected(yes, no)
+        for percent in (1, 20, 40, 50):
+            monkeypatch.setattr(voting, "VOTE_ACCEPT_PERCENT", percent)
+            assert not is_accepted(5, 5) and not is_rejected(5, 5)
+            for yes, no in [(1, 2), (2, 3), (4, 5), (0, 1)]:
+                assert not is_accepted(yes, no) and is_rejected(yes, no), (percent, yes, no)
+            for yes, no in [(2, 1), (3, 2), (5, 4)]:
+                assert is_accepted(yes, no) and not is_rejected(yes, no), (percent, yes, no)
 
 
 def test_report_text_is_anketa_plus_escaped_phone():

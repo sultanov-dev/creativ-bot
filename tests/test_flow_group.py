@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 from aiogram import Bot, Dispatcher
-from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
+from aiogram.exceptions import TelegramRetryAfter
 from aiogram.methods import (
     BanChatMember, EditMessageText, GetChatMember, GetMe, RestrictChatMember, SendMessage, SetMyCommands, UnbanChatMember,
 )
@@ -47,13 +47,14 @@ def edits_text(session: FakeSession) -> str:
 
 
 class TestAccessControl:
-    @pytest.mark.parametrize("command", ALL_COMMANDS + ["/", "/qwerty", "/start", "/ban@" + tf.BOT_USERNAME, "/ ban"])
-    async def test_non_admin_slash_message_is_ignored_and_deleted_in_15_seconds(self, dp, bot, session, command):
-        before = int(time.time())
-        await feed(dp, bot, tf.group_message(555, command, message_id=600, reply_to=reply_to()))
-        assert not api_calls(session)  # bot javob bermaydi, hech narsa qilmaydi
-        rows = [r for r in await dbm.get_pending_deletes() if r["message_id"] == 600]
-        assert len(rows) == 1 and 14 <= rows[0]["delete_at"] - before <= 16
+    async def test_non_admin_slash_message_is_ignored_and_deleted_in_15_seconds(self, dp, bot, session):
+        commands = ALL_COMMANDS + ["/", "/qwerty", "/start", "/ban@" + tf.BOT_USERNAME, "/ ban"]
+        for message_id, command in enumerate(commands, start=600):
+            before = int(time.time())
+            await feed(dp, bot, tf.group_message(555, command, message_id=message_id, reply_to=reply_to()))
+            assert not api_calls(session), command  # bot javob bermaydi, hech narsa qilmaydi
+            rows = [r for r in await dbm.get_pending_deletes() if r["message_id"] == message_id]
+            assert len(rows) == 1 and 14 <= rows[0]["delete_at"] - before <= 16, command
 
     async def test_delete_delay_is_fixed_not_from_auto_delete_setting(self, dp, bot, session, monkeypatch):
         import utils.autodelete as autodelete
@@ -98,25 +99,23 @@ class TestAccessControl:
 
 
 class TestBan:
-    @pytest.mark.parametrize("args,reply_user,expected", [
-        ("", VICTIM, VICTIM),          # javob bo'yicha
-        (" 888", None, 888),           # ID bo'yicha
-        (" -100123", None, -100123),   # manfiy ID
-        (" 888", VICTIM, VICTIM),      # javob argumentdan ustun
-    ])
-    async def test_ban_target(self, dp, bot, session, args, reply_user, expected):
-        await cmd(dp, bot, "/ban" + args, reply=reply_to(reply_user) if reply_user else None)
-        assert [(m.chat_id, m.user_id) for m in session.of(BanChatMember)] == [(G, expected)]
+    async def test_ban_target(self, dp, bot, session):
+        for args, reply_user, expected in [
+            ("", VICTIM, VICTIM),          # javob bo'yicha
+            (" 888", None, 888),           # ID bo'yicha
+            (" -100123", None, -100123),   # manfiy ID
+            (" 888", VICTIM, VICTIM),      # javob argumentdan ustun
+        ]:
+            session.clear()
+            await cmd(dp, bot, "/ban" + args, reply=reply_to(reply_user) if reply_user else None)
+            assert [(m.chat_id, m.user_id) for m in session.of(BanChatMember)] == [(G, expected)], args
         assert not session.of(UnbanChatMember)  # blok qoladi
         assert "bloklandi" in replies(session)[0]
 
-    @pytest.mark.parametrize("command,args", [
-        ("/ban", ""), ("/ban", " abc"), ("/ban", " 12abc"), ("/ban", " ²"), ("/ban", " 1.5"),
-        ("/ban", " --5"),  # ValueError bilan yiqilmasligi kerak
-        ("/unban", ""),
-    ])
-    async def test_missing_or_invalid_target_shows_usage(self, dp, bot, session, command, args):
-        await cmd(dp, bot, command + args)
+    async def test_missing_or_invalid_target_shows_usage(self, dp, bot, session):
+        # " --5": ValueError bilan yiqilmasligi kerak
+        for text in ["/ban", "/ban abc", "/ban 12abc", "/ban ²", "/ban 1.5", "/ban --5", "/unban"]:
+            await cmd(dp, bot, text)
         assert not session.of(BanChatMember) and not session.of(UnbanChatMember)
         assert not any("ValueError" in t for t in session.texts_to(tf.DEVELOPER_ID)), "handler ValueError bilan yiqildi"
         assert "ID yozing" in replies(session)[0]
@@ -132,12 +131,13 @@ class TestBan:
         await cmd(dp, bot, command + args, reply=reply_to(reply_user) if reply_user else None)
         assert not session.of(method)
 
-    @pytest.mark.parametrize("status", ["administrator", "creator"])
-    @pytest.mark.parametrize("command,method", [("/ban", BanChatMember), ("/mute", RestrictChatMember)])
-    async def test_telegram_group_admin_is_not_special_for_the_bot(self, dp, bot, session, command, method, status):
-        session.statuses[(G, VICTIM)] = status  # faqat ADMIN_IDS himoyalanadi; qolganini Telegram o'zi hal qiladi
-        await cmd(dp, bot, command, reply=reply_to())
-        assert session.of(method)
+    async def test_telegram_group_admin_is_not_special_for_the_bot(self, dp, bot, session):
+        for status in ("administrator", "creator"):
+            for command, method in [("/ban", BanChatMember), ("/mute", RestrictChatMember)]:
+                session.clear()
+                session.statuses[(G, VICTIM)] = status  # faqat ADMIN_IDS himoyalanadi; qolganini Telegram hal qiladi
+                await cmd(dp, bot, command, reply=reply_to())
+                assert session.of(method), (status, command)
 
     async def test_flood_limit_is_retried_once(self, dp, bot, session, monkeypatch):
         import handlers.group as group
@@ -165,21 +165,23 @@ class TestBan:
 
 
 class TestMute:
-    @pytest.mark.parametrize("arg,expected", [
-        ("5", 5), ("0", 1), ("99999999999999999999", 366 * 24 * 60),  # chegaralanadi
-        ("", 60), ("abc", 60), ("-5", 60), ("2.5", 60), ("²", 60),     # yo'q yoki noto'g'ri qiymat: standart
-    ])
-    async def test_minutes_argument(self, dp, bot, session, arg, expected):
-        await cmd(dp, bot, f"/mute {arg}", reply=reply_to())
-        m = session.of(RestrictChatMember)[0]
-        assert m.permissions.can_send_messages is False and m.user_id == VICTIM and m.until_date is not None
-        assert abs((m.until_date - dt.datetime.now(dt.timezone.utc)).total_seconds() / 60 - expected) <= 1
+    async def test_minutes_argument(self, dp, bot, session):
+        for arg, expected in [
+            ("5", 5), ("0", 1), ("99999999999999999999", 366 * 24 * 60),  # chegaralanadi
+            ("", 60), ("abc", 60), ("-5", 60), ("2.5", 60), ("²", 60),     # yo'q yoki noto'g'ri qiymat: standart
+        ]:
+            session.clear()
+            await cmd(dp, bot, f"/mute {arg}", reply=reply_to())
+            m = session.of(RestrictChatMember)[0]
+            assert m.permissions.can_send_messages is False and m.user_id == VICTIM and m.until_date is not None
+            assert abs((m.until_date - dt.datetime.now(dt.timezone.utc)).total_seconds() / 60 - expected) <= 1, arg
         assert f"{expected} daqiqaga" in replies(session)[0]
 
-    @pytest.mark.parametrize("command", ["/mute 5", "/unmute"])
-    async def test_requires_reply(self, dp, bot, session, command):
-        await cmd(dp, bot, command)
-        assert not session.of(RestrictChatMember) and "javob bering" in replies(session)[0]
+    async def test_requires_reply(self, dp, bot, session):
+        for command in ("/mute 5", "/unmute"):
+            session.clear()
+            await cmd(dp, bot, command)
+            assert not session.of(RestrictChatMember) and "javob bering" in replies(session)[0], command
 
     async def test_victim_name_is_escaped(self, dp, bot, session):
         await cmd(dp, bot, "/mute", reply=tf.group_message_obj(VICTIM, "x", first_name="<b>Z</b>"))
@@ -193,16 +195,17 @@ class TestMute:
 
 
 class TestCommandFailures:
-    @pytest.mark.parametrize("command,method,error,text", [
-        ("/ban", BanChatMember, tf.bad_request("Bad Request: not enough rights"), "yetarli huquq"),
-        ("/unban 5", UnbanChatMember, tf.forbidden(), "blokdan chiqarib bo'lmadi"),
-        ("/mute", RestrictChatMember, tf.bad_request(), "jim qilib bo'lmadi"),
-        ("/unmute", RestrictChatMember, tf.bad_request(), "bo'lmadi"),
-    ])
-    async def test_failure_is_reported(self, dp, bot, session, command, method, error, text):
-        session.errors[method] = error
-        await cmd(dp, bot, command, reply=reply_to())
-        assert text in replies(session)[0]
+    async def test_failure_is_reported(self, dp, bot, session):
+        for command, method, error, text in [
+            ("/ban", BanChatMember, tf.bad_request("Bad Request: not enough rights"), "yetarli huquq"),
+            ("/unban 5", UnbanChatMember, tf.forbidden(), "blokdan chiqarib bo'lmadi"),
+            ("/mute", RestrictChatMember, tf.bad_request(), "jim qilib bo'lmadi"),
+            ("/unmute", RestrictChatMember, tf.bad_request(), "bo'lmadi"),
+        ]:
+            session.clear()
+            session.errors = {method: error}
+            await cmd(dp, bot, command, reply=reply_to())
+            assert text in replies(session)[0], command
 
 
 class TestKickDeleted:

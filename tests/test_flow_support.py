@@ -11,6 +11,7 @@ from database import add_member, create_support_chat, get_support_chat, set_supp
 from tests import telegram_fakes as tf
 from tests.flow import feed
 from tests.test_flow_ai import BOT, USER, FakeAsk, bot_replies, say
+from tests.table import same
 from utils import support_policy
 
 
@@ -371,10 +372,6 @@ class TestIdleReplies:
         yield
         support._last_idle.clear()
 
-    async def test_plain_message_without_a_chat_is_ignored(self, dp, bot, session):
-        await dm(dp, bot, "salom")
-        assert session.texts_to(USER) == []
-
     async def test_declined_user_keeps_getting_the_refusal_not_silence(self, dp, bot, session, group_ai, dm_ai):
         await start_chat(dp, bot, group_ai, dm_ai)
         await close_chat_by_abuse(dp, bot, dm_ai)
@@ -415,9 +412,9 @@ class TestStaleDeclined:
         chat_id = await create_support_chat(USER, tf.GROUP_ID, "G", "U50", None, "active")
         assert await set_support_status(chat_id, "active", "declined", category)
 
-    @pytest.mark.parametrize("category", ["no_purpose", "prohibited_ad", "unclear", "indecent"])
-    async def test_old_decline_does_not_block_a_new_conversation(self, dp, bot, session, group_ai, dm_ai, category):
-        await self._old_declined(category)
+    async def test_old_decline_does_not_block_a_new_conversation(self, dp, bot, session, group_ai, dm_ai):
+        for category in ["no_purpose", "prohibited_ad", "unclear", "indecent"]:
+            await self._old_declined(category)
         await say(dp, bot, f"{BOT} admin bilan gaplashmoqchiman")
         assert dm_ai.calls and session.texts_to(USER) == ["Salom! Nima bo'ldi?"]  # tayyor rad matni emas, AI yozadi
         assert [m.text for m in bot_replies(session)] == [texts.SUPPORT_DM_SENT["uz"]]
@@ -598,7 +595,8 @@ class TestNonTextInPrivate:
 
 
 class TestPrivateIntent:
-    """Lichkada AI suhbat faqat "admin kerak" mazmunidagi xabar bilan ochiladi: boshqa xabarga AI chaqirilmaydi."""
+    """Lichkada AI suhbat faqat "admin kerak" mazmunida ochiladi: aniq so'z — AI'siz, yaqin mazmun — 1 qisqa AI so'rovi,
+    boshqasi — e'tiborsiz va AI'siz."""
 
     @pytest.fixture(autouse=True)
     def _reset(self):
@@ -606,50 +604,38 @@ class TestPrivateIntent:
         yield
         support._last_idle.clear()
 
-    @pytest.mark.parametrize("text", ["salom", "python'da list qanday ishlaydi?", "rahmat", "bananas"])
-    async def test_other_messages_are_ignored_without_ai(self, dp, bot, session, dm_ai, text):
+    def test_local_intent_table(self):
+        from utils.support_policy import maybe_wants_admin, wants_admin
+
+        # aniq so'zlar (xato yozilgani ham)
+        same(wants_admin, ["admin bilan gaplashmoqchiman", "Adminga yozmoqchiman", "admn kerak", "мне нужен модератор",
+                           "guruh egasi bilan bog'lanmoqchiman", "meni ban qilishdi", "banlashdi", "meni bloklashdi",
+                           "меня заблокировали", "забанили", "разблокируйте", "shikoyatim bor",
+                           "I want to report a member", "complain"], True)
+        same(wants_admin, ["salom", "python nima", "bananas", "рабочий блокнот", "бананы", "Banco",
+                           "guruhdagi mas'ul odam bilan gaplashsam bo'ladimi?"], False)
+        # yaqin mazmun belgisi: AI tasdiqlaydi
+        same(maybe_wants_admin, ["guruhdagi mas'ul odam bilan gaplashsam bo'ladimi?", "rahbariyat bilan bog'lanmoqchiman",
+                                 "мне нужен живой человек", "меня удалили из группы, почему?",
+                                 "Can I talk to someone in charge?", "python'da yordam kerak"], True)
+        same(maybe_wants_admin, ["salom", "rahmat", "bugun havo yaxshi", "😊"], False)
+
+    async def test_plain_messages_are_ignored_without_ai(self, dp, bot, session, dm_ai, intent_ai):
         await add_member(tf.GROUP_ID, USER)
-        await dm(dp, bot, text)
-        assert session.texts_to(USER) == [] and not dm_ai.calls
+        for text in ["salom", "rahmat", "😊"]:
+            await dm(dp, bot, text)
+        assert session.texts_to(USER) == [] and not dm_ai.calls and not intent_ai.calls
         assert await get_support_chat(USER, "active", 24) is None
 
-    @pytest.mark.parametrize("text", [
-        "Adminga yozmoqchiman", "мне нужен модератор", "guruh egasi bilan bog'lanmoqchiman", "meni ban qilishdi",
-        "меня заблокировали", "shikoyatim bor", "I want to report a member",
-    ])
-    async def test_admin_intent_opens_the_chat(self, dp, bot, session, dm_ai, text):
+    async def test_clear_words_open_the_chat_without_confirmation(self, dp, bot, session, dm_ai, intent_ai):
         await add_member(tf.GROUP_ID, USER)
-        await dm(dp, bot, text)
-        assert len(dm_ai.calls) == 1
+        await dm(dp, bot, "meni ban qilishdi")
+        assert not intent_ai.calls and len(dm_ai.calls) == 1
 
-    async def test_private_messages_cost_no_moderation_ai_call(self, dp, bot, session, group_ai, dm_ai, monkeypatch):
-        import utils.moderation as moderation
-
-        async def no_ai(*a, **kw):
-            raise AssertionError("lichkada AI moderatsiyasi chaqirilmasligi kerak")
-
-        monkeypatch.setattr(moderation, "ask_ai", no_ai)
-        await start_chat(dp, bot, group_ai, dm_ai)
-        await dm(dp, bot, "to'lov o'tmadi")
-        assert len(dm_ai.calls) == 1  # faqat suhbatning o'zi
-
-
-class TestNearIntent:
-    """Aniq "admin" so'zi shart emas: yaqin mazmun bo'lsa, bitta qisqa AI so'rovi tasdiqlaydi."""
-
-    @pytest.fixture(autouse=True)
-    def _reset(self):
-        support._last_idle.clear()
-        yield
-        support._last_idle.clear()
-
-    @pytest.mark.parametrize("text", [
-        "guruhdagi mas'ul odam bilan gaplashsam bo'ladimi?", "rahbariyat bilan bog'lanmoqchiman",
-        "мне нужен живой человек", "меня удалили из группы, почему?", "Can I talk to someone in charge?",
-    ])
-    async def test_near_meaning_is_confirmed_by_one_short_ai_call(self, dp, bot, session, dm_ai, intent_ai, text):
+    async def test_near_meaning_is_confirmed_by_one_short_ai_call(self, dp, bot, session, dm_ai, intent_ai):
         await add_member(tf.GROUP_ID, USER)
         intent_ai.answer = "YES"
+        text = "guruhdagi mas'ul odam bilan gaplashsam bo'ladimi?"
         await dm(dp, bot, text)
         assert len(intent_ai.calls) == 1 and len(dm_ai.calls) == 1  # tasdiq + suhbatning birinchi javobi
         assert intent_ai.calls[0][1]["content"] == f"<<<\n{text}\n>>>"
@@ -658,18 +644,6 @@ class TestNearIntent:
         await add_member(tf.GROUP_ID, USER)
         await dm(dp, bot, "python'da yordam kerak, list qanday ishlaydi?")
         assert len(intent_ai.calls) == 1 and not dm_ai.calls and session.texts_to(USER) == []
-
-    @pytest.mark.parametrize("text", ["admin bilan gaplashmoqchiman", "admn kerak", "meni ban qilishdi"])
-    async def test_clear_words_need_no_ai_confirmation(self, dp, bot, session, dm_ai, intent_ai, text):
-        await add_member(tf.GROUP_ID, USER)
-        await dm(dp, bot, text)
-        assert not intent_ai.calls and len(dm_ai.calls) == 1
-
-    @pytest.mark.parametrize("text", ["salom", "rahmat", "bugun havo yaxshi", "😊"])
-    async def test_unrelated_messages_cost_no_ai_call(self, dp, bot, session, dm_ai, intent_ai, text):
-        await add_member(tf.GROUP_ID, USER)
-        await dm(dp, bot, text)
-        assert not intent_ai.calls and not dm_ai.calls and session.texts_to(USER) == []
 
     async def test_intent_ai_failure_ignores_quietly(self, dp, bot, session, dm_ai, monkeypatch):
         import utils.support_intent as support_intent

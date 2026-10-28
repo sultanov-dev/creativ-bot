@@ -131,15 +131,6 @@ class TestBotStoppedMidFlow:
         assert len(session.sent_to(tf.ADMIN_ID)) == 1
         assert await count_applications() == 1
 
-    async def test_no_admin_reachable_marks_failed_and_clears_state(self, dp, bot, session):
-        await fill_form(dp, bot, U, ANSWERS, confirm=False)
-        block_admins(session)
-        await feed(dp, bot, tf.private_message(U, CONFIRM))
-        assert await dbm.last_application_status(U, G) == "failed"
-        assert (await state_of(dp, bot, U))[0] is None
-        assert session.texts_to(U)[-1] == texts.ERROR_GENERIC
-
-
 class TestExpiredQuestionnaire:
     async def _half_done(self, dp: Dispatcher, bot: Bot) -> None:
         await fill_form(dp, bot, U, ANSWERS[:2])  # ism + telefon (o'tkazib yuborildi)

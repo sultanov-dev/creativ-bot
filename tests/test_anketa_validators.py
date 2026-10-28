@@ -3,15 +3,15 @@ import pytest
 
 from handlers.anketa import _clean_name, _clean_phone, _is_skip
 from states import Form
+from tests.table import check, same
 from texts import SKIP_BUTTON
 from utils.form_anketa import PROFILE_FIELDS, format_anketa, full_name_of
 from utils.num_matcher import extract_number
 from utils.questions import QUESTIONS
 
 
-@pytest.mark.parametrize(
-    "raw,expected",
-    [
+def test_clean_name():
+    check(_clean_name, [
         ("Aziz Karimov", "Aziz Karimov"),
         ("  Aziz    Karimov  ", "Aziz Karimov"),
         ("Aziz\nKarimov", "Aziz Karimov"),
@@ -21,24 +21,14 @@ from utils.questions import QUESTIONS
         ("Aziz Karimov Ogli", "Aziz Karimov Ogli"),
         ("Ab Cd", "Ab Cd"),  # eng qisqa: 5 belgi
         ("A" * 39 + " " + "B" * 40, "A" * 39 + " " + "B" * 40),  # eng uzun: 80 belgi
-    ],
-)
-def test_clean_name_valid(raw, expected):
-    assert _clean_name(raw) == expected
+    ])
+    # bitta so'z, qisqa, raqam, harf yo'q, buyruq, 80 dan uzun
+    same(_clean_name, [None, "", "   ", "Aziz", "A Bc", "Aziz Karimov2", "12345 67890", "!!!! ????", "/start now",
+                       "A" * 41 + " " + "B" * 40], None)
 
 
-@pytest.mark.parametrize(
-    "raw",
-    [None, "", "   ", "Aziz", "A Bc", "Aziz Karimov2", "12345 67890", "!!!! ????", "/start now",
-     "A" * 41 + " " + "B" * 40],  # bitta so'z, qisqa, raqam, harf yo'q, buyruq, 80 dan uzun
-)
-def test_clean_name_invalid(raw):
-    assert _clean_name(raw) is None
-
-
-@pytest.mark.parametrize(
-    "raw,expected",
-    [
+def test_clean_phone():
+    check(_clean_phone, [
         ("+998901234567", "+998901234567"),
         ("998901234567", "998901234567"),
         ("+998 90 123 45 67", "+998901234567"),
@@ -46,38 +36,24 @@ def test_clean_name_invalid(raw):
         ("  +998901234567  ", "+998901234567"),
         ("1234567", "1234567"),
         ("+" + "1" * 15, "+" + "1" * 15),
-    ],
-)
-def test_clean_phone_valid(raw, expected):
-    assert _clean_phone(raw) == expected
+    ])
+    # oxirgi ikkitasi: o'rtadagi "+" va ASCII bo'lmagan raqamlar
+    same(_clean_phone, ["", "abc", "123456", "+123456", "1" * 16, "+" + "1" * 16, "90-abc-1234567", "++998901234567",
+                        "99890123456a", "+998.90.123.45.67", "998+901234567", "٩٩٨٩٠١٢٣٤٥٦٧"], None)
 
 
-@pytest.mark.parametrize(
-    "raw",
-    ["", "abc", "123456", "+123456", "1" * 16, "+" + "1" * 16, "90-abc-1234567", "++998901234567", "99890123456a",
-     "+998.90.123.45.67", "998+901234567", "٩٩٨٩٠١٢٣٤٥٦٧"],  # oxirgi ikkitasi: o'rtadagi "+" va ASCII bo'lmagan raqamlar
-)
-def test_clean_phone_invalid(raw):
-    assert _clean_phone(raw) is None
+def test_is_skip():
+    same(_is_skip, [SKIP_BUTTON, SKIP_BUTTON.upper(), f"  {SKIP_BUTTON}  ", "/skip", "/SKIP"], True)
+    same(_is_skip, [None, "", "skip", "o'tkazib yuborish", "/skip please"], False)
 
 
-@pytest.mark.parametrize("raw,expected", [
-    (SKIP_BUTTON, True), (SKIP_BUTTON.upper(), True), (f"  {SKIP_BUTTON}  ", True), ("/skip", True), ("/SKIP", True),
-    (None, False), ("", False), ("skip", False), ("o'tkazib yuborish", False), ("/skip please", False),
-])
-def test_is_skip(raw, expected):
-    assert _is_skip(raw) is expected
-
-
-@pytest.mark.parametrize(
-    "raw,expected",
-    [("25", 25), ("men 25 yoshdaman", 25), ("25 yosh, 30 emas", 25), ("25.5", 25), ("yosh: 18!", 18), ("٢٥", 25),
-     # "-25" -> 25: minus yo'qoladi (handler faqat 10..100 ni oladi, lekin "-25" aslida to'g'ri yosh emas)
-     ("-25", 25),
-     ("", None), ("yigirma besh", None), ("abc25", None), ("25abc", None), ("a1b", None), ("!!", None)],
-)
-def test_extract_number(raw, expected):
-    assert extract_number(raw) == expected
+def test_extract_number():
+    check(extract_number, [
+        ("25", 25), ("men 25 yoshdaman", 25), ("25 yosh, 30 emas", 25), ("25.5", 25), ("yosh: 18!", 18), ("٢٥", 25),
+        # "-25" -> 25: minus yo'qoladi (handler faqat 10..100 ni oladi, lekin "-25" aslida to'g'ri yosh emas)
+        ("-25", 25),
+        ("", None), ("yigirma besh", None), ("abc25", None), ("25abc", None), ("a1b", None), ("!!", None),
+    ])
 
 
 class TestFormatAnketa:
@@ -115,15 +91,14 @@ class TestFormatAnketa:
             format_anketa({k: v for k, v in self.BASE.items() if k != "job"})
 
 
-@pytest.mark.parametrize("data,expected", [
-    ({"full_name": "A B", "first_name": "X", "last_name": "Y"}, "A B"),  # full_name ustun
-    ({"first_name": "Aziz", "last_name": "Karimov"}, "Aziz Karimov"),
-    ({"first_name": "Aziz", "last_name": None}, "Aziz"),
-    ({"full_name": "", "first_name": "A"}, "A"),
-    ({}, ""),
-])
-def test_full_name_of(data, expected):
-    assert full_name_of(data) == expected
+def test_full_name_of():
+    check(full_name_of, [
+        ({"full_name": "A B", "first_name": "X", "last_name": "Y"}, "A B"),  # full_name ustun
+        ({"first_name": "Aziz", "last_name": "Karimov"}, "Aziz Karimov"),
+        ({"first_name": "Aziz", "last_name": None}, "Aziz"),
+        ({"full_name": "", "first_name": "A"}, "A"),
+        ({}, ""),
+    ])
 
 
 def test_profile_fields_cover_every_question():

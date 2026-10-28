@@ -58,15 +58,15 @@ class TestCreateApplication:
         assert await try_new_app(group_id=G - 1) is not None
         assert await try_new_app(user_id=2) is not None
 
-    @pytest.mark.parametrize("status,can_reapply", [
-        ("rejected", True), ("accepted", True), ("expired", True), ("failed", True),
-        ("pending", False), ("voting", False), ("admin_decision", False),
-    ])
-    async def test_reapply_only_after_final_status(self, db, status, can_reapply):
-        first = await new_app()
-        await sql("UPDATE applications SET status = ? WHERE id = ?", status, first)
-        second = await try_new_app()
-        assert (second is not None and second != first) is can_reapply
+    async def test_reapply_only_after_final_status(self, db):
+        for user, (status, can_reapply) in enumerate([
+            ("rejected", True), ("accepted", True), ("expired", True), ("failed", True),
+            ("pending", False), ("voting", False), ("admin_decision", False),
+        ], start=1):
+            first = await new_app(user)
+            await sql("UPDATE applications SET status = ? WHERE id = ?", status, first)
+            second = await try_new_app(user)
+            assert (second is not None and second != first) is can_reapply, status
 
     async def test_concurrent_creates_produce_exactly_one(self, db):
         results = await asyncio.gather(*(try_new_app() for _ in range(10)))

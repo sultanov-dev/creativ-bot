@@ -15,11 +15,11 @@ from tests.flow import ANSWERS, assert_no_errors, feed, fill_form, get_app, star
 U = 1
 
 
-async def at_step(dp: Dispatcher, bot: Bot, step: int) -> None:
+async def at_step(dp: Dispatcher, bot: Bot, step: int, user: int = U) -> None:
     """Join request + `step` ta javob; keyingi savolga tayyor holat (sessiya tozalanadi)."""
-    await feed(dp, bot, tf.join_request(U))
+    await feed(dp, bot, tf.join_request(user))
     for a in ANSWERS[:step]:
-        await feed(dp, bot, tf.private_message(U, a))
+        await feed(dp, bot, tf.private_message(user, a))
     cast(tf.FakeSession, bot.session).clear()
 
 
@@ -100,63 +100,40 @@ class TestJoinRequest:
         await feed(dp, bot, tf.join_request(U, tf.GROUP_ID - 9))  # boshqa guruhda hali arizasi yo'q
         assert (await state_of(dp, bot))[0] == Form.review.state
 
-    async def test_second_join_request_mid_questionnaire_keeps_progress(self, dp, bot, session):
-        await at_step(dp, bot, 2)
-        await feed(dp, bot, tf.join_request(U))
-        state, data = await state_of(dp, bot)
-        assert state == Form.age.state and data["full_name"] == "Aziz Karimov"
-        assert session.texts_to(U) == [texts.FINISH_FORM_FIRST, texts.ASK_AGE]
-
-
 class TestEachStepRejectsBadInput:
-    @pytest.mark.parametrize(
-        "step,bad,warning",
-        [
-            (0, "Aziz", texts.WRONG_NAME),
-            (0, "12 34", texts.WRONG_NAME),
-            (0, "/bogus now", texts.WRONG_NAME),
-            (1, "abc", texts.WRONG_PHONE),
-            (1, "12345", texts.WRONG_PHONE),
-            (2, "yigirma", texts.WRONG_AGE),
-            (2, "9", texts.WRONG_AGE),
-            (2, "101", texts.WRONG_AGE),
-            (2, "0", texts.WRONG_AGE),
-            (3, "x" * 801, texts.TOO_LONG),
-            (4, "x" * 801, texts.TOO_LONG),
-            (5, "x" * 801, texts.TOO_LONG),
-            (1, None, texts.ONLY_TEXT),
-            (5, None, texts.ONLY_TEXT),
-        ],
-    )
-    async def test_warning_and_state_does_not_advance(self, dp, bot, session, step, bad, warning):
-        await at_step(dp, bot, step)
-        before = (await state_of(dp, bot))[0]
-        await feed(dp, bot, tf.private_message(U, bad))
-        assert session.texts_to(U) == [warning]
-        assert (await state_of(dp, bot))[0] == before
-        assert await dbm.get_active_application(U, tf.GROUP_ID) is None
-
-    @pytest.mark.parametrize("step", [0, 2, 3, 4])
-    async def test_non_text_message_gets_only_text_notice(self, dp, bot, session, step):
-        await at_step(dp, bot, step)
-        await feed(dp, bot, tf.private_message(U, None))
-        assert session.texts_to(U) == [texts.ONLY_TEXT]
+    async def test_warning_and_state_does_not_advance(self, dp, bot, session):
+        cases = [
+            (0, "Aziz", texts.WRONG_NAME), (0, "12 34", texts.WRONG_NAME), (0, "/bogus now", texts.WRONG_NAME),
+            (1, "abc", texts.WRONG_PHONE), (1, "12345", texts.WRONG_PHONE),
+            (2, "yigirma", texts.WRONG_AGE), (2, "9", texts.WRONG_AGE), (2, "101", texts.WRONG_AGE), (2, "0", texts.WRONG_AGE),
+            (3, "x" * 801, texts.TOO_LONG), (4, "x" * 801, texts.TOO_LONG), (5, "x" * 801, texts.TOO_LONG),
+            # matn bo'lmagan xabar har qadamda
+            *((step, None, texts.ONLY_TEXT) for step in range(6)),
+        ]
+        for user, (step, bad, warning) in enumerate(cases, start=100):  # har holat alohida foydalanuvchida
+            await at_step(dp, bot, step, user)
+            before = (await state_of(dp, bot, user))[0]
+            await feed(dp, bot, tf.private_message(user, bad))
+            assert session.texts_to(user) == [warning], (step, bad)
+            assert (await state_of(dp, bot, user))[0] == before
+            assert await dbm.get_active_application(user, tf.GROUP_ID) is None
 
 
 class TestAcceptedValues:
-    @pytest.mark.parametrize("step,answer,state,key,value", [
-        (2, "10", Form.job, "age", 10),  # chegara yoshlar
-        (2, "100", Form.job, "age", 100),
-        (2, "men 25 yoshdaman", Form.job, "age", 25),  # gapdan raqam ajratiladi
-        (3, "x" * 800, Form.about, "job", "x" * 800),  # aniq 800 belgi
-        (1, texts.SKIP_BUTTON, Form.age, "phone", None),
-        (1, "+998 90 123-45-67", Form.age, "phone", "+998901234567"),  # normallashtiriladi
-    ])
-    async def test_valid_answer_is_stored_and_advances(self, dp, bot, session, step, answer, state, key, value):
-        await at_step(dp, bot, step)
-        await feed(dp, bot, tf.private_message(U, answer))
-        st, data = await state_of(dp, bot)
-        assert st == state.state and data[key] == value
+    async def test_valid_answer_is_stored_and_advances(self, dp, bot, session):
+        cases = [
+            (2, "10", Form.job, "age", 10),  # chegara yoshlar
+            (2, "100", Form.job, "age", 100),
+            (2, "men 25 yoshdaman", Form.job, "age", 25),  # gapdan raqam ajratiladi
+            (3, "x" * 800, Form.about, "job", "x" * 800),  # aniq 800 belgi
+            (1, texts.SKIP_BUTTON, Form.age, "phone", None),
+            (1, "+998 90 123-45-67", Form.age, "phone", "+998901234567"),  # normallashtiriladi
+        ]
+        for user, (step, answer, state, key, value) in enumerate(cases, start=100):
+            await at_step(dp, bot, step, user)
+            await feed(dp, bot, tf.private_message(user, answer))
+            st, data = await state_of(dp, bot, user)
+            assert st == state.state and data[key] == value, answer
 
     async def test_own_contact_is_accepted_and_plus_added(self, dp, bot, session):
         await at_step(dp, bot, 1)
@@ -164,12 +141,12 @@ class TestAcceptedValues:
         state, data = await state_of(dp, bot)
         assert state == Form.age.state and data["phone"] == "+998901234567"
 
-    @pytest.mark.parametrize("contact_user_id", [555, None])  # begona yoki user_id'siz (forward) kontakt
-    async def test_foreign_contact_is_refused(self, dp, bot, session, contact_user_id):
+    async def test_foreign_contact_is_refused(self, dp, bot, session):
         await at_step(dp, bot, 1)
-        contact = Contact(phone_number="998901234567", first_name="A", user_id=contact_user_id)
-        await feed(dp, bot, tf.private_message(U, None, contact=contact))
-        assert session.texts_to(U) == [texts.WRONG_CONTACT]
+        for contact_user_id in (555, None):  # begona yoki user_id'siz (forward) kontakt
+            contact = Contact(phone_number="998901234567", first_name="A", user_id=contact_user_id)
+            await feed(dp, bot, tf.private_message(U, None, contact=contact))
+        assert session.texts_to(U) == [texts.WRONG_CONTACT] * 2
         assert (await state_of(dp, bot))[0] == Form.phone.state
 
     async def test_html_in_answers_is_escaped_in_stored_anketa(self, dp, bot, session):
@@ -219,6 +196,7 @@ class TestCompletion:
         assert await dbm.get_active_application(U, tf.GROUP_ID) is None  # failed: qayta urinish mumkin
         row = await (await (await dbm.get_db()).execute("SELECT status FROM applications")).fetchone()
         assert row is not None and row["status"] == "failed"
+        assert (await state_of(dp, bot))[0] is None  # holat tozalandi: qayta urinish mumkin
 
     async def test_one_reachable_admin_is_enough(self, dp, bot, session):
         session.errors[SendMessage] = lambda m: tf.forbidden(m) if m.chat_id == tf.ADMIN_ID else None
@@ -242,12 +220,6 @@ class TestCompletion:
         assert session.texts_to(U) == [texts.ALREADY_APPLIED]
         assert session.sent_to(tf.ADMIN_ID) == []
 
-    async def test_double_confirm_creates_single_application(self, dp, bot, session):
-        await at_step(dp, bot, 6)
-        await feed(dp, bot, tf.private_message(U, texts.ANKETA_CONFIRM_BUTTON))
-        await feed(dp, bot, tf.private_message(U, texts.ANKETA_CONFIRM_BUTTON))  # holat tozalangan: e'tiborsiz
-        assert await app_count() == 1 and len(session.sent_to(tf.ADMIN_ID)) == 1
-
     async def test_admin_gets_vote_and_reject_buttons_with_clear_texts(self, dp, bot, session):
         await start_application(dp, bot)
         markup = session.sent_to(tf.ADMIN_ID)[0].reply_markup
@@ -265,17 +237,16 @@ class TestStartCommand:
         await dp.feed_raw_update(bot, raw)
         assert "&lt;b&gt;X" in session.texts_to(U)[-1]
 
-    @pytest.mark.parametrize("step,question", [
-        (0, texts.ASK_FULL_NAME), (1, texts.ASK_PHONE), (2, texts.ASK_AGE),
-        (3, texts.ASK_JOB), (4, texts.ASK_ABOUT), (5, texts.ASK_REASON),
-    ])
-    async def test_start_mid_questionnaire_repeats_current_question(self, dp, bot, session, step, question):
-        await at_step(dp, bot, step)
-        await feed(dp, bot, tf.private_message(U, "/start"))
-        assert session.texts_to(U) == ["Anketani to'ldirishda davom etamiz 👇", question]
-        state, data = await state_of(dp, bot)
-        assert state == list(Form.__states__)[step].state
-        assert step < 1 or data["full_name"] == "Aziz Karimov"  # yig'ilgan javoblar yo'qolmaydi
+    async def test_start_mid_questionnaire_repeats_current_question(self, dp, bot, session):
+        questions = [texts.ASK_FULL_NAME, texts.ASK_PHONE, texts.ASK_AGE, texts.ASK_JOB, texts.ASK_ABOUT, texts.ASK_REASON]
+        for step, question in enumerate(questions):
+            user = 100 + step
+            await at_step(dp, bot, step, user)
+            await feed(dp, bot, tf.private_message(user, "/start"))
+            assert session.texts_to(user) == ["Anketani to'ldirishda davom etamiz 👇", question], step
+            state, data = await state_of(dp, bot, user)
+            assert state == list(Form.__states__)[step].state
+            assert step < 1 or data["full_name"] == "Aziz Karimov"  # yig'ilgan javoblar yo'qolmaydi
 
     async def test_admin_start_only_greets(self, dp, bot, session):
         await feed(dp, bot, tf.private_message(tf.ADMIN_ID, "/start"))

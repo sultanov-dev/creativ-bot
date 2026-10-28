@@ -46,17 +46,17 @@ async def fire(boom: Boom, bot: Bot, text: str = "salom") -> None:
 
 
 class TestBenign:
-    @pytest.mark.parametrize("cls,message", [
-        (TelegramBadRequest, "Bad Request: query is too old and response timeout expired"),
-        (TelegramBadRequest, "Bad Request: message is not modified: specified new message content"),
-        (TelegramForbiddenError, "Forbidden: bot was blocked by the user"),
-        (TelegramForbiddenError, "Forbidden: user is deactivated"),
-        (TelegramBadRequest, "Bad Request: message to edit not found"),
-    ])
-    async def test_benign_errors_stay_quiet(self, boom, bot, session, cls, message):
-        boom.exc = cls(method=GetMe(), message=message)
-        await fire(boom, bot)
-        assert session.requests == []
+    async def test_benign_errors_stay_quiet(self, boom, bot, session):
+        for cls, message in [
+            (TelegramBadRequest, "Bad Request: query is too old and response timeout expired"),
+            (TelegramBadRequest, "Bad Request: message is not modified: specified new message content"),
+            (TelegramForbiddenError, "Forbidden: bot was blocked by the user"),
+            (TelegramForbiddenError, "Forbidden: user is deactivated"),
+            (TelegramBadRequest, "Bad Request: message to edit not found"),
+        ]:
+            boom.exc = cls(method=GetMe(), message=message)
+            await fire(boom, bot)
+            assert session.requests == [], message
 
     def test_is_benign_is_case_insensitive_and_type_aware(self):
         assert errors._is_benign(TelegramBadRequest(method=GetMe(), message="QUERY IS TOO OLD"))

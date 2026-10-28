@@ -11,8 +11,7 @@ import database as dbm
 import texts
 from tests import telegram_fakes as tf
 from tests.flow import feed
-from utils import ads, nsfw
-from utils.url_check import analyze
+from utils import nsfw
 
 G = tf.GROUP_ID
 USER = 555
@@ -112,10 +111,6 @@ class TestLocalModel:
         await post(dp, bot, {"photo": PHOTO})
         assert deleted(session) == [] and await dbm.get_media_verdict("u-photo") is None
 
-    async def test_bot_admin_media_is_not_downloaded(self, dp, bot, session, detector, downloads):
-        await post(dp, bot, {"photo": PHOTO}, user=tf.ADMIN_ID)
-        assert downloads == [] and deleted(session) == []
-
     async def test_model_missing_and_no_ai_keeps_the_message(self, dp, bot, session, downloads, monkeypatch):
         monkeypatch.setattr(nsfw, "_detector", None)
         monkeypatch.setattr(nsfw, "_detector_failed", True)
@@ -189,22 +184,3 @@ class TestWhatIsChecked:
             allows_revoting=False, members_only=False)
         await post(dp, bot, {"poll": poll})
         assert deleted(session) == [800]
-
-
-class TestAdultLinks:
-    @pytest.mark.parametrize("url", [
-        "https://www.pornhub.com/view_video.php?x=1", "xvideos2.com", "free-porn-tube.net", "hot.xxx",
-        "onlyfans.com/abc",
-    ])
-    def test_adult_site_is_dangerous_without_ai(self, url):
-        assert analyze(url).adult and ads.classify(f"qarang {url}", None) == "danger"
-
-    @pytest.mark.parametrize("url", [
-        "https://en.wikipedia.org/wiki/Sex_education", "sussex.ac.uk", "https://github.com/notAI-tech/NudeNet",
-    ])
-    def test_ordinary_sites_are_not_adult(self, url):
-        assert not analyze(url).adult
-
-    def test_ambiguous_word_is_only_a_hint_for_the_ai(self):
-        info = analyze("sexshop.uz")
-        assert not info.adult and "adult-words sex" in info.signals

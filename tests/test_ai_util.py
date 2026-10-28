@@ -9,6 +9,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestServer
 
 import utils.ai as ai_mod
+from tests.table import check, same
 from utils import summary
 from utils.ai import AIError, ask_ai
 from utils.ai_html import _safe_href, plain_text, sanitize_html
@@ -141,19 +142,14 @@ class TestRetry:
         fake_ai.fail_first = 2
         assert await ask_ai(MSGS) == "javob" and len(fake_ai.requests) == 3
 
-    @pytest.mark.parametrize("status", [400, 401, 403, 404])
-    async def test_config_errors_are_not_retried(self, fake_ai, status):
-        fake_ai.status = status
-        with pytest.raises(AIError, match=str(status)):
-            await ask_ai(MSGS)
-        assert len(fake_ai.requests) == 1
-
-    @pytest.mark.parametrize("status", [429, 500, 503])
-    async def test_persistent_server_error_tries_five_times(self, fake_ai, status):
-        fake_ai.status = status
-        with pytest.raises(AIError, match="5 urinishdan keyin"):
-            await ask_ai(MSGS)
-        assert len(fake_ai.requests) == 5
+    async def test_config_errors_are_not_retried_server_errors_are(self, fake_ai):
+        for status, attempts in [(400, 1), (401, 1), (403, 1), (404, 1), (429, 5), (500, 5), (503, 5)]:
+            fake_ai.status = status
+            fake_ai.requests.clear()
+            with pytest.raises(AIError, match=str(status)) as exc:
+                await ask_ai(MSGS)
+            assert len(fake_ai.requests) == attempts, status
+            assert (attempts == 5) == ("5 urinishdan keyin" in str(exc.value))
 
     async def test_hung_request_is_resent_once_then_gives_up(self, fake_ai, monkeypatch):
         monkeypatch.setattr(ai_mod, "ATTEMPT_TIMEOUT", 0.2)
@@ -191,28 +187,22 @@ class TestAskAi:
         monkeypatch.setattr(ai_mod, "API_URL", ai_mod.API_URL + "/")
         assert await ask_ai(MSGS) == "javob"
 
-    @pytest.mark.parametrize("status", [400, 401, 429, 500, 503])
-    async def test_non_200_raises_without_leaking_token(self, fake_ai, status):
-        fake_ai.status = status
+    async def test_non_200_raises_without_leaking_token(self, fake_ai):
         fake_ai.body = {"error": "x"}
-        with pytest.raises(AIError, match=str(status)) as exc:
-            await ask_ai(MSGS)
-        assert "test-token" not in str(exc.value)
+        for status in (401, 500):
+            fake_ai.status = status
+            with pytest.raises(AIError, match=str(status)) as exc:
+                await ask_ai(MSGS)
+            assert "test-token" not in str(exc.value)
 
-    @pytest.mark.parametrize("body", [
-        {}, {"choices": []}, {"choices": [{}]}, {"choices": [{"message": {}}]}, {"choices": [None]},
-        {"choices": "x"}, [], "string", None,
-    ])
-    async def test_unexpected_shape_raises_ai_error(self, fake_ai, body):
-        fake_ai.body = body
-        with pytest.raises(AIError):
-            await ask_ai(MSGS)
-
-    @pytest.mark.parametrize("content", ["", "   ", None, "\n\n"])
-    async def test_empty_answer_raises(self, fake_ai, content):
-        fake_ai.reply(content)
-        with pytest.raises(AIError):
-            await ask_ai(MSGS)
+    async def test_unexpected_shape_or_empty_answer_raises_ai_error(self, fake_ai):
+        bodies = [{}, {"choices": []}, {"choices": [{}]}, {"choices": [{"message": {}}]}, {"choices": [None]},
+                  {"choices": "x"}, [], "string", None]
+        empty = [{"choices": [{"message": {"content": c}}]} for c in ("", "   ", None, "\n\n")]
+        for body in [*bodies, *empty]:
+            fake_ai.body = body
+            with pytest.raises(AIError):
+                await ask_ai(MSGS)
 
     async def test_non_json_200_raises_ai_error_not_json_error(self, fake_ai):
         fake_ai.raw = "<html>gateway</html>"
@@ -243,30 +233,27 @@ class TestAskAi:
 
 
 class TestEndpointSecurity:
-    @pytest.mark.parametrize("url", [
-        "http://example.com/v1", "ftp://example.com", "example.com/v1", "", "http://evil.localhost.example.com/x",
-        "http://127.0.0.1.evil.com/x",
-    ])
-    async def test_plain_http_to_remote_host_is_refused(self, monkeypatch, url):
-        monkeypatch.setattr(ai_mod, "API_URL", url)
-        with pytest.raises(AIError, match="https"):  # tarmoqqa chiqmaydi: token ochiq kanalda ketmaydi
-            await ask_ai(MSGS)
+    async def test_plain_http_to_remote_host_is_refused(self, monkeypatch):
+        for url in ["http://example.com/v1", "ftp://example.com", "example.com/v1", "",
+                    "http://evil.localhost.example.com/x", "http://127.0.0.1.evil.com/x"]:
+            monkeypatch.setattr(ai_mod, "API_URL", url)
+            with pytest.raises(AIError, match="https"):  # tarmoqqa chiqmaydi: token ochiq kanalda ketmaydi
+                await ask_ai(MSGS)
 
-    @pytest.mark.parametrize("url", [
-        "https://api.example.com/v1/chat", "http://localhost:8000/x", "http://127.0.0.1:8000/x", "http://[::1]:8000/x",
-    ])
-    def test_allowed_endpoints(self, monkeypatch, url):
-        monkeypatch.setattr(ai_mod, "API_URL", url)
-        assert ai_mod._endpoint() == url
+    def test_allowed_endpoints(self, monkeypatch):
+        for url in ["https://api.example.com/v1/chat", "http://localhost:8000/x", "http://127.0.0.1:8000/x",
+                    "http://[::1]:8000/x"]:
+            monkeypatch.setattr(ai_mod, "API_URL", url)
+            assert ai_mod._endpoint() == url
 
 
 # ------------------------------------------------------------------ summary.py
 
 
 class TestSummarizeReasons:
-    @pytest.mark.parametrize("reasons", [[], [None, "", "   ", "\n"]])
-    async def test_no_real_reasons(self, reasons):
-        assert await summary.summarize_reasons(reasons) == ("Hech kim sabab yozmagan.", False)
+    async def test_no_real_reasons(self):
+        for reasons in ([], [None, "", "   ", "\n"]):
+            assert await summary.summarize_reasons(reasons) == ("Hech kim sabab yozmagan.", False)
 
     async def test_ai_success_and_untrusted_reason_text(self, fake_ai):
         fake_ai.reply("Xulosa")
@@ -340,7 +327,8 @@ async def test_slow_ai_falls_back_quickly(fake_ai, monkeypatch):
 # Model javobi ishonchsiz (prompt injection), shuning uchun allowlist sanitizer.
 
 
-@pytest.mark.parametrize("raw,expected", [
+def test_sanitize_exact():
+    check(sanitize_html, [
     *((f"<{t}>x</{t}>", f"<{t}>x</{t}>") for t in ["b", "i", "u", "s", "code", "pre"]),
     ("<B>x</B>", "<b>x</b>"),
     ("<pre><code>a</code></pre>", "<pre><code>a</code></pre>"),
@@ -355,30 +343,30 @@ async def test_slow_ai_falls_back_quickly(fake_ai, monkeypatch):
     ("text</b> more", "text more"),
     ("", ""),
     ("  \n hi \n ", "hi"),
-])
-def test_sanitize_exact(raw, expected):
-    assert sanitize_html(raw) == expected
+    # modelning o'zi escape qilgan ruxsatli teglar haqiqiy teg bo'ladi
+    ("&lt;b&gt;x&lt;/b&gt;", "<b>x</b>"), ("&#60;b&#62;x&#60;/b&#62;", "<b>x</b>"),
+    ("&amp;lt;b&amp;gt;x&amp;lt;/b&amp;gt;", "<b>x</b>"), ("\\u003cb\\u003ex\\u003c/b\\u003e", "<b>x</b>"),
+    ])
 
 
-@pytest.mark.parametrize("href", [
-    "javascript:alert(1)", "tg://user?id=1", "http://example.com", "ftp://example.com", "https://google.com@evil.com",
-    "https://user:pw@example.com", "//example.com", "https://exa mple.com", "data:text/html;base64,AAAA", "",
-    "java&#115;cript:alert(1)",  # entity bilan yashirilgan sxema ham rad etiladi
-])
-def test_unsafe_href_drops_the_tag_but_keeps_text(href):
-    out = sanitize_html(f'<a href="{href}">click</a>')
-    assert "<a" not in out and "</a>" not in out and "click" in out
+def test_unsafe_href_drops_the_tag_but_keeps_text():
+    for href in ["javascript:alert(1)", "tg://user?id=1", "http://example.com", "ftp://example.com",
+                 "https://google.com@evil.com", "https://user:pw@example.com", "//example.com", "https://exa mple.com",
+                 "data:text/html;base64,AAAA", "",
+                 "java&#115;cript:alert(1)"]:  # entity bilan yashirilgan sxema ham rad etiladi
+        out = sanitize_html(f'<a href="{href}">click</a>')
+        assert "<a" not in out and "</a>" not in out and "click" in out, href
 
 
-@pytest.mark.parametrize("raw,forbidden", [
-    ("<script>alert(1)</script>", "<script>"),
-    ('<img src=x onerror="alert(1)">', "<img"),
-    ("&lt;script&gt;x&lt;/script&gt;", "<script>"),  # ikki marta decode qilinmaydi
-    ("&lt;script&gt;", "<script"),
-    ('<pre><a href="https://a.com">x</a></pre>', "<a"),
-])
-def test_dangerous_markup_never_becomes_real_tags(raw, forbidden):
-    assert forbidden not in sanitize_html(raw)
+def test_dangerous_markup_never_becomes_real_tags():
+    for raw, forbidden in [
+        ("<script>alert(1)</script>", "<script>"),
+        ('<img src=x onerror="alert(1)">', "<img"),
+        ("&lt;script&gt;x&lt;/script&gt;", "<script>"),  # ikki marta decode qilinmaydi
+        ("&lt;script&gt;", "<script"),
+        ('<pre><a href="https://a.com">x</a></pre>', "<a"),
+    ]:
+        assert forbidden not in sanitize_html(raw), raw
 
 
 def test_unknown_tag_is_escaped_text():
@@ -391,25 +379,14 @@ def test_nested_links_and_misnesting_are_repaired():
     assert out.count("<b>") == out.count("</b>") and out.count("<i>") == out.count("</i>")
 
 
-@pytest.mark.parametrize("raw", [
-    "&lt;b&gt;x&lt;/b&gt;", "&#60;b&#62;x&#60;/b&#62;", "&amp;lt;b&amp;gt;x&amp;lt;/b&amp;gt;",
-    "\\u003cb\\u003ex\\u003c/b\\u003e",
-])
-def test_model_escaped_allowed_tags_become_real_tags(raw):
-    assert sanitize_html(raw) == "<b>x</b>"
-
-
 class TestDashes:
     def test_hyphen_inside_words_becomes_space(self):
         assert sanitize_html("so'z-so'z") == "so'z so'z"
 
-    @pytest.mark.parametrize("dash", ["-", "–", "—", "‑"])
-    def test_all_dash_kinds_removed_from_prose(self, dash):
-        assert dash not in sanitize_html(f"a {dash} b")
-
-    @pytest.mark.parametrize("marker", ["-", "*", "•", "–", "—"])
-    def test_list_markers_become_bullets(self, marker):
-        assert sanitize_html(f"{marker} bir\n{marker} ikki") == "• bir\n• ikki"
+    def test_all_dash_kinds_removed_from_prose_and_list_markers_become_bullets(self):
+        for dash in ["-", "–", "—", "‑"]:
+            assert dash not in sanitize_html(f"a {dash} b")
+        same(lambda m: sanitize_html(f"{m} bir\n{m} ikki"), ["-", "*", "•", "–", "—"], "• bir\n• ikki")
 
     def test_prose_dashes_are_removed(self):
         out = sanitize_html("<b>x</b>- y")  # birinchi qatordagi teg'dan keyingi tire bullet emas
@@ -442,11 +419,9 @@ def test_plain_text():
     assert plain_text("") == ""
 
 
-@pytest.mark.parametrize("payload", [
-    "<b>" * 500, "</b>" * 500, "<" * 1000, "&" * 1000, '<a href="https://a.com">' * 200, "<pre><code>" * 100 + "x",
-    "\n".join("- item" for _ in range(300)),
-])
-def test_pathological_inputs_do_not_crash_and_stay_balanced(payload):
-    out = sanitize_html(payload)
-    for tag in ("b", "i", "u", "s", "code", "pre", "a"):
-        assert len(re.findall(rf"<{tag}[ >]", out)) == out.count(f"</{tag}>")
+def test_pathological_inputs_do_not_crash_and_stay_balanced():
+    for payload in ["<b>" * 500, "</b>" * 500, "<" * 1000, "&" * 1000, '<a href="https://a.com">' * 200,
+                    "<pre><code>" * 100 + "x", "\n".join("- item" for _ in range(300))]:
+        out = sanitize_html(payload)
+        for tag in ("b", "i", "u", "s", "code", "pre", "a"):
+            assert len(re.findall(rf"<{tag}[ >]", out)) == out.count(f"</{tag}>"), payload[:20]

@@ -13,6 +13,7 @@ from handlers import ads as ads_handler
 from tests import telegram_fakes as tf
 from tests.flow import feed
 from tests.telegram_fakes import FakeSession
+from tests.table import acheck, check, same
 from utils import ads, tg_links
 from utils.ai import AIError
 
@@ -23,54 +24,49 @@ CHANNEL_FORWARD = MessageOriginChannel(
 
 
 class TestClassify:
-    @pytest.mark.parametrize("text", [
-        "Kanalga qo'shiling t.me/kripto_signal", "https://t.me/+AbCdEf", "telegram.me/foo", "TG://resolve?domain=x",
-        "kirish: www.t.me/abc", "http://telegram.dog/x",
-    ])
-    def test_telegram_links_are_definite(self, text):
-        assert ads.classify(text, None) == "definite"
+    """Mahalliy saralash (AI'siz): danger / definite / telegram (AI, ishlamasa o'chadi) / candidate (AI) / None."""
 
-    def test_bare_channel_forward_and_telegram_text_link_are_definite(self):
-        channel = tg_links.from_channel(-100777, "kanal", "K")
-        assert ads.classify("salom", None, forwarded_from=channel) == "definite"  # deyarli matnsiz forward
-        entity = MessageEntity(type="text_link", offset=0, length=4, url="https://t.me/spam")
-        assert ads.classify("bosing", [entity]) == "definite"
+    def test_local_classification_table(self):
+        check(lambda text: ads.classify(text, None), [
+            # dastur fayli, 18+ sayt, soxta brend domeni: AI'siz xavfli
+            *((t, "danger") for t in ["https://example.com/app.apk", "yuklang: free-premium.xyz/setup.exe",
+                                      "http://1.2.3.4/x.msi?id=1", "qarang https://www.pornhub.com/view?x=1",
+                                      "xvideos2.com", "hot.xxx", "https://te1egram-premium.com/login", "g00gle.com",
+                                      "https://telegram.org@evil.example/a", "https://xn--80ak6aa92e.com"]),
+            # aniq reklama: tg://, taklif/referal havola, reklama so'zi bilan yoki izohsiz Telegram havolasi
+            *((t, "definite") for t in ["Kanalga qo'shiling t.me/kripto_signal", "https://t.me/+AbCdEf",
+                                        "telegram.me/foo", "TG://resolve?domain=x", "kirish: www.t.me/abc",
+                                        "http://telegram.dog/x", "Ajoyib bot t.me/earnbot?start=ref123 ishlatib ko'ring",
+                                        "Python haqida kanalimiz bor t.me/pyuz", "👉 t.me/pyuz"]),
+            # izohli begona Telegram havolasi: AI hal qiladi
+            ("Shu postda asyncio yaxshi tushuntirilgan t.me/pythonuz/1234", "telegram"),
+            # boshqa havola, telefon, reklama so'zi: AI
+            *((t, "candidate") for t in ["Qarang: https://example.com/aksiya", "sayt: shop.uz/sotib-oling",
+                                         "+998 90 123 45 67 ga qo'ng'iroq qiling", "8 (999) 123-45-67",
+                                         "Bugun ajoyib bonus!", "Заработок в интернете", "kripto haqida gaplashamiz",
+                                         "Kursga yozilmoqchiman", "salom.dev", "bit.ly/abc", "http://192.168.1.10/login",
+                                         "ftp://files.example/x", "xn--e1afmkfd.xn--p1ai", "my-site.pro/page",
+                                         "https://any.unknown-tld.zz/path", "sexshop.uz",
+                                         # 18+ so'z faqat yo'lda yoki oddiy saytda: xavfli emas, AI ko'radi
+                                         "https://en.wikipedia.org/wiki/Sex_education",
+                                         "https://github.com/notAI-tech/NudeNet"]),
+            # oddiy suhbat va fayl nomlari: AI ham chaqirilmaydi
+            *((t, None) for t in ["Salom, Python'da list qanday ishlaydi?", "Rahmat!", "Men Django bilan ishlayman",
+                                  "25 yoshdaman", "@aziz yordam bersangiz", "kod: print('hello')", "Version 3.12.1",
+                                  "", "ok", "main.py ni oching", "config.json", "README.md", "e.g. foo.bar", "x.1.2"]),
+        ])
 
-    @pytest.mark.parametrize("text,expected", [
-        ("Qarang: https://example.com/aksiya", "candidate"), ("sayt: shop.uz/sotib-oling", "candidate"),
-        ("+998 90 123 45 67 ga qo'ng'iroq qiling", "candidate"), ("8 (999) 123-45-67", "candidate"),
-        ("Bugun ajoyib bonus!", "candidate"), ("Заработок в интернете", "candidate"),
-        ("kripto haqida gaplashamiz", "candidate"), ("Kursga yozilmoqchiman", "candidate"),
-        ("Salom, Python'da list qanday ishlaydi?", None), ("Rahmat!", None), ("Men Django bilan ishlayman", None),
-        ("25 yoshdaman", None), ("@aziz yordam bersangiz", None), ("kod: print('hello')", None),
-        ("Version 3.12.1", None), ("", None), ("ok", None),
-    ])
-    def test_suspicious_text_goes_to_ai_normal_text_is_ignored(self, text, expected):
-        assert ads.classify(text, None) == expected
+    def test_links_to_this_group_are_not_suspicious(self):
+        same(lambda t: ads.classify(t, None, chat_id=-1001234567, chat_username="OurGroup"),
+             ["Yuqorida javob bor t.me/c/1234567/89", "mana t.me/ourgroup/55"], None)
 
-    def test_url_entity_is_found(self):
-        assert ads.find_urls("example.com", [MessageEntity(type="url", offset=0, length=11)])
-
-    @pytest.mark.parametrize("text", [
-        "https://example.com/app.apk", "yuklang: free-premium.xyz/setup.exe", "http://1.2.3.4/x.msi?id=1",
-    ])
-    def test_program_download_links_are_dangerous_without_ai(self, text):
-        assert ads.classify(text, None) == "danger"
-
-    @pytest.mark.parametrize("text", [
-        "salom.dev", "bit.ly/abc", "http://192.168.1.10/login", "ftp://files.example/x", "xn--e1afmkfd.xn--p1ai",
-        "my-site.pro/page", "https://any.unknown-tld.zz/path",
-    ])
-    def test_all_kinds_of_urls_go_to_ai(self, text):
-        assert ads.classify(text, None) == "candidate"
-
-    @pytest.mark.parametrize("text", ["main.py ni oching", "config.json", "README.md", "e.g. foo.bar", "x.1.2"])
-    def test_file_names_are_not_urls(self, text):
-        assert ads.classify(text, None) is None
-
-    def test_hidden_link_and_inline_button_links_are_found(self):
+    def test_forwards_hidden_links_and_buttons(self):
         from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+        channel = tg_links.from_channel(-100777, "kanal", "K")
+        assert ads.classify("salom", None, forwarded_from=channel) == "definite"  # deyarli matnsiz forward
+        assert ads.classify("bosing", [MessageEntity(type="text_link", offset=0, length=4, url="https://t.me/spam")]) == "definite"
+        assert ads.find_urls("example.com", [MessageEntity(type="url", offset=0, length=11)])
         hidden = MessageEntity(type="text_link", offset=0, length=4, url="https://evil.example/login")
         markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Bos", url="https://win.example/a")]])
         assert ads.find_urls("bosing", [hidden], markup) == ["https://evil.example/login", "https://win.example/a"]
@@ -97,14 +93,16 @@ def ai(monkeypatch) -> FakeAI:
 
 
 class TestAiVerdict:
-    @pytest.mark.parametrize("answer,expected", [
-        ("AD", ads.AD), ("ad", ads.AD), ("**AD**", ads.AD), ("DANGER", ads.DANGER), ("danger.", ads.DANGER),
-        ("OK", ads.OK), ("ADVICE", None), ("DANGEROUS", None), ("", None),
-        (AIError("503"), None),  # AI yiqilsa xabar qoladi
-    ])
-    async def test_parsing(self, ai, answer, expected):
-        ai.answer = answer
-        assert await ads.ai_verdict("matn") == expected
+    async def test_parsing(self, ai):
+        async def verdict(answer):
+            ai.answer = answer
+            return await ads.ai_verdict("matn")
+
+        await acheck(verdict, [
+            ("AD", ads.AD), ("ad", ads.AD), ("**AD**", ads.AD), ("DANGER", ads.DANGER), ("danger.", ads.DANGER),
+            ("OK", ads.OK), ("ADVICE", None), ("DANGEROUS", None), ("", None),
+            (AIError("503"), None),  # AI yiqilsa xabar qoladi
+        ])
 
     async def test_links_are_listed_inside_the_untrusted_block(self, ai):
         await ads.ai_verdict("bosing", ["https://evil.example/login"])
@@ -219,22 +217,6 @@ class TestExemptions:
 
 class TestTelegramLinks:
     """t.me havolalari: avval bot o'zi tekshiradi, aniq bo'lmasa AI; AI har safar chaqirilmaydi."""
-
-    @pytest.mark.parametrize("text", [
-        "https://t.me/+AbCdEf guruhga kiring",            # yopiq guruhga taklif
-        "Ajoyib bot t.me/earnbot?start=ref123 ishlatib ko'ring",  # referal havola
-        "Python haqida kanalimiz bor t.me/pyuz",          # aniq reklama so'zi
-        "👉 t.me/pyuz",                                     # izohsiz havola
-    ])
-    def test_obvious_cases_are_decided_without_ai(self, text):
-        assert ads.classify(text, None) == "definite"
-
-    def test_explained_link_goes_to_ai(self):
-        assert ads.classify("Shu postda asyncio yaxshi tushuntirilgan t.me/pythonuz/1234", None) == "telegram"
-
-    @pytest.mark.parametrize("text", ["Yuqorida javob bor t.me/c/1234567/89", "mana t.me/ourgroup/55"])
-    def test_link_to_this_group_is_not_suspicious(self, text):
-        assert ads.classify(text, None, chat_id=-1001234567, chat_username="OurGroup") is None
 
     async def test_useful_post_stays_when_ai_says_ok(self, dp, bot, session, ai):
         ai.answer = "OK"

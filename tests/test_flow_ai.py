@@ -1,5 +1,7 @@
 """handlers/ai.py: guruhdagi AI yordamchi (mention yoki AI javobiga reply)."""
 import pytest
+
+from tests.table import check
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import DeleteMessage, SendMessage
 from aiogram.methods.base import TelegramMethod
@@ -262,17 +264,11 @@ class TestSystemMessagesInQuestionLanguage:
         await say(dp, bot, f"{BOT} {question}")
         assert bot_replies(session)[-1].text == texts.AI_ERROR[lang]
 
-    @pytest.mark.parametrize("text,lang", [
-        ("salom, bu nima?", "uz"),
-        ("o'zbekiston haqida ayt", "uz"),
-        ("tell me how to write code", "en"),
-        ("помоги мне с кодом", "ru"),
-        ("менга ёрдам беринг", "uz_cyr"),
-        ("123 ???", "uz"),
-        ("", "uz"),
-    ])
-    def test_detect_lang(self, text, lang):
-        assert detect_lang(text) == lang
+    def test_detect_lang(self):
+        check(detect_lang, [
+            ("salom, bu nima?", "uz"), ("o'zbekiston haqida ayt", "uz"), ("tell me how to write code", "en"),
+            ("помоги мне с кодом", "ru"), ("менга ёрдам беринг", "uz_cyr"), ("123 ???", "uz"), ("", "uz"),
+        ])
 
     def test_every_language_has_every_message(self):
         for table in (texts.AI_TOO_LONG, texts.AI_COOLDOWN, texts.AI_ERROR):
