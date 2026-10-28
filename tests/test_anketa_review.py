@@ -6,6 +6,7 @@ import database as dbm
 import texts
 from keyboards.profile import FIELD_LABELS
 from tests import telegram_fakes as tf
+from tests.table import check
 from tests.flow import ANSWERS, feed, fill_form, start_application, state_of
 from utils.ai import AIError
 from utils.anketa_review import _parse
@@ -96,6 +97,19 @@ class TestAiFindsProblems:
     async def test_unknown_fields_and_duplicates_are_ignored(self):
         answer = 'Mana: {"problems": [{"field": "age"}, {"field": "job", "reason": "a"}, {"field": "job", "reason": "b"}]}'
         assert _parse(answer) == {"job": "a"}
+
+    def test_parse_tolerates_common_answer_shapes(self):
+        job = {"job": "yomon"}
+        check(_parse, [
+            ('{"problems": []}', {}),
+            ('```json\n{"problems": [{"field": "job", "reason": "yomon"}]}\n```', job),  # kod bloki
+            ('{"problems": [{"field": "job", "reason": "yomon"}]}\nIzoh: {boshqa}', job),  # ortida matn
+            ('{"problems": null}', {}),
+            ("OK", {}), ("[]", {}), ("No problems.", {}),
+        ])
+        for bad in ("bilmayman", '{"problems": [{"field": "job", "reason": "kesil', '{"problems": "job"}'):
+            with pytest.raises(ValueError):
+                _parse(bad)
 
     async def test_answers_are_wrapped_as_untrusted_data(self, dp, bot, session, review_ai):
         await at_confirm(dp, bot, session)

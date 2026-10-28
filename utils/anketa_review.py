@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 
 from texts import ANKETA_INDECENT_REASON
 from utils.ai import AIError, ask_ai
@@ -18,7 +19,10 @@ logger = logging.getLogger(__name__)
 
 # AI tekshiradigan matnli maydonlar (telefon va yosh tekshirilmaydi: ular formatdan o'tgan)
 REVIEW_FIELDS = ("full_name", "job", "about", "join_group")
-WAIT_SECONDS = 20
+# utils/ai: osilib qolgan so'rov ATTEMPT_TIMEOUT (25 s) dan keyin qayta yuboriladi; chegara shunga sig'ishi kerak,
+# aks holda qayta yuborishgacha kutmay "tekshirib bo'lmadi" chiqadi
+WAIT_SECONDS = 55
+MAX_TOKENS = 700  # 4 ta maydon sababi bilan: JSON kesilib qolmasin
 MAX_FIELD = 800
 MAX_REASON = 200
 
@@ -38,11 +42,20 @@ SYSTEM_PROMPT = (
 )
 
 
+_OK_RE = re.compile(r"^\W*(ok|okay|none|no problems?|\[\s*\])\W*$", re.IGNORECASE)
+
+
 def _parse(answer: str) -> dict[str, str]:
-    match = re.search(r"\{.*\}", answer, re.DOTALL)
-    if not match:
+    """AI javobidan {maydon: sabab}. Kod bloki, JSON oldi/ortidagi matn va "OK" kabi qisqa javoblar ham tushuniladi."""
+    if _OK_RE.match(answer):
+        return {}
+    start = answer.find("{")
+    if start < 0:
         raise ValueError("JSON yo'q")
-    problems = json.loads(match.group(0)).get("problems") or []
+    obj, _ = json.JSONDecoder().raw_decode(answer[start:])  # birinchi to'liq JSON obyekt, ortidagi matn e'tiborsiz
+    problems = obj.get("problems") or []
+    if not isinstance(problems, list):
+        raise ValueError("problems ro'yxat emas")
     result: dict[str, str] = {}
     for item in problems:
         field = str(item.get("field") or "") if isinstance(item, dict) else ""
@@ -68,6 +81,7 @@ async def review_anketa(data: dict) -> dict[str, str] | None:
         logger.info("Anketa mahalliy tekshiruvi: muammoli maydonlar %s (AI chaqirilmadi)", sorted(local))
         return local
     body = "\n".join(f"{f}: {str(values[f] or '')[:MAX_FIELD]}" for f in REVIEW_FIELDS)
+    started = time.monotonic()
     try:
         answer = await asyncio.wait_for(
             ask_ai(
@@ -75,17 +89,23 @@ async def review_anketa(data: dict) -> dict[str, str] | None:
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": f"<<<\n{body}\n>>>"},
                 ],
-                max_tokens=300,
-                attempts=2,
+                max_tokens=MAX_TOKENS,
+                attempts=3,
             ),
             WAIT_SECONDS,
         )
         problems = _parse(answer)
     except (AIError, asyncio.TimeoutError) as e:
-        logger.warning("Anketa AI tekshiruvi ishlamadi, anketa yuborilmadi: %r", e)
+        logger.warning(
+            "Anketa AI tekshiruvi ishlamadi (%.1f s), anketa yuborilmadi: %r", time.monotonic() - started, e
+        )
         return None
     except (ValueError, AttributeError) as e:  # JSON emas yoki kutilmagan shakl
-        logger.warning("Anketa AI tekshiruvi: tushunarsiz javob, anketa yuborilmadi: %r", e)
+        # boshi diagnostika uchun (odatda {"problems": ...}); to'liq javob logga yozilmaydi
+        logger.warning(
+            "Anketa AI tekshiruvi: tushunarsiz javob, anketa yuborilmadi: %r (uzunligi %s, boshi %r)",
+            e, len(answer), answer[:80],
+        )
         return None
-    logger.info("Anketa AI tekshiruvi: muammoli maydonlar %s", sorted(problems))
+    logger.info("Anketa AI tekshiruvi (%.1f s): muammoli maydonlar %s", time.monotonic() - started, sorted(problems))
     return problems
