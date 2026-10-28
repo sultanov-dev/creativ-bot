@@ -31,7 +31,7 @@ AD_NOTICE = "⚠️ {name}, guruhda reklama taqiqlangan. Xabaringiz o'chirildi."
 NSFW_NOTICE = (
     "⚠️ {name}, guruhda 18+ va nomaqbul kontent taqiqlangan. Xabaringiz o'chirildi."
 )
-LINK_DANGER_NOTICE = "⚠️ {name}, xabaringizda xavfli havola bor edi, u o'chirildi. Bunday havolalarni ochmang."
+LINK_DANGER_NOTICE = "⚠️ {name}, xabaringizda xavfli havola bor edi, u o'chirildi."
 MODERATION_WARNING = (
     "Kechirasiz, matnda nomaqbul so'zlar bor. Iltimos, hurmat bilan qayta yozing."
 )
