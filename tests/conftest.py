@@ -122,6 +122,25 @@ def review_ai(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def intent_ai(monkeypatch):
+    """Lichkadagi "admin kerakmi?" AI tasdig'i: standart bo'yicha NO. `intent_ai.answer` / `.calls`."""
+    import utils.support_intent as support_intent
+
+    class Fake:
+        answer = "NO"
+        calls: list = []
+
+        async def __call__(self, messages, **kw):
+            self.calls.append(messages)
+            return self.answer
+
+    fake = Fake()
+    fake.calls = []
+    monkeypatch.setattr(support_intent, "ask_ai", fake)
+    return fake
+
+
+@pytest.fixture(autouse=True)
 def _no_ai_retry_delays(monkeypatch):
     """AI qayta urinishlari orasida kutilmaydi (haqiqiy kutish utils/ai.py da, testda sekinlashtirmasin)."""
     import utils.ai

@@ -33,9 +33,9 @@ from utils.lang import detect_lang
 from utils import content_check
 from utils.ads import AD, DANGER
 from utils.profanity import has_profanity
+from utils.support_intent import asks_for_admin
 from utils.support_policy import (
     BLOCKING_CATEGORIES,
-    wants_admin,
     DECLINE_CATEGORIES,
     DECLINE_COOLDOWN_HOURS,
     FORWARD_CATEGORIES,
@@ -445,15 +445,15 @@ async def _member_group(bot: Bot, user_id: int) -> int | None:
 
 @router.message(_not_command, StateFilter(None), _idle_user)
 async def on_idle_message(message: Message, bot: Bot):
-    """Suhbati yo'q foydalanuvchi lichkaga yozdi. Faqat admin bilan gaplashmoqchi ekani aniq bo'lsa (`wants_admin`,
-    AI'siz) javob beriladi: guruh a'zosiga admin suhbati shu yerda boshlanadi (guruhda botni belgilash shart emas),
+    """Suhbati yo'q foydalanuvchi lichkaga yozdi. Faqat admin bilan bog'lanmoqchi bo'lsa (`asks_for_admin`: aniq so'z —
+    AI'siz, yaqin mazmun — bitta qisqa AI so'rovi) javob beriladi: guruh a'zosiga admin suhbati shu yerda boshlanadi (guruhda botni belgilash shart emas),
     bloklanganga nega va qachongacha, a'zo bo'lmaganga "avval guruhga qo'shiling". Boshqa har qanday xabar e'tiborsiz
     qoladi: javob ham, AI so'rovi ham yo'q."""
     user = message.from_user
     if user is None:
         return
     text = message.text or message.caption or ""
-    if not wants_admin(text):
+    if not await asks_for_admin(text):
         return
     lang = detect_lang(text)
     blocked = await get_support_chat(user.id, "declined", DECLINE_COOLDOWN_HOURS, BLOCKING_CATEGORIES)

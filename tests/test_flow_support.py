@@ -632,3 +632,53 @@ class TestPrivateIntent:
         await start_chat(dp, bot, group_ai, dm_ai)
         await dm(dp, bot, "to'lov o'tmadi")
         assert len(dm_ai.calls) == 1  # faqat suhbatning o'zi
+
+
+class TestNearIntent:
+    """Aniq "admin" so'zi shart emas: yaqin mazmun bo'lsa, bitta qisqa AI so'rovi tasdiqlaydi."""
+
+    @pytest.fixture(autouse=True)
+    def _reset(self):
+        support._last_idle.clear()
+        yield
+        support._last_idle.clear()
+
+    @pytest.mark.parametrize("text", [
+        "guruhdagi mas'ul odam bilan gaplashsam bo'ladimi?", "rahbariyat bilan bog'lanmoqchiman",
+        "мне нужен живой человек", "меня удалили из группы, почему?", "Can I talk to someone in charge?",
+    ])
+    async def test_near_meaning_is_confirmed_by_one_short_ai_call(self, dp, bot, session, dm_ai, intent_ai, text):
+        await add_member(tf.GROUP_ID, USER)
+        intent_ai.answer = "YES"
+        await dm(dp, bot, text)
+        assert len(intent_ai.calls) == 1 and len(dm_ai.calls) == 1  # tasdiq + suhbatning birinchi javobi
+        assert intent_ai.calls[0][1]["content"] == f"<<<\n{text}\n>>>"
+
+    async def test_ai_says_no_and_the_message_is_ignored(self, dp, bot, session, dm_ai, intent_ai):
+        await add_member(tf.GROUP_ID, USER)
+        await dm(dp, bot, "python'da yordam kerak, list qanday ishlaydi?")
+        assert len(intent_ai.calls) == 1 and not dm_ai.calls and session.texts_to(USER) == []
+
+    @pytest.mark.parametrize("text", ["admin bilan gaplashmoqchiman", "admn kerak", "meni ban qilishdi"])
+    async def test_clear_words_need_no_ai_confirmation(self, dp, bot, session, dm_ai, intent_ai, text):
+        await add_member(tf.GROUP_ID, USER)
+        await dm(dp, bot, text)
+        assert not intent_ai.calls and len(dm_ai.calls) == 1
+
+    @pytest.mark.parametrize("text", ["salom", "rahmat", "bugun havo yaxshi", "😊"])
+    async def test_unrelated_messages_cost_no_ai_call(self, dp, bot, session, dm_ai, intent_ai, text):
+        await add_member(tf.GROUP_ID, USER)
+        await dm(dp, bot, text)
+        assert not intent_ai.calls and not dm_ai.calls and session.texts_to(USER) == []
+
+    async def test_intent_ai_failure_ignores_quietly(self, dp, bot, session, dm_ai, monkeypatch):
+        import utils.support_intent as support_intent
+        from utils.ai import AIError
+
+        async def failing(messages, **kw):
+            raise AIError("503")
+
+        await add_member(tf.GROUP_ID, USER)
+        monkeypatch.setattr(support_intent, "ask_ai", failing)
+        await dm(dp, bot, "mas'ul odam kerak")
+        assert not dm_ai.calls and session.texts_to(USER) == [] and not session.sent_to(tf.DEVELOPER_ID)
