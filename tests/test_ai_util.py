@@ -151,8 +151,17 @@ class TestRetry:
             assert len(fake_ai.requests) == attempts, status
             assert (attempts == 5) == ("5 urinishdan keyin" in str(exc.value))
 
+    async def test_slow_request_is_not_resent_by_default(self, fake_ai, monkeypatch):
+        """AI sekin: kutish vaqti tugagan so'rov qayta yuborilmaydi (TIMEOUT_RETRIES = 0), vaqt ikki baravar oshmaydi."""
+        monkeypatch.setattr(ai_mod, "ATTEMPT_TIMEOUT", 0.2)
+        fake_ai.delay = 1.0
+        with pytest.raises(AIError, match="javob bermadi"):
+            await ask_ai(MSGS)
+        assert len(fake_ai.requests) == 1
+
     async def test_hung_request_is_resent_once_then_gives_up(self, fake_ai, monkeypatch):
         monkeypatch.setattr(ai_mod, "ATTEMPT_TIMEOUT", 0.2)
+        monkeypatch.setattr(ai_mod, "TIMEOUT_RETRIES", 1)
         fake_ai.delay = 1.0
         with pytest.raises(AIError, match="javob bermadi"):
             await ask_ai(MSGS)
@@ -160,6 +169,7 @@ class TestRetry:
 
     async def test_hung_first_request_succeeds_on_resend(self, fake_ai, monkeypatch):
         monkeypatch.setattr(ai_mod, "ATTEMPT_TIMEOUT", 0.3)
+        monkeypatch.setattr(ai_mod, "TIMEOUT_RETRIES", 1)
         fake_ai.delay_first = 1
         fake_ai.delay = 1.0
         assert await ask_ai(MSGS) == "javob" and len(fake_ai.requests) == 2

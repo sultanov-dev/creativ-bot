@@ -12,13 +12,14 @@ logger = logging.getLogger(__name__)
 
 # sock_connect: ulanish osilib qolsa, qayta urinishga tez o'tish uchun; javob kutish chegarasi har urinishga alohida
 TIMEOUT = aiohttp.ClientTimeout(total=None, sock_connect=8)
-# bitta urinish shuncha soniyada javob bermasa, bekor qilinadi va (TIMEOUT_RETRIES marta) qayta yuboriladi: AI xizmati
-# ba'zan so'rovni javobsiz osiltirib qo'yadi, keyingi xuddi shunday so'rov esa odatda tez o'tadi
-ATTEMPT_TIMEOUT = 45
-TIMEOUT_RETRIES = 1
-# qisqa tekshiruvlar (reklama/havola, moderatsiya, "admin kerakmi", xulosalar, 18+ rasm) AI'ni shuncha kutadi; AI ko'pincha
-# 6-10 s dan sekin, qisqa chegarada tekshiruvlar o'tkazib yuborilardi (fail-open)
-CHECK_WAIT_SECONDS = 30
+# bitta urinish shuncha soniyada javob bermasa, bekor qilinadi va (TIMEOUT_RETRIES marta) qayta yuboriladi.
+# AI xizmati juda sekin (2026-10-28: bitta so'zlik javob 35 s): sekin so'rovni qayta yuborish faqat vaqtni ikki
+# baravar oshiradi, shuning uchun uzun kutish va qayta yuborishsiz
+ATTEMPT_TIMEOUT = 90
+TIMEOUT_RETRIES = 0
+# qisqa tekshiruvlar (reklama/havola, moderatsiya, "admin kerakmi", xulosalar, 18+ rasm) AI'ni shuncha kutadi;
+# qisqa chegarada sekin AI paytida tekshiruvlar o'tkazib yuborilardi (fail-open)
+CHECK_WAIT_SECONDS = 60
 # ulanish xatosi, vaqtinchalik server xatosi (5xx) yoki 429 bo'lsa, shuncha marta urinadi; faqat hammasi muvaffaqiyatsiz
 # bo'lsa AIError ko'tariladi (guruhga xato xabari va dasturchiga ogohlantirish shundan keyingina ketadi)
 ATTEMPTS = 5

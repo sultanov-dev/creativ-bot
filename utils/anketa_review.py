@@ -18,8 +18,7 @@ logger = logging.getLogger(__name__)
 
 # AI tekshiradigan matnli maydonlar (telefon va yosh tekshirilmaydi: ular formatdan o'tgan)
 REVIEW_FIELDS = ("full_name", "job", "about", "join_group")
-# utils/ai: osilib qolgan so'rov ATTEMPT_TIMEOUT (45 s) dan keyin qayta yuboriladi; chegara ikkalasiga sig'ishi kerak,
-# aks holda qayta yuborishgacha kutmay "tekshirib bo'lmadi" chiqadi
+# utils/ai.ATTEMPT_TIMEOUT (90 s) dan uzunroq: sekin AI javobi to'liq kutiladi
 WAIT_SECONDS = 100
 # AI uzun matnni juda sekin yozadi (guruhdagi javoblar 20-60 s): shuning uchun izoh emas, faqat qisqa kodlar
 # so'raladi ("OK" yoki "job=sexual; about=nonsense"), foydalanuvchiga sababni bot o'zi yozadi (texts)
