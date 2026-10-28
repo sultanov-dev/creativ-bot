@@ -120,12 +120,9 @@ def say_ai(monkeypatch: pytest.MonkeyPatch) -> FakeSay:
 
 @pytest.fixture(autouse=True)
 def _moderation(monkeypatch: pytest.MonkeyPatch):
-    """Haqiqiy AI moderatsiyasi o'rniga: matnda 'BADWORD' bo'lsa odobsiz."""
+    """Mahalliy so'kinish filtri o'rniga: matnda 'BADWORD' bo'lsa odobsiz (lichkada AI moderatsiyasi yo'q)."""
 
-    async def fake(text: str) -> bool:
-        return "BADWORD" in text
-
-    monkeypatch.setattr(support, "is_abusive", fake)
+    monkeypatch.setattr(support, "has_profanity", lambda text: "BADWORD" in text)
 
 
 @pytest.fixture(autouse=True)
@@ -376,7 +373,7 @@ class TestIdleReplies:
 
     async def test_user_without_a_chat_gets_the_how_to_hint(self, dp, bot, session):
         await dm(dp, bot, "salom")
-        assert session.texts_to(USER) == [texts.SUPPORT_IDLE["uz"].format(username=tf.BOT_USERNAME)]
+        assert session.texts_to(USER) == [texts.SUPPORT_HOWTO["uz"]]
 
     async def test_declined_user_keeps_getting_the_refusal_not_silence(self, dp, bot, session, group_ai, dm_ai):
         await start_chat(dp, bot, group_ai, dm_ai)
@@ -400,7 +397,7 @@ class TestIdleReplies:
         await dm(dp, bot, "rahmat")
         session.clear()
         dm_ai.answer, dm_ai.tool_calls = "Qanday masala?", []
-        await dm(dp, bot, "yana savol bor")
+        await dm(dp, bot, "yana adminga savolim bor")
         assert session.texts_to(USER) == ["Qanday masala?"]
         assert await get_support_chat(USER, "active", 24) is not None
 
@@ -426,7 +423,7 @@ class TestStaleDeclined:
     async def test_old_decline_does_not_make_the_idle_reply_a_refusal(self, dp, bot, session, dm_ai):
         support._last_idle.clear()
         await self._old_declined("no_purpose")
-        await dm(dp, bot, "salom")  # guruh a'zosi: rad emas, yangi suhbat
+        await dm(dp, bot, "admin kerak")  # guruh a'zosi: rad emas, yangi suhbat
         assert session.texts_to(USER) == ["Salom! Nima bo'ldi?"]
 
     @pytest.mark.parametrize("category", ["abuse", "limit"])
@@ -596,3 +593,40 @@ class TestNonTextInPrivate:
         await dm(dp, bot, "Kanalimizga obuna bo'ling t.me/mening_kanalim")
         last = dm_ai.calls[-1][-2]["content"]
         assert last.endswith(support.AD_NOTE) and "t.me/mening_kanalim" in last
+
+
+class TestPrivateIntent:
+    """Lichkada AI suhbat faqat "admin kerak" mazmunidagi xabar bilan ochiladi: boshqa xabarga AI chaqirilmaydi."""
+
+    @pytest.fixture(autouse=True)
+    def _reset(self):
+        support._last_idle.clear()
+        yield
+        support._last_idle.clear()
+
+    @pytest.mark.parametrize("text", ["salom", "python'da list qanday ishlaydi?", "rahmat", "bananas"])
+    async def test_other_messages_get_the_howto_without_ai(self, dp, bot, session, dm_ai, text):
+        await add_member(tf.GROUP_ID, USER)
+        await dm(dp, bot, text)
+        assert session.texts_to(USER) == [texts.SUPPORT_HOWTO["uz"]] and not dm_ai.calls
+        assert await get_support_chat(USER, "active", 24) is None
+
+    @pytest.mark.parametrize("text", [
+        "Adminga yozmoqchiman", "мне нужен модератор", "guruh egasi bilan bog'lanmoqchiman", "meni ban qilishdi",
+        "меня заблокировали", "shikoyatim bor", "I want to report a member",
+    ])
+    async def test_admin_intent_opens_the_chat(self, dp, bot, session, dm_ai, text):
+        await add_member(tf.GROUP_ID, USER)
+        await dm(dp, bot, text)
+        assert len(dm_ai.calls) == 1
+
+    async def test_private_messages_cost_no_moderation_ai_call(self, dp, bot, session, group_ai, dm_ai, monkeypatch):
+        import utils.moderation as moderation
+
+        async def no_ai(*a, **kw):
+            raise AssertionError("lichkada AI moderatsiyasi chaqirilmasligi kerak")
+
+        monkeypatch.setattr(moderation, "ask_ai", no_ai)
+        await start_chat(dp, bot, group_ai, dm_ai)
+        await dm(dp, bot, "to'lov o'tmadi")
+        assert len(dm_ai.calls) == 1  # faqat suhbatning o'zi

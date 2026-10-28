@@ -1,4 +1,6 @@
 """Lichkadagi suhbatda AI masalani qaysi turga ajratishi va har bir turga qaror (handlers/support.py)."""
+import re
+
 
 # adminga uzatiladigan masala turlari (escalate_to_admin tool'ining category qiymatlari)
 FORWARD_CATEGORIES = (
@@ -45,3 +47,18 @@ MAX_ESCALATIONS_PER_DAY = 3
 # noaniq masala) foydalanuvchini to'smaydi: u yangi suhbat ochib, masalasini qayta tushuntira oladi
 DECLINE_COOLDOWN_HOURS = 24
 BLOCKING_CATEGORIES = ("abuse", "violation", "limit")  # violation: xavfli havola yoki 18+ kontent takrorlandi
+
+# lichkada AI suhbat faqat shu mazmundagi xabar bilan ochiladi (AI'siz, mahalliy): admin/moderator/guruh egasi bilan
+# gaplashish, shikoyat, ban/blok bo'yicha murojaat. Boshqa xabarga AI chaqirilmaydi, qisqa yo'l-yo'riq beriladi
+ADMIN_INTENT_RE = re.compile(
+    r"\b(?:admin|админ|administrator|администратор|moder|модер|owner|владел|создател|egas[iy]|эгас[и]|"
+    r"yaratuvchi|яратувчи|shikoyat|шикоят|жалоб|complain|report|репорт|murojaat|мурожаат|обращени|support|"
+    r"поддержк|разбан|забан|заблок|разблок|unban|ban(?:\b|ga\b|dan\b|ni\b|ned\b|la\w*)|бан(?:\b|а\b|ом\b|ил\w*|ят\w*)|"
+    r"blok(?:\b|la\w*|dan\b|ga\b)|блок(?:\b|ир\w*|ла\w*|дан\b))",
+    re.IGNORECASE,
+)
+
+
+def wants_admin(text: str) -> bool:
+    """Foydalanuvchi admin bilan bog'lanmoqchimi (kalit so'zlar, AI'siz)."""
+    return bool(ADMIN_INTENT_RE.search(text or ""))

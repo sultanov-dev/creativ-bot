@@ -32,9 +32,10 @@ from utils.ai_html import plain_text, sanitize_html
 from utils.lang import detect_lang
 from utils import content_check
 from utils.ads import AD, DANGER
-from utils.moderation import is_abusive
+from utils.profanity import has_profanity
 from utils.support_policy import (
     BLOCKING_CATEGORIES,
+    wants_admin,
     DECLINE_CATEGORIES,
     DECLINE_COOLDOWN_HOURS,
     FORWARD_CATEGORIES,
@@ -232,7 +233,7 @@ async def _accept(bot: Bot, chat: dict, message: Message) -> str | None:
     if inspection.verdict in (DANGER, content_check.NSFW):
         await _strike(bot, chat, inspection.verdict, lang)
         return None
-    if await is_abusive(inspection.text):
+    if has_profanity(inspection.text):  # AI'siz; qo'pol, lekin so'kinishsiz matnni support AI o'zi rad etadi
         await _strike(bot, chat, "abuse", lang)
         return None
     content = content_check.describe(message, inspection.text)[:MAX_TEXT]
@@ -349,7 +350,7 @@ async def open_chat(bot: Bot, message: Message, text: str, reason: str = "") -> 
         chat = await get_support_chat(user.id, "active", SUPPORT_TTL_HOURS)
         if chat is None:
             return
-    if await is_abusive(text):
+    if has_profanity(text):
         content = f"{GROUP_PREFIX} (odobsiz matn olib tashlandi)"  # na adminga, na AI xulosasiga o'tmaydi
     else:
         content = f"{GROUP_PREFIX} {text[:MAX_TEXT]}"
@@ -444,8 +445,9 @@ async def _member_group(bot: Bot, user_id: int) -> int | None:
 
 @router.message(_not_command, StateFilter(None), _idle_user)
 async def on_idle_message(message: Message, bot: Bot):
-    """Suhbati yo'q foydalanuvchi lichkaga yozdi. Guruh a'zosi bo'lsa, guruhda botni belgilamasa ham admin suhbati
-    shu yerda boshlanadi (AI avval nima masala ekanini so'raydi); a'zo bo'lmasa yoki yaqinda bloklangan bo'lsa, qisqa javob."""
+    """Suhbati yo'q foydalanuvchi lichkaga yozdi. Admin bilan gaplashmoqchi ekani aniq bo'lsa (`wants_admin`, AI'siz)
+    va guruh a'zosi bo'lsa, guruhda botni belgilamasa ham admin suhbati shu yerda boshlanadi. Boshqa har qanday xabarga
+    AI chaqirilmaydi: qisqa yo'l-yo'riq (yoki bloklangan bo'lsa, nega)."""
     user = message.from_user
     if user is None:
         return
@@ -454,6 +456,10 @@ async def on_idle_message(message: Message, bot: Bot):
     if blocked is not None:
         if not _throttled(_last_idle, user.id, IDLE_NOTICE_INTERVAL):
             await message.answer(_blocked_notice(blocked, lang))
+        return
+    if not wants_admin(message.text or message.caption or ""):
+        if not _throttled(_last_idle, user.id, IDLE_NOTICE_INTERVAL):
+            await message.answer(texts.SUPPORT_HOWTO[lang])
         return
     group_id = await _member_group(bot, user.id)
     if group_id is None:

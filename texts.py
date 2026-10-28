@@ -243,6 +243,12 @@ SUPPORT_IDLE = {
     "ru": "Связаться с администратором могут только участники группы. Сначала вступите в группу, затем напишите сюда 👋",
     "en": "Only group members can contact the admins. Please join the group first, then write here 👋",
 }
+SUPPORT_HOWTO = {
+    "uz": "Admin bilan gaplashmoqchi bo'lsangiz, shunday yozing: «Admin bilan gaplashmoqchiman» 👋",
+    "uz_cyr": "Админ билан гаплашмоқчи бўлсангиз, шундай ёзинг: «Админ билан гаплашмоқчиман» 👋",
+    "ru": "Если хотите связаться с администратором, напишите: «Хочу поговорить с админом» 👋",
+    "en": "If you want to contact the admins, write: «I want to talk to an admin» 👋",
+}
 SUPPORT_CLOSED = {
     "uz": "⛔️ Qoidalar takror buzilgani uchun suhbat yopildi. {hours} soatdan keyin qayta yozishingiz mumkin.",
     "uz_cyr": "⛔️ Қоидалар такрор бузилгани учун суҳбат ёпилди. {hours} соатдан кейин қайта ёзишингиз мумкин.",
