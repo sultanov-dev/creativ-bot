@@ -133,6 +133,12 @@ async def init_db() -> None:
             updated_at INTEGER
         );
 
+        CREATE TABLE IF NOT EXISTS media_text (
+            file_unique_id TEXT PRIMARY KEY,
+            text           TEXT NOT NULL,
+            created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS media_verdicts (
             file_unique_id TEXT PRIMARY KEY,
             verdict        TEXT NOT NULL,
@@ -625,6 +631,7 @@ async def purge_old_data(days: int) -> int:
         (f"-{days} days",),
     )
     await db.execute("DELETE FROM support_chats WHERE updated_at < datetime('now', ?)", (f"-{days} days",))
+    await db.execute("DELETE FROM media_text WHERE created_at < datetime('now', ?)", (f"-{days} days",))
     # "toza" natijalar eskiradi (model/sozlama o'zgarishi mumkin); "nsfw" natijalar saqlanib qoladi
     await db.execute(
         "DELETE FROM media_verdicts WHERE verdict = 'clean' AND created_at < datetime('now', ?)", (f"-{days} days",)
@@ -659,6 +666,20 @@ async def get_media_verdict(file_unique_id: str) -> str | None:
     cur = await db.execute("SELECT verdict FROM media_verdicts WHERE file_unique_id = ?", (file_unique_id,))
     row = await cur.fetchone()
     return row["verdict"] if row else None
+
+
+async def get_media_text(file_unique_id: str) -> str | None:
+    """Rasmdan avval o'qilgan yozuv va QR havolalar (bo'sh satr — o'qilgan, lekin yozuv yo'q)."""
+    db = await get_db()
+    cur = await db.execute("SELECT text FROM media_text WHERE file_unique_id = ?", (file_unique_id,))
+    row = await cur.fetchone()
+    return row["text"] if row else None
+
+
+async def save_media_text(file_unique_id: str, text: str) -> None:
+    db = await get_db()
+    await db.execute("INSERT OR REPLACE INTO media_text (file_unique_id, text) VALUES (?, ?)", (file_unique_id, text))
+    await db.commit()
 
 
 async def save_media_verdict(file_unique_id: str, verdict: str) -> None:

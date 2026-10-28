@@ -8,7 +8,7 @@ from aiogram.types import Message
 
 from texts import AD_NOTICE, LINK_DANGER_NOTICE, NSFW_NOTICE
 from utils.admin import get_user_status, is_admin
-from utils import nsfw, tg_links
+from utils import media_text, nsfw, tg_links
 from utils.ads import AD, DANGER, ai_verdict, classify, find_urls
 
 router = Router()
@@ -21,6 +21,8 @@ _warned: dict[int, float] = {}
 WARN_INTERVAL = 60
 _WARNED_MAX = 1000
 
+
+IMAGE_TEXT_MARK = "🖼"  # harfsiz: "izohsiz havola" qoidasida so'z bo'lib sanalmaydi
 
 # guruhga bog'langan kanal id'si (getChat): shu kanaldan forward reklama emas; soatda bir yangilanadi
 _linked: dict[int, tuple[int | None, float]] = {}
@@ -93,6 +95,12 @@ async def is_advertisement(message: Message, bot: Bot) -> dict | bool:
     """Filtr: reklama yoki xavfli havola bo'lsa {"verdict": ...}, aks holda False (boshqa routerlar, masalan AI, xabarni ko'radi)."""
     text = _message_text(message)
     entities = message.entities or message.caption_entities
+    user = message.from_user
+    if nsfw.media_of(message) is not None and not (user is not None and is_admin(user.id)):
+        # rasm/stiker/video muqovasidagi yozuv va QR-kod: xabar matnining oxiriga qo'shiladi (entity'lar siljimaydi)
+        image_text = await media_text.extract(bot, message)
+        if image_text:
+            text = f"{text}\n{IMAGE_TEXT_MARK}\n{image_text}" if text else f"{IMAGE_TEXT_MARK}\n{image_text}"
     forwarded = _from_channel(message)
     linked = await _linked_channel(bot, message.chat.id) if forwarded else None
     kind = classify(

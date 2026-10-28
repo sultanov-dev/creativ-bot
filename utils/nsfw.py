@@ -18,6 +18,7 @@ import logging
 import os
 import re
 import tempfile
+from collections import OrderedDict
 from dataclasses import dataclass
 
 from aiogram import Bot
@@ -59,6 +60,9 @@ AI_PROMPT = (
 _detector = None
 _detector_failed = False
 _scan_slots = asyncio.Semaphore(2)  # model protsessorni band qiladi: bir vaqtda ko'pi bilan 2 ta tekshiruv
+# yaqinda yuklangan kadrlar: rasmdagi yozuvni o'qish (utils/media_text) faylni qayta yuklamasin
+_recent: OrderedDict[str, list] = OrderedDict()
+_RECENT_MAX = 16
 
 
 @dataclass
@@ -222,6 +226,18 @@ async def _frames(bot: Bot, ref: MediaRef) -> list:
     return []
 
 
+async def frames_of(bot: Bot, ref: MediaRef) -> list:
+    """Media kadrlari: yaqinda yuklangan bo'lsa xotiradan, aks holda yuklab olinadi."""
+    if ref.unique_id in _recent:
+        return _recent[ref.unique_id]
+    frames = await _frames(bot, ref)
+    if frames:
+        _recent[ref.unique_id] = frames
+        while len(_recent) > _RECENT_MAX:
+            _recent.popitem(last=False)
+    return frames
+
+
 async def check_message(bot: Bot, message: Message) -> bool:
     """Xabardagi media 18+ bo'lsa True. Tekshirib bo'lmasa yoki ikkilanilsa (AI'siz) False."""
     ref = media_of(message)
@@ -234,7 +250,7 @@ async def check_message(bot: Bot, message: Message) -> bool:
     if cached is not None:
         return cached == NSFW
 
-    frames = await _frames(bot, ref)
+    frames = await frames_of(bot, ref)
     if not frames:
         return False
     async with _scan_slots:
