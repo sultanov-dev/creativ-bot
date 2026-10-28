@@ -17,6 +17,7 @@ G = tf.GROUP_ID
 U = 1
 ADMINS = (tf.ADMIN_ID, tf.ADMIN2_ID)
 BEFORE_LAST = ANSWERS[:-1]  # oxirgi savol (join_group) dan oldingi javoblar
+CONFIRM = texts.ANKETA_CONFIRM_BUTTON  # anketa ko'rsatilgach "Tasdiqlash": ariza shundan keyin yaratiladi
 
 
 async def count_applications() -> int:
@@ -40,17 +41,17 @@ def block_admins(session: FakeSession) -> None:
 async def crash_last_answer(
     dp: Dispatcher, bot: Bot, monkeypatch: pytest.MonkeyPatch, answers: list[str] | None = None
 ) -> Callable[[], None]:
-    """Oxirgi javobda bot "yiqiladi" (adminlarga yuborish o'rniga xato). Qaytaradi: yiqilishni bekor qiluvchi funksiya."""
+    """"Tasdiqlash"da bot "yiqiladi" (adminlarga yuborish o'rniga xato). Qaytaradi: yiqilishni bekor qiluvchi funksiya."""
     import handlers.anketa as anketa
 
-    await fill_form(dp, bot, U, answers or BEFORE_LAST)
+    await fill_form(dp, bot, U, [*(answers or BEFORE_LAST), ANSWERS[-1]], confirm=False)
     real = anketa.safe_send
 
     async def crashing(**kw):
         raise RuntimeError("bot to'xtadi")
 
     monkeypatch.setattr(anketa, "safe_send", crashing)
-    await feed(dp, bot, tf.private_message(U, ANSWERS[-1]))
+    await feed(dp, bot, tf.private_message(U, CONFIRM))
     return lambda: monkeypatch.setattr(anketa, "safe_send", real)
 
 
@@ -97,14 +98,14 @@ class TestBotStoppedMidFlow:
         self, dp, bot, session, monkeypatch
     ):
         restore = await crash_last_answer(dp, bot, monkeypatch)
-        assert (await state_of(dp, bot, U))[0] == "Form:join_group"  # javoblar yo'qolmadi
+        assert (await state_of(dp, bot, U))[0] == "Form:confirm"  # javoblar yo'qolmadi
         pending = await dbm.get_active_application(U, G)
         assert pending is not None and pending["status"] == "pending"
         assert not session.sent_to(tf.ADMIN_ID)
 
         restore()
         session.clear()
-        await feed(dp, bot, tf.private_message(U, ANSWERS[-1]))  # oxirgi javob qayta ishlanadi (redelivery)
+        await feed(dp, bot, tf.private_message(U, CONFIRM))  # "Tasdiqlash" qayta bosiladi (redelivery)
         assert all(len(session.sent_to(a)) == 1 for a in ADMINS)
         assert (await state_of(dp, bot, U))[0] is None
         assert texts.THANKS in session.texts_to(U)
@@ -121,19 +122,19 @@ class TestBotStoppedMidFlow:
         await feed(dp, bot, tf.join_request(U))
         assert texts.FINISH_FORM_FIRST not in session.texts_to(U)
 
-    async def test_double_tap_on_last_answer_makes_one_application(self, dp, bot, session):
-        await fill_form(dp, bot, U, BEFORE_LAST)
+    async def test_double_tap_on_confirm_makes_one_application(self, dp, bot, session):
+        await fill_form(dp, bot, U, ANSWERS, confirm=False)
         session.clear()
         await asyncio.gather(
-            feed(dp, bot, tf.private_message(U, ANSWERS[-1])), feed(dp, bot, tf.private_message(U, ANSWERS[-1]))
+            feed(dp, bot, tf.private_message(U, CONFIRM)), feed(dp, bot, tf.private_message(U, CONFIRM))
         )
         assert len(session.sent_to(tf.ADMIN_ID)) == 1
         assert await count_applications() == 1
 
     async def test_no_admin_reachable_marks_failed_and_clears_state(self, dp, bot, session):
-        await fill_form(dp, bot, U, BEFORE_LAST)
+        await fill_form(dp, bot, U, ANSWERS, confirm=False)
         block_admins(session)
-        await feed(dp, bot, tf.private_message(U, ANSWERS[-1]))
+        await feed(dp, bot, tf.private_message(U, CONFIRM))
         assert await dbm.last_application_status(U, G) == "failed"
         assert (await state_of(dp, bot, U))[0] is None
         assert session.texts_to(U)[-1] == texts.ERROR_GENERIC

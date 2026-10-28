@@ -1,6 +1,6 @@
 from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 
-from texts import PROFILE_BACK_BUTTON, PROFILE_EDIT_BUTTON, PROFILE_KEEP_BUTTON
+from texts import ANKETA_CONFIRM_BUTTON, PROFILE_BACK_BUTTON, PROFILE_EDIT_BUTTON, PROFILE_KEEP_BUTTON
 
 # anketa maydoni -> tugma yozuvi (tahrirlash menyusida)
 FIELD_LABELS = {
@@ -20,6 +20,17 @@ def review_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text=PROFILE_EDIT_BUTTON)],
             [KeyboardButton(text=PROFILE_KEEP_BUTTON)],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def confirm_keyboard() -> ReplyKeyboardMarkup:
+    """Yangi anketa: "Tasdiqlash" va "O'zgartirish" (oddiy tugmalar, 2 qator)."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=ANKETA_CONFIRM_BUTTON)],
+            [KeyboardButton(text=PROFILE_EDIT_BUTTON)],
         ],
         resize_keyboard=True,
     )

@@ -96,6 +96,27 @@ def bot(session):
 
 
 @pytest.fixture(autouse=True)
+def review_ai(monkeypatch):
+    """Tasdiqlangan anketaning AI tekshiruvi: standart bo'yicha muammo yo'q. `review_ai.answer` o'zgartirilishi mumkin."""
+    import utils.anketa_review as anketa_review
+
+    class Fake:
+        answer: str | Exception = '{"problems": []}'
+        calls: list = []
+
+        async def __call__(self, messages, **kw):
+            self.calls.append(messages)
+            if isinstance(self.answer, Exception):
+                raise self.answer
+            return self.answer
+
+    fake = Fake()
+    fake.calls = []
+    monkeypatch.setattr(anketa_review, "ask_ai", fake)
+    return fake
+
+
+@pytest.fixture(autouse=True)
 def _no_ai_retry_delays(monkeypatch):
     """AI qayta urinishlari orasida kutilmaydi (haqiqiy kutish utils/ai.py da, testda sekinlashtirmasin)."""
     import utils.ai

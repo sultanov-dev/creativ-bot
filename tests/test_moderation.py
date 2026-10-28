@@ -85,12 +85,12 @@ class TestIsAbusive:
 
 @pytest.fixture
 def block(monkeypatch):
-    """Anketa/sabab oqimlarida "SOKINISH" so'zi bor matnlar rad etiladi."""
+    """Anketa (mahalliy filtr) va sabab (AI moderatsiya) oqimlarida "SOKINISH" so'zi bor matnlar rad etiladi."""
 
     async def fake(text):
         return "SOKINISH" in text
 
-    monkeypatch.setattr("handlers.anketa.is_abusive", fake)
+    monkeypatch.setattr("handlers.anketa.has_profanity", lambda text: "SOKINISH" in text)
     monkeypatch.setattr("handlers.reason.is_abusive", fake)
 
 
@@ -114,16 +114,18 @@ class TestAnketaChecksFreeText:
         await feed(dp, bot, tf.private_message(U, "Toza Matn"))  # toza matn bilan qayta urinish o'tadi
         assert (await state_of(dp, bot, U))[0] != state.state
 
-    async def test_phone_and_age_are_not_sent_to_ai(self, dp, bot, session, monkeypatch):
-        calls = []
+    async def test_answers_are_not_sent_to_ai_one_by_one(self, dp, bot, session, monkeypatch, review_ai):
+        import utils.moderation as moderation
 
-        async def spy(text):
-            calls.append(text)
-            return False
+        async def no_ai(*a, **kw):
+            raise AssertionError("javoblar AI moderatsiyasiga yuborilmasligi kerak")
 
-        monkeypatch.setattr("handlers.anketa.is_abusive", spy)
+        monkeypatch.setattr(moderation, "ask_ai", no_ai)
         await start_application(dp, bot, answers=["Aziz Karimov", "+998901234567", "25", "Dasturchi", "Haqida", "Sabab"])
-        assert calls == ["Aziz Karimov", "Dasturchi", "Haqida", "Sabab"]
+        assert len(review_ai.calls) == 1  # faqat tasdiqlangandan keyin, butun anketa bir marta
+        sent = review_ai.calls[0][1]["content"]
+        assert "Aziz Karimov" in sent and "Sabab" in sent
+        assert "+998901234567" not in sent and "25" not in sent  # telefon va yosh AI'ga bormaydi
 
     async def test_edit_mode_also_checks_text(self, dp, bot, session, block):
         first = await start_application(dp, bot)

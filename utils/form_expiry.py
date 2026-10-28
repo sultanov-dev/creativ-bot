@@ -10,7 +10,7 @@ from states import Form
 from texts import FORM_EXPIRED
 from utils.questions import ask
 
-REVIEW_STATES = (Form.review.state, Form.pick_field.state)
+REVIEW_STATES = (Form.review.state, Form.confirm.state, Form.pick_field.state)
 FORM_STATES = (
     Form.full_name.state, Form.phone.state, Form.age.state, Form.job.state, Form.about.state,
     Form.join_group.state, *REVIEW_STATES,
@@ -30,8 +30,10 @@ async def restart_expired_form(bot: Bot, chat_id: int, state: FSMContext) -> Non
     """Eskirgan anketa: ogohlantiriladi va savol-javob qaytadan boshlanadi (saqlangan anketa ko'rigi bo'lsa, o'sha qayta ko'rsatiladi)."""
     data = await state.get_data()
     await bot.send_message(chat_id=chat_id, text=FORM_EXPIRED)
-    if await state.get_state() in REVIEW_STATES or data.get("editing"):
+    # avval saqlangan anketaning ko'rigi qayta ko'rsatiladi; yangi (hali yuborilmagan) anketa boshidan to'ldiriladi
+    if (await state.get_state() in REVIEW_STATES or data.get("editing")) and not data.get("fresh"):
         data.pop("editing", None)
+        data.pop("fix_fields", None)
         await state.set_data(data)
         await show_review(bot, chat_id, state)
         return

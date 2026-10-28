@@ -5,7 +5,7 @@ import re
 from aiogram import Bot, F, Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import Message, ReplyKeyboardRemove
 
 from database import (
     change_status,
@@ -14,14 +14,16 @@ from database import (
     mark_admins_notified,
     save_profile,
 )
-from handlers.profile import finish_edit
+from handlers.profile import ai_check_passed, finish_edit, show_review
 from keyboards.action import action_inline
 from states import Form
 from texts import (
     ALREADY_APPLIED,
+    ANKETA_CONFIRM_BUTTON,
     ERROR_GENERIC,
     MODERATION_WARNING,
     ONLY_TEXT,
+    PROFILE_USE_BUTTONS,
     SKIP_BUTTON,
     THANKS,
     TOO_LONG,
@@ -32,7 +34,7 @@ from texts import (
 )
 from utils.admin import reviewer_ids, safe_send
 from utils.form_anketa import PROFILE_FIELDS, format_anketa, full_name_of
-from utils.moderation import is_abusive
+from utils.profanity import has_profanity
 from utils.num_matcher import extract_number
 from utils.questions import ask
 
@@ -86,7 +88,7 @@ async def capture_full_name(message: Message, bot: Bot, state: FSMContext):
         await message.reply(WRONG_NAME)
         return
 
-    if await is_abusive(name):
+    if has_profanity(name):
         await message.reply(MODERATION_WARNING)
         return
 
@@ -132,7 +134,7 @@ async def capture_job(message: Message, bot: Bot, state: FSMContext):
         await message.reply(TOO_LONG)
         return
 
-    if await is_abusive(message.text or ""):
+    if has_profanity(message.text or ""):
         await message.reply(MODERATION_WARNING)
         return
 
@@ -146,7 +148,7 @@ async def capture_about(message: Message, bot: Bot, state: FSMContext):
         await message.reply(TOO_LONG)
         return
 
-    if await is_abusive(message.text or ""):
+    if has_profanity(message.text or ""):
         await message.reply(MODERATION_WARNING)
         return
 
@@ -160,34 +162,49 @@ async def capture_join_group(message: Message, bot: Bot, state: FSMContext):
         await message.reply(TOO_LONG)
         return
 
-    if await is_abusive(message.text or ""):
+    if has_profanity(message.text or ""):
         await message.reply(MODERATION_WARNING)
         return
 
+    await state.update_data(join_group=message.text)
+    if (await state.get_data()).get("editing"):
+        await finish_edit(bot, message.chat.id, state)
+        return
+    # adminlarga yuborishdan oldin: foydalanuvchi anketasini ko'radi va tasdiqlaydi (yoki o'zgartiradi)
+    await state.update_data(fresh=True)
+    await show_review(bot, message.chat.id, state)
+
+
+@router.message(F.text == ANKETA_CONFIRM_BUTTON, Form.confirm)
+async def on_confirm(message: Message, bot: Bot, state: FSMContext):
     user_id = message.chat.id
     if user_id in _finishing:
-        return  # ikki marta yuborilgan oxirgi javob dublikat ariza va admin xabarlarini yaratmasin
+        return  # ikki marta bosilgan tugma dublikat ariza va admin xabarlarini yaratmasin
     _finishing.add(user_id)
     try:
+        # tasdiqlangandan keyin AI butun anketani tekshiradi; muammo bo'lsa, o'sha joylar qayta so'raladi
+        if not await ai_check_passed(bot, user_id, state):
+            return
         await _finish_application(message, bot, state)
     finally:
         _finishing.discard(user_id)
 
 
-async def _finish_application(message: Message, bot: Bot, state: FSMContext) -> None:
-    """Oxirgi javobdan keyin: ariza yaratiladi va adminlarga yuboriladi, holat ENG OXIRIDA tozalanadi.
+@router.message(StateFilter(Form.confirm))
+async def confirm_use_buttons(message: Message):
+    await message.answer(PROFILE_USE_BUTTONS)
 
-    Bot shu oraliqda to'xtasa, holat va javoblar saqlanib qoladi: oxirgi javob qayta ishlanganda shu ariza
+
+async def _finish_application(message: Message, bot: Bot, state: FSMContext) -> None:
+    """Tasdiqlangan va AI tekshiruvidan o'tgan anketa: ariza yaratiladi va adminlarga yuboriladi, holat ENG OXIRIDA tozalanadi.
+
+    Bot shu oraliqda to'xtasa, holat va javoblar saqlanib qoladi: "Tasdiqlash" qayta bosilganda shu ariza
     qayta ishlatiladi va adminlarga yetkaziladi (javoblar yo'qolmaydi, ariza adminlarsiz qolib ketmaydi).
     """
-    await state.update_data(join_group=message.text)
     if message.from_user is not None:
         # username so'ralmaydi: avtomatik olinadi va anketada ko'rsatilmaydi
         await state.update_data(username=message.from_user.username)
     data = await state.get_data()
-    if data.get("editing"):
-        await finish_edit(bot, message.chat.id, state)
-        return
     group_id = data.get("group_id")
     user_id = message.chat.id
 
@@ -197,14 +214,14 @@ async def _finish_application(message: Message, bot: Bot, state: FSMContext) -> 
     if group_id is None:
         logger.warning("group_id topilmadi, user_id=%s", user_id)
         await state.clear()
-        await message.answer(ERROR_GENERIC)
+        await message.answer(ERROR_GENERIC, reply_markup=ReplyKeyboardRemove())
         return
 
     admins = await reviewer_ids(bot, group_id)
     if not admins:
         logger.error("Guruh %s uchun anketani ko'rib chiqadigan admin topilmadi", group_id)
         await state.clear()
-        await message.answer(ERROR_GENERIC)
+        await message.answer(ERROR_GENERIC, reply_markup=ReplyKeyboardRemove())
         return
 
     full_name = full_name_of(data)
@@ -216,7 +233,7 @@ async def _finish_application(message: Message, bot: Bot, state: FSMContext) -> 
     # faqat aynan shu anketadan yaratilgan pending ariza qayta ishlatiladi (oldingi urinish yiqilgan); boshqasi dublikat
     if existing and not (existing["status"] == "pending" and existing["anketa"] == anketa):
         await state.clear()
-        await message.answer(ALREADY_APPLIED)
+        await message.answer(ALREADY_APPLIED, reply_markup=ReplyKeyboardRemove())
         return
     # holat hali tozalanmagan bo'lsa, oldingi urinish tugamagan: o'sha ariza qayta ishlatiladi
     app_id = existing["id"] if existing else await create_application(
@@ -230,7 +247,7 @@ async def _finish_application(message: Message, bot: Bot, state: FSMContext) -> 
     )
     if app_id is None:
         await state.clear()
-        await message.answer(ALREADY_APPLIED)
+        await message.answer(ALREADY_APPLIED, reply_markup=ReplyKeyboardRemove())
         return
 
     results = await asyncio.gather(
@@ -252,13 +269,12 @@ async def _finish_application(message: Message, bot: Bot, state: FSMContext) -> 
         )
         await change_status(app_id, old="pending", new="failed")
         await state.clear()
-        await message.answer(ERROR_GENERIC)
+        await message.answer(ERROR_GENERIC, reply_markup=ReplyKeyboardRemove())
         return
 
     await mark_admins_notified(app_id)
     await state.clear()  # eng oxirida: yuqoridagi qadamlar yiqilsa, javoblar yo'qolmaydi
-    await message.answer(private_anketa)
-    await message.answer(THANKS)
+    await message.answer(THANKS, reply_markup=ReplyKeyboardRemove())
 
 
 @router.message(StateFilter(Form))

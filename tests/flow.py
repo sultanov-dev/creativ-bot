@@ -11,6 +11,8 @@ from callbacks import ApplicantCB, DecisionCB, VoteCB
 from tests import telegram_fakes as tf
 from tests.conftest import expire_voting
 from tests.telegram_fakes import FakeSession
+from states import Form
+from utils.fsm import get_private_state
 
 
 async def feed(dp: Dispatcher, bot: Bot, update: Update):
@@ -35,12 +37,22 @@ ANSWERS = ["Aziz Karimov", texts.SKIP_BUTTON, "25", "Dasturchi", "O'zim haqimda"
 
 
 async def fill_form(
-    dp: Dispatcher, bot: Bot, user_id: int = 1, answers: Sequence[str] | None = None, *, group_id: int = tf.GROUP_ID
+    dp: Dispatcher, bot: Bot, user_id: int = 1, answers: Sequence[str] | None = None, *, group_id: int = tf.GROUP_ID,
+    confirm: bool = True,
 ) -> None:
-    """Join request + butun anketa (ariza yaratilishi shart emas: xato yo'llarini sinash uchun)."""
+    """Join request + butun anketa (ariza yaratilishi shart emas: xato yo'llarini sinash uchun).
+
+    Barcha javoblar qabul qilinib anketa ko'rsatilgan bo'lsa (Form.confirm), "Tasdiqlash" ham bosiladi.
+    """
     await feed(dp, bot, tf.join_request(user_id, group_id))
     for a in answers or ANSWERS:
         await feed(dp, bot, tf.private_message(user_id, a))
+    if confirm and await private_state(dp, bot, user_id) == Form.confirm.state:
+        await feed(dp, bot, tf.private_message(user_id, texts.ANKETA_CONFIRM_BUTTON))
+
+
+async def private_state(dp: Dispatcher, bot: Bot, user_id: int) -> str | None:
+    return await get_private_state(storage=dp.storage, bot=bot, user_id=user_id).get_state()
 
 
 async def start_application(

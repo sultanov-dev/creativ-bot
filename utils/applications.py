@@ -118,7 +118,7 @@ async def redeliver_undelivered(bot: Bot, storage: BaseStorage) -> int:
         logger.info("Ariza %s: adminlarga qayta yuborildi: %s", app["id"], delivered)
 
         user_state = get_private_state(storage=storage, bot=bot, user_id=app["user_id"])
-        if await user_state.get_state() == Form.join_group.state:
+        if await user_state.get_state() in (Form.join_group.state, Form.confirm.state):
             await user_state.clear()
             await safe_send(bot=bot, chat_id=app["user_id"], text=THANKS if delivered else ERROR_GENERIC)
         done += 1

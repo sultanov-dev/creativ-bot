@@ -231,20 +231,21 @@ class TestCompletion:
         await ctx.set_state(Form.join_group)
         await ctx.set_data({"full_name": "Aziz Karimov", "age": 25, "job": "j", "about": "a"})
         await feed(dp, bot, tf.private_message(U, "sabab"))
+        await feed(dp, bot, tf.private_message(U, texts.ANKETA_CONFIRM_BUTTON))
         assert session.texts_to(U)[-1] == texts.ERROR_GENERIC
         assert await dbm.get_profile(U) is not None  # javoblar baribir saqlangan
 
     async def test_existing_active_application_at_the_end(self, dp, bot, session):
-        await at_step(dp, bot, 5)
+        await at_step(dp, bot, 6)  # anketa ko'rsatilgan, hali tasdiqlanmagan
         await dbm.create_application(U, tf.GROUP_ID, "A B", "x\n")  # shu orada boshqa ariza paydo bo'ldi
-        await feed(dp, bot, tf.private_message(U, "Sabab"))
+        await feed(dp, bot, tf.private_message(U, texts.ANKETA_CONFIRM_BUTTON))
         assert session.texts_to(U) == [texts.ALREADY_APPLIED]
         assert session.sent_to(tf.ADMIN_ID) == []
 
-    async def test_double_send_of_last_answer_creates_single_application(self, dp, bot, session):
-        await at_step(dp, bot, 5)
-        await feed(dp, bot, tf.private_message(U, "Sabab"))
-        await feed(dp, bot, tf.private_message(U, "Sabab"))  # holat tozalangan: ikkinchisi e'tiborsiz
+    async def test_double_confirm_creates_single_application(self, dp, bot, session):
+        await at_step(dp, bot, 6)
+        await feed(dp, bot, tf.private_message(U, texts.ANKETA_CONFIRM_BUTTON))
+        await feed(dp, bot, tf.private_message(U, texts.ANKETA_CONFIRM_BUTTON))  # holat tozalangan: e'tiborsiz
         assert await app_count() == 1 and len(session.sent_to(tf.ADMIN_ID)) == 1
 
     async def test_admin_gets_vote_and_reject_buttons_with_clear_texts(self, dp, bot, session):

@@ -52,6 +52,17 @@ PROFILE_REVIEW = (
     "{anketa}\n"
     "Shu ma'lumotlar bilan davom etamizmi yoki o'zgartirasizmi?"
 )
+ANKETA_CONFIRM = (
+    "Anketangiz tayyor. Tekshirib chiqing:\n\n"
+    "{anketa}\n"
+    "Hammasi to'g'ri bo'lsa, tasdiqlang 👇"
+)
+ANKETA_CONFIRM_BUTTON = "✅ Tasdiqlash"
+ANKETA_NEEDS_FIX = (
+    "⚠️ Anketangizda to'g'rilash kerak bo'lgan joylar bor:\n\n"
+    "{problems}\n\n"
+    "Iltimos, shu joylarni qayta to'ldiring 👇"
+)
 PROFILE_PICK_FIELD = "Qaysi ma'lumotni o'zgartirmoqchisiz?"
 PROFILE_SAVED = "✅ Saqlandi"
 PROFILE_USE_BUTTONS = "Iltimos, pastdagi tugmalardan birini tanlang 👇"
