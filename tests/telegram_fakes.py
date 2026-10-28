@@ -178,13 +178,13 @@ class FakeSession(BaseSession):
         if isinstance(method, GetChatMemberCount):
             return self.member_count
         if isinstance(method, GetChat):
-            return _full_chat(int(method.chat_id))
+            return _full_chat(int(method.chat_id), getattr(self, "linked_chats", {}).get(int(method.chat_id)))
         # qolgan barcha metodlar (answer_callback_query, ban, delete, edit...) uchun oddiy muvaffaqiyat
         return True
         return True
 
 
-def _full_chat(chat_id: int):
+def _full_chat(chat_id: int, linked_chat_id: int | None = None):
     from aiogram.types import AcceptedGiftTypes, ChatFullInfo
 
     return ChatFullInfo(
@@ -193,6 +193,7 @@ def _full_chat(chat_id: int):
             unlimited_gifts=False, limited_gifts=False, unique_gifts=False, premium_subscription=False, gifts_from_channels=False
         ),
         permissions=ChatPermissions(can_send_messages=True),
+        linked_chat_id=linked_chat_id,
     )
 
 

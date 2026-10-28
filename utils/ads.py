@@ -45,7 +45,9 @@ SYSTEM_PROMPT = (
     "with a local analysis: its registered domain, the words split out of the domain and path, and warning signals "
     "(lookalike = a brand imitated with digits or look-alike letters, brand-not-official = a brand name on a domain "
     "that is not the brand's own, url-shortener, ip-address, punycode, risky-suffix, scam-words, userinfo-trick). "
-    "Signals are hints, not proof: e.g. a library site named after a brand can be fine.\n"
+    "Signals are hints, not proof: e.g. a library site named after a brand can be fine. A message may be a post "
+    "forwarded from a channel (the channel is named first): sharing a useful on-topic post is OK, a post whose aim is "
+    "to promote the channel or something else is AD.\n"
     "DANGER: a link that can harm members: phishing (fake login, Telegram, bank, payment or wallet pages; look-alike "
     "domains such as te1egram, g00gle, paypa1; punycode xn-- domains imitating a brand), scams (giveaways, free "
     "Telegram Premium, stars, NFT or gifts, prizes, 'double your money', investment returns), malware or cracked "
@@ -89,29 +91,36 @@ def classify(
     text: str,
     entities: list | None,
     *,
-    forwarded_from_channel: bool = False,
+    forwarded_from: tg_links.TgLink | None = None,
     markup: object | None = None,
     chat_id: int | None = None,
     chat_username: str | None = None,
+    linked_chat_id: int | None = None,
 ) -> str | None:
     """Mahalliy saralash (AI'siz):
 
-    "danger" (dastur fayli, soxta domen), "definite" (aniq reklama), "telegram" (begona Telegram havolasi, aniq
-    belgi yo'q: AI hal qiladi, AI ishlamasa o'chiriladi), "candidate" (boshqa shubha: AI hal qiladi, AI ishlamasa
-    qoladi) yoki None (belgi yo'q). Shu guruhning o'z xabari/havolasi hech qachon shubha emas.
+    "danger" (dastur fayli, soxta domen), "definite" (aniq reklama), "telegram" (begona Telegram havolasi yoki
+    kanaldan forward, aniq belgi yo'q: AI hal qiladi, AI ishlamasa o'chiriladi), "candidate" (boshqa shubha: AI hal
+    qiladi, AI ishlamasa qoladi) yoki None (belgi yo'q). Shu guruhning o'z xabari/havolasi va guruhga bog'langan
+    kanaldan forward hech qachon shubha emas.
     """
     text = text or ""
     urls = find_urls(text, entities, markup)
     if _definitely_dangerous(urls):
         return "danger"
-    if forwarded_from_channel or TG_SCHEME_RE.search(text) or any(TG_SCHEME_RE.match(u) for u in urls):
+    if TG_SCHEME_RE.search(text) or any(TG_SCHEME_RE.match(u) for u in urls):
         return "definite"
     links = [(u, tg_links.parse(u)) for u in urls]
-    own = {u for u, link in links if link is not None and tg_links.is_own(link, chat_id, chat_username)}
-    foreign_tg = [link for u, link in links if link is not None and u not in own]
+
+    def own(link: tg_links.TgLink) -> bool:
+        return tg_links.is_own(link, chat_id, chat_username, linked_chat_id)
+
+    foreign = [(u, link) for u, link in links if link is not None and not own(link)]
+    if forwarded_from is not None and not own(forwarded_from):
+        foreign.append(("", forwarded_from))
     other_urls = [u for u, link in links if link is None]
-    if foreign_tg:
-        if tg_links.obvious_ad(text, [u for u, link in links if link is not None and u not in own], foreign_tg):
+    if foreign:
+        if tg_links.obvious_ad(text, [u for u, _ in foreign if u], [link for _, link in foreign]):
             return "definite"
         return "telegram"
     if other_urls or PHONE_RE.search(text) or PROMO_RE.search(text):
@@ -119,9 +128,11 @@ def classify(
     return None
 
 
-async def ai_verdict(text: str, urls: list[str] | None = None) -> str | None:
+async def ai_verdict(text: str, urls: list[str] | None = None, forwarded_from: str | None = None) -> str | None:
     """AI: DANGER, AD yoki OK. AI ishlamasa, kech yoki tushunarsiz javob bersa None (qaror chaqiruvchida)."""
     content = text[:MAX_TEXT]
+    if forwarded_from:
+        content = f"[Forwarded from channel: {forwarded_from[:200]}]\n{content}"
     if urls:
         content += "\n\nLinks:\n" + "\n".join(f"- {u[:300]} [{analyze(u).describe()[:400]}]" for u in urls[:10])
     try:

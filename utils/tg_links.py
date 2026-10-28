@@ -1,9 +1,13 @@
 """Guruhdagi Telegram havolalarini (t.me ...) AI'dan oldin bot o'zi tekshiradi: AI har safar chaqirilmasin.
 
-1. Shu guruhning o'z xabari yoki havolasi (t.me/c/<guruh>/..., t.me/<guruh_username>/...) — shubha emas.
+Kanaldan forward qilingan post ham xuddi shunday: kanal — "manzil", post matni — xabar matni.
+
+1. Shu guruhning o'z xabari yoki havolasi (t.me/c/<guruh>/..., t.me/<guruh_username>/...) va guruhga bog'langan
+   kanaldan forward — shubha emas.
 2. Aniq reklama — AI'siz o'chiriladi: yopiq guruh/kanalga taklif (t.me/+..., joinchat, addlist), referal parametr
    (?start=, ?startapp=, ref), aniq reklama so'zlari ("obuna bo'ling", "kanalimiz", "bonus"...), izohsiz yalang'och
-   havola, yoki shu manzil yaqinda AI tomonidan reklama deb topilgan (xotiradagi qora ro'yxat).
+   havola yoki matnsiz forward, yoki shu manzil/kanal yaqinda AI tomonidan reklama deb topilgan (xotiradagi qora
+   ro'yxat).
 3. Qolganini AI hal qiladi (masalan, foydali dasturlash kanalining posti bilan bo'lishish).
 """
 import re
@@ -37,6 +41,8 @@ class TgLink:
     internal_id: str = ""  # t.me/c/<id>/<xabar>
     invite: bool = False  # t.me/+hash, joinchat, addlist
     referral: bool = False  # ?start=..., ?startapp=..., ref
+    channel_id: int | None = None  # kanaldan forward qilingan post: kanal id'si
+    forwarded: bool = False  # havola emas, kanaldan forward (xabar matni — kanal postining o'zi)
 
 
 def parse(url: str) -> TgLink | None:
@@ -63,8 +69,17 @@ def parse(url: str) -> TgLink | None:
     return TgLink(raw, key=f"u:{name}", username=name, referral=referral)
 
 
-def is_own(link: TgLink, chat_id: int | None, chat_username: str | None) -> bool:
-    """Shu guruhning o'z xabari yoki havolasi."""
+def from_channel(chat_id: int, username: str | None, title: str | None) -> TgLink:
+    """Kanaldan forward qilingan post: kanal havola kabi tekshiriladi (qora ro'yxat t.me/<username> bilan umumiy)."""
+    key = f"u:{username.lower()}" if username else f"id:{chat_id}"
+    label = f"{title or ''} (@{username})" if username else (title or str(chat_id))
+    return TgLink(label.strip(), key=key, username=(username or "").lower(), channel_id=chat_id, forwarded=True)
+
+
+def is_own(link: TgLink, chat_id: int | None, chat_username: str | None, linked_chat_id: int | None = None) -> bool:
+    """Shu guruhning o'z xabari yoki havolasi, yoki guruhga bog'langan kanal."""
+    if link.channel_id is not None and link.channel_id == linked_chat_id:
+        return True
     if link.internal_id and chat_id is not None and str(chat_id) == f"-100{link.internal_id}":
         return True
     return bool(link.username and chat_username and link.username == chat_username.lower())
@@ -88,7 +103,8 @@ def remember_ad(links: list[TgLink]) -> None:
 
 
 def obvious_ad(text: str, tg_urls: list[str], links: list[TgLink]) -> bool:
-    """AI'siz aniq reklama: taklif yoki referal havola, reklama so'zlari, izohsiz havola yoki qora ro'yxatdagi manzil."""
+    """AI'siz aniq reklama: taklif yoki referal havola, reklama so'zlari, izohsiz havola (yoki matnsiz forward),
+    yoki qora ro'yxatdagi manzil/kanal."""
     if any(link.invite or link.referral or is_blocked(link) for link in links):
         return True
     if STRONG_PROMO_RE.search(text):

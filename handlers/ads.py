@@ -22,9 +22,31 @@ WARN_INTERVAL = 60
 _WARNED_MAX = 1000
 
 
-def _from_channel(message: Message) -> bool:
+# guruhga bog'langan kanal id'si (getChat): shu kanaldan forward reklama emas; soatda bir yangilanadi
+_linked: dict[int, tuple[int | None, float]] = {}
+LINKED_TTL = 3600
+
+
+def _from_channel(message: Message) -> tg_links.TgLink | None:
     origin = getattr(message, "forward_origin", None)
-    return origin is not None and getattr(origin, "type", None) == "channel"
+    if origin is None or getattr(origin, "type", None) != "channel":
+        return None
+    chat = origin.chat
+    return tg_links.from_channel(chat.id, chat.username, chat.title)
+
+
+async def _linked_channel(bot: Bot, chat_id: int) -> int | None:
+    cached = _linked.get(chat_id)
+    now = time.monotonic()
+    if cached and cached[1] > now:
+        return cached[0]
+    try:
+        linked = (await bot.get_chat(chat_id)).linked_chat_id
+    except TelegramAPIError as e:
+        logger.warning("Bog'langan kanalni aniqlab bo'lmadi (chat=%s): %s", chat_id, e)
+        return cached[0] if cached else None
+    _linked[chat_id] = (linked, now + LINKED_TTL)
+    return linked
 
 
 async def _exempt(bot: Bot, message: Message) -> bool:
@@ -46,13 +68,16 @@ async def is_advertisement(message: Message, bot: Bot) -> dict | bool:
     """Filtr: reklama yoki xavfli havola bo'lsa {"verdict": ...}, aks holda False (boshqa routerlar, masalan AI, xabarni ko'radi)."""
     text = message.text or message.caption or ""
     entities = message.entities or message.caption_entities
+    forwarded = _from_channel(message)
+    linked = await _linked_channel(bot, message.chat.id) if forwarded else None
     kind = classify(
         text,
         entities,
-        forwarded_from_channel=_from_channel(message),
+        forwarded_from=forwarded,
         markup=message.reply_markup,
         chat_id=message.chat.id,
         chat_username=message.chat.username,
+        linked_chat_id=linked,
     )
     if kind is None:
         return False
@@ -63,11 +88,12 @@ async def is_advertisement(message: Message, bot: Bot) -> dict | bool:
     if kind == "definite":
         return {"verdict": AD}
     urls = find_urls(text, entities, message.reply_markup)
-    verdict = await ai_verdict(text, urls)
+    verdict = await ai_verdict(text, urls, forwarded.url if forwarded else None)
+    candidates = [*map(tg_links.parse, urls), forwarded]
     tg = [
         link
-        for link in map(tg_links.parse, urls)
-        if link is not None and not tg_links.is_own(link, message.chat.id, message.chat.username)
+        for link in candidates
+        if link is not None and not tg_links.is_own(link, message.chat.id, message.chat.username, linked)
     ]
     if verdict in (AD, DANGER):
         tg_links.remember_ad(tg)  # shu manzil yana kelsa, AI chaqirilmaydi

@@ -52,7 +52,7 @@ async def db(tmp_path, monkeypatch):
 @pytest.fixture(autouse=True)
 def _reset_module_state():
     """Modullardagi xotira keshlari testlar orasida sizib o'tmasin."""
-    from handlers import ai, errors
+    from handlers import ads, ai, errors
     from utils import autodelete, members, tg_links
 
     def clear():
@@ -62,6 +62,7 @@ def _reset_module_state():
         errors._last_alert.clear()
         autodelete._tasks.clear()
         tg_links._blocked.clear()
+        ads._linked.clear()
 
     clear()
     yield

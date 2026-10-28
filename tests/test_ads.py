@@ -13,7 +13,7 @@ from handlers import ads as ads_handler
 from tests import telegram_fakes as tf
 from tests.flow import feed
 from tests.telegram_fakes import FakeSession
-from utils import ads
+from utils import ads, tg_links
 from utils.ai import AIError
 
 G = tf.GROUP_ID
@@ -30,8 +30,9 @@ class TestClassify:
     def test_telegram_links_are_definite(self, text):
         assert ads.classify(text, None) == "definite"
 
-    def test_forward_from_channel_and_telegram_text_link_are_definite(self):
-        assert ads.classify("salom", None, forwarded_from_channel=True) == "definite"
+    def test_bare_channel_forward_and_telegram_text_link_are_definite(self):
+        channel = tg_links.from_channel(-100777, "kanal", "K")
+        assert ads.classify("salom", None, forwarded_from=channel) == "definite"  # deyarli matnsiz forward
         entity = MessageEntity(type="text_link", offset=0, length=4, url="https://t.me/spam")
         assert ads.classify("bosing", [entity]) == "definite"
 
@@ -185,7 +186,7 @@ class TestRemoval:
         assert ai.calls == [] and deleted(session) == []
 
     @pytest.mark.parametrize("field,text,changes", [
-        ("message", "Yangi post", {"forward_origin": CHANNEL_FORWARD}),                  # kanaldan forward
+        ("message", "📢", {"forward_origin": CHANNEL_FORWARD}),                          # matnsiz kanal forwardi
         ("edited_message", "t.me/spam", {}),                                             # tahrirlangan xabar
         ("message", "x", {"text": None, "caption": "Obuna bo'ling t.me/promo"}),         # rasm izohi
     ])
@@ -260,4 +261,38 @@ class TestTelegramLinks:
 
     async def test_link_to_a_message_of_this_group_costs_no_ai_call(self, dp, bot, session, ai):
         await post(dp, bot, "Javob yuqorida t.me/c/1234567890/5")  # tf.GROUP_ID = -1001234567890
+        assert deleted(session) == [] and ai.calls == []
+
+
+class TestChannelForwards:
+    """Kanaldan forward: avval bot o'zi (bog'langan kanal, qora ro'yxat, reklama so'zlari, matnsiz), keyin AI."""
+
+    async def _forward(self, dp, bot, text, *, channel=CHANNEL_FORWARD, message_id=800):
+        msg = tf.group_message_obj(USER, text, message_id=message_id).model_copy(update={"forward_origin": channel})
+        await feed(dp, bot, Update.model_validate({"update_id": 90000 + message_id, "message": msg.model_dump(by_alias=True)}))
+
+    async def test_useful_post_stays_when_ai_says_ok_and_ai_sees_the_channel(self, dp, bot, session, ai):
+        ai.answer = "OK"
+        await self._forward(dp, bot, "Python 3.14 da yangi sintaksis imkoniyatlari haqida qisqa sharh")
+        assert deleted(session) == [] and len(ai.calls) == 1
+        assert "[Forwarded from channel: K]" in ai.calls[0][1]["content"]
+
+    async def test_promotional_forward_is_deleted_without_ai(self, dp, bot, session, ai):
+        await self._forward(dp, bot, "Kanalimizga obuna bo'ling, har kuni yangi darslar")
+        assert deleted(session) == [800] and ai.calls == []
+
+    async def test_ai_ad_blacklists_the_channel(self, dp, bot, session, ai):
+        ai.answer = "AD"
+        await self._forward(dp, bot, "Bizda eng zo'r narxlar va tezkor yetkazib berish", message_id=801)
+        await self._forward(dp, bot, "Yangi mahsulotlar keldi, tanlab oling", message_id=802)
+        assert deleted(session) == [801, 802] and len(ai.calls) == 1
+
+    async def test_ai_down_deletes_the_forward(self, dp, bot, session, ai):
+        ai.answer = AIError("503")
+        await self._forward(dp, bot, "Python 3.14 da yangi sintaksis imkoniyatlari haqida qisqa sharh")
+        assert deleted(session) == [800]
+
+    async def test_forward_from_the_groups_linked_channel_is_fine(self, dp, bot, session, ai):
+        session.linked_chats = {G: -100777}
+        await self._forward(dp, bot, "📢")
         assert deleted(session) == [] and ai.calls == []
