@@ -44,4 +44,4 @@ MAX_ESCALATIONS_PER_DAY = 3
 # sabablar bilan yopilgan bo'lsa: haqorat va kunlik limit. Boshqa rad etishlar (masalan, taqiqlangan reklama,
 # noaniq masala) foydalanuvchini to'smaydi: u yangi suhbat ochib, masalasini qayta tushuntira oladi
 DECLINE_COOLDOWN_HOURS = 24
-BLOCKING_CATEGORIES = ("abuse", "limit")
+BLOCKING_CATEGORIES = ("abuse", "violation", "limit")  # violation: xavfli havola yoki 18+ kontent takrorlandi

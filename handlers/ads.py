@@ -8,8 +8,8 @@ from aiogram.types import Message
 
 from texts import AD_NOTICE, LINK_DANGER_NOTICE, NSFW_NOTICE
 from utils.admin import get_user_status, is_admin
-from utils import media_text, nsfw, tg_links
-from utils.ads import AD, DANGER, ai_verdict, classify, find_urls
+from utils import content_check
+from utils.ads import DANGER
 
 router = Router()
 router.message.filter(F.chat.type.in_({"group", "supergroup"}))
@@ -20,35 +20,6 @@ logger = logging.getLogger(__name__)
 _warned: dict[int, float] = {}
 WARN_INTERVAL = 60
 _WARNED_MAX = 1000
-
-
-IMAGE_TEXT_MARK = "🖼"  # harfsiz: "izohsiz havola" qoidasida so'z bo'lib sanalmaydi
-
-# guruhga bog'langan kanal id'si (getChat): shu kanaldan forward reklama emas; soatda bir yangilanadi
-_linked: dict[int, tuple[int | None, float]] = {}
-LINKED_TTL = 3600
-
-
-def _from_channel(message: Message) -> tg_links.TgLink | None:
-    origin = getattr(message, "forward_origin", None)
-    if origin is None or getattr(origin, "type", None) != "channel":
-        return None
-    chat = origin.chat
-    return tg_links.from_channel(chat.id, chat.username, chat.title)
-
-
-async def _linked_channel(bot: Bot, chat_id: int) -> int | None:
-    cached = _linked.get(chat_id)
-    now = time.monotonic()
-    if cached and cached[1] > now:
-        return cached[0]
-    try:
-        linked = (await bot.get_chat(chat_id)).linked_chat_id
-    except TelegramAPIError as e:
-        logger.warning("Bog'langan kanalni aniqlab bo'lmadi (chat=%s): %s", chat_id, e)
-        return cached[0] if cached else None
-    _linked[chat_id] = (linked, now + LINKED_TTL)
-    return linked
 
 
 async def _exempt(bot: Bot, message: Message) -> bool:
@@ -66,75 +37,24 @@ async def _exempt(bot: Bot, message: Message) -> bool:
     return str(getattr(status, "value", status)) in ("administrator", "creator")
 
 
-def _message_text(message: Message) -> str:
-    """Tekshiriladigan matn: xabar/izoh, so'rovnoma savoli va javoblari, joy nomi va manzili, kontakt."""
-    parts = [message.text or message.caption or ""]
-    if message.poll:
-        parts += [message.poll.question, *(o.text for o in message.poll.options)]
-    if message.venue:
-        parts += [message.venue.title, message.venue.address]
-    if message.contact:
-        c = message.contact
-        parts += [" ".join(p for p in (c.first_name, c.last_name) if p), c.phone_number]
-    return "\n".join(p for p in parts if p)
-
-
 async def is_nsfw(message: Message, bot: Bot) -> dict | bool:
     """Filtr: rasm, stiker, video, GIF, video-xabar yoki rasm-fayl 18+ bo'lsa {"verdict": "nsfw"}."""
     user = message.from_user
-    if nsfw.media_of(message) is None or (user is not None and is_admin(user.id)):
+    if user is not None and is_admin(user.id):
+        return False  # bot adminlarining mediasi yuklab ham olinmaydi
+    if await content_check.media_verdict(bot, message) is None or await _exempt(bot, message):
         return False
-    if not await nsfw.check_message(bot, message):
-        return False
-    if await _exempt(bot, message):
-        return False
-    return {"verdict": nsfw.NSFW}
+    return {"verdict": content_check.NSFW}
 
 
 async def is_advertisement(message: Message, bot: Bot) -> dict | bool:
     """Filtr: reklama yoki xavfli havola bo'lsa {"verdict": ...}, aks holda False (boshqa routerlar, masalan AI, xabarni ko'radi)."""
-    text = _message_text(message)
-    entities = message.entities or message.caption_entities
     user = message.from_user
-    if nsfw.media_of(message) is not None and not (user is not None and is_admin(user.id)):
-        # rasm/stiker/video muqovasidagi yozuv va QR-kod: xabar matnining oxiriga qo'shiladi (entity'lar siljimaydi)
-        image_text = await media_text.extract(bot, message)
-        if image_text:
-            text = f"{text}\n{IMAGE_TEXT_MARK}\n{image_text}" if text else f"{IMAGE_TEXT_MARK}\n{image_text}"
-    forwarded = _from_channel(message)
-    linked = await _linked_channel(bot, message.chat.id) if forwarded else None
-    kind = classify(
-        text,
-        entities,
-        forwarded_from=forwarded,
-        markup=message.reply_markup,
-        chat_id=message.chat.id,
-        chat_username=message.chat.username,
-        linked_chat_id=linked,
+    text = await content_check.full_text(bot, message, read_media=not (user is not None and is_admin(user.id)))
+    verdict = await content_check.text_verdict(
+        bot, message, text, group_id=message.chat.id, exempt=lambda: _exempt(bot, message)
     )
-    if kind is None:
-        return False
-    if await _exempt(bot, message):
-        return False
-    if kind == "danger":
-        return {"verdict": DANGER}
-    if kind == "definite":
-        return {"verdict": AD}
-    urls = find_urls(text, entities, message.reply_markup)
-    verdict = await ai_verdict(text, urls, forwarded.url if forwarded else None)
-    candidates = [*map(tg_links.parse, urls), forwarded]
-    tg = [
-        link
-        for link in candidates
-        if link is not None and not tg_links.is_own(link, message.chat.id, message.chat.username, linked)
-    ]
-    if verdict in (AD, DANGER):
-        tg_links.remember_ad(tg)  # shu manzil yana kelsa, AI chaqirilmaydi
-        return {"verdict": verdict}
-    if verdict is None and kind == "telegram":
-        # AI ishlamadi: begona Telegram havolasi avvalgidek o'chiriladi (uzilish reklamaga yo'l ochmasin)
-        return {"verdict": AD}
-    return False
+    return {"verdict": verdict} if verdict else False
 
 
 # dekoratorlar pastdan yuqoriga ro'yxatdan o'tadi: avval 18+ media (AI'siz model), keyin reklama/havola
@@ -149,7 +69,7 @@ async def remove_advertisement(message: Message, bot: Bot, verdict: str):
     except TelegramAPIError as e:
         logger.warning("Reklamani o'chirib bo'lmadi (chat=%s, message=%s): %s", message.chat.id, message.message_id, e)
         return
-    kind = {DANGER: "Xavfli havola", nsfw.NSFW: "18+ kontent"}.get(verdict, "Reklama")
+    kind = {DANGER: "Xavfli havola", content_check.NSFW: "18+ kontent"}.get(verdict, "Reklama")
     logger.info("%s o'chirildi: chat=%s user=%s", kind, message.chat.id, user.id if user else None)
 
     now = time.monotonic()
@@ -160,5 +80,5 @@ async def remove_advertisement(message: Message, bot: Bot, verdict: str):
             del _warned[uid]
     _warned[user.id] = now
     # bu xabar ham AUTO_DELETE_SECONDS dan keyin o'chadi
-    notice = {DANGER: LINK_DANGER_NOTICE, nsfw.NSFW: NSFW_NOTICE}.get(verdict, AD_NOTICE)
+    notice = {DANGER: LINK_DANGER_NOTICE, content_check.NSFW: NSFW_NOTICE}.get(verdict, AD_NOTICE)
     await bot.send_message(chat_id=message.chat.id, text=notice.format(name=escape(user.full_name)))

@@ -23,13 +23,15 @@ from database import (
     get_support_chat,
     get_support_messages,
     set_support_status,
+    user_groups,
 )
-from utils.admin import is_admin, safe_send
+from utils.admin import is_admin, is_group_member, safe_send
 from utils.autodelete import keep_messages, schedule_delete
 from utils.ai import AIError, ask_ai, ask_ai_tools
 from utils.ai_html import plain_text, sanitize_html
 from utils.lang import detect_lang
-from utils.ads import has_dangerous_link
+from utils import content_check
+from utils.ads import AD, DANGER
 from utils.moderation import is_abusive
 from utils.support_policy import (
     BLOCKING_CATEGORIES,
@@ -203,20 +205,41 @@ async def _say(bot: Bot, chat: dict, history: list[dict], outcome: str, fallback
     await add_support_message(chat["id"], "assistant", text)
 
 
-async def _accept(bot: Bot, chat: dict, text: str, lang: str, entities: list | None = None) -> bool:
-    """Odobsiz xabar yoki xavfli havola suhbat tarixiga (demak adminga xulosaga ham) kirmaydi: avval ogohlantirish,
-    takrorlansa rad (ikkalasi bitta ogohlantirish hisobida)."""
-    if await is_abusive(text):
-        warning, category = texts.SUPPORT_REPHRASE, "abuse"
-    elif await has_dangerous_link(text, entities):
-        warning, category = texts.SUPPORT_LINK_DANGER, "scam"
-    else:
-        return True
+# bot tekshiruvi topgan qoidabuzarlik -> (foydalanuvchiga ogohlantirish, suhbat yopilsa saqlanadigan tur)
+_VIOLATIONS = {
+    "abuse": (texts.SUPPORT_REPHRASE, "abuse"),
+    DANGER: (texts.SUPPORT_LINK_DANGER, "violation"),
+    content_check.NSFW: (texts.SUPPORT_NSFW, "violation"),
+}
+AD_NOTE = "[Bot tekshiruvi: reklama belgilari bor]"
+
+
+async def _strike(bot: Bot, chat: dict, kind: str, lang: str) -> None:
+    """Qoidabuzarlik: birinchisiga ogohlantirish, takrorlansa suhbat yopiladi va foydalanuvchiga aytiladi."""
+    warning, category = _VIOLATIONS[kind]
     if await add_support_warning(chat["id"]) == 1:
         await safe_send(bot, chat["user_id"], warning[lang])
     elif await _decline(chat, category, close=True):
-        await safe_send(bot, chat["user_id"], texts.SUPPORT_DECLINED[lang])
-    return False
+        await safe_send(bot, chat["user_id"], texts.SUPPORT_CLOSED[lang].format(hours=DECLINE_COOLDOWN_HOURS))
+
+
+async def _accept(bot: Bot, chat: dict, message: Message) -> str | None:
+    """Lichkadagi xabar guruhdagi tekshiruvlarning o'zidan o'tadi (utils/content_check): 18+ media, xavfli havola,
+    reklama, rasmdagi yozuv va QR-kod; keyin odobsiz so'zlar. Qabul qilinsa, suhbat tarixiga yoziladigan tavsif
+    (matn bo'lmagan xabar ham: "[rasm] ..."), aks holda None (tarixga ham, adminga xulosaga ham kirmaydi)."""
+    inspection = await content_check.inspect(bot, message, group_id=chat["group_id"])
+    lang = detect_lang(inspection.text)
+    if inspection.verdict in (DANGER, content_check.NSFW):
+        await _strike(bot, chat, inspection.verdict, lang)
+        return None
+    if await is_abusive(inspection.text):
+        await _strike(bot, chat, "abuse", lang)
+        return None
+    content = content_check.describe(message, inspection.text)[:MAX_TEXT]
+    if inspection.verdict == AD:
+        # lichkada reklama o'chirilmaydi: ruxsat etilganmi yoki taqiqlanganmi, support AI qoidalari bo'yicha hal qiladi
+        content += f"\n{AD_NOTE}"
+    return content or None
 
 
 async def run_turn(bot: Bot, chat: dict) -> None:
@@ -231,6 +254,11 @@ async def run_turn(bot: Bot, chat: dict) -> None:
         # limitga yetdi: adminga hech narsa bormaydi, AI faqat hal qiladi (resolve) yoki rad etadi (decline)
         history.append({"role": "system", "content": texts.SUPPORT_LAST_TURN})
         tools = [DECLINE_TOOL, RESOLVE_TOOL]
+    else:
+        # limit — yuqori chegara, maqsad emas: AI masala aniq bo'lishi bilan qaror qiladi
+        history.append(
+            {"role": "system", "content": texts.SUPPORT_TURN_BUDGET.format(n=max(user_turns, 1), limit=SUPPORT_MAX_TURNS)}
+        )
 
     try:
         async with ChatActionSender.typing(bot=bot, chat_id=chat["user_id"]):
@@ -253,10 +281,11 @@ async def run_turn(bot: Bot, chat: dict) -> None:
         category = category if category in DECLINE_CATEGORIES else "unclear"
         if not await _decline(chat, category, close=last):
             return
-        if implicit and text:
-            await _send(bot, chat["user_id"], text)  # AI qaror bermadi, lekin oxirgi javobini yozgan
+        if last:
+            # suhbat yopildi: foydalanuvchi buni albatta bilishi kerak (AI yakuniy javobi yoki tayyor matn)
+            await _say(bot, chat, history, texts.SUPPORT_OUTCOME_CLOSED, texts.SUPPORT_TURNS_CLOSED, lang)
             return
-        outcome = texts.SUPPORT_OUTCOME_CLOSED if last else texts.SUPPORT_OUTCOME_DECLINED
+        outcome = texts.SUPPORT_OUTCOME_DECLINED
         fallback = texts.SUPPORT_DECLINED_BY_CATEGORY.get(category, texts.SUPPORT_DECLINED)
         await _say(bot, chat, history, outcome, fallback, lang)
         return
@@ -294,6 +323,13 @@ async def _reply_in_group(bot: Bot, message: Message, text: str, *, keep: bool =
         await schedule_delete(bot, message.chat.id, message.message_id)
 
 
+def _blocked_notice(chat: dict, lang: str) -> str:
+    """Yopilgan suhbat haqida: kunlik limit yoki qoidabuzarlik (va qachon qayta yozish mumkinligi)."""
+    if chat.get("category") == "limit":
+        return texts.SUPPORT_LIMIT[lang]
+    return texts.SUPPORT_CLOSED[lang].format(hours=DECLINE_COOLDOWN_HOURS)
+
+
 async def open_chat(bot: Bot, message: Message, text: str, reason: str = "") -> None:
     """Guruhda AI contact_admin chaqirdi: foydalanuvchining lichkasida suhbat boshlanadi (guruhda javob yozilmaydi)."""
     user = message.from_user
@@ -301,10 +337,10 @@ async def open_chat(bot: Bot, message: Message, text: str, reason: str = "") -> 
         return
     blocked = await get_support_chat(user.id, "declined", DECLINE_COOLDOWN_HOURS, BLOCKING_CATEGORIES)
     if blocked is not None:
-        # haqorat yoki kunlik limit tufayli yopilgan: AI'siz qisqa rad javobi
+        # qoidabuzarlik yoki kunlik limit tufayli yopilgan: AI'siz, nega yopilgani aytiladi
         logger.info("Support: foydalanuvchi bloklangan (chat_id=%s, kategoriya=%s), AI chaqirilmadi", blocked["id"], blocked["category"])
         lang = detect_lang(text)
-        if await safe_send(bot, user.id, texts.SUPPORT_DECLINED[lang]):
+        if await safe_send(bot, user.id, _blocked_notice(blocked, lang)):
             await _reply_in_group(bot, message, texts.SUPPORT_DM_SENT[lang], keep=True)
         return
     chat = await get_support_chat(user.id, "active", SUPPORT_TTL_HOURS)
@@ -361,30 +397,35 @@ async def _escalated_chat(message: Message) -> dict | bool:
     return await _chat_in("escalated", message)
 
 
-@router.message(F.text, ~F.text.startswith("/"), StateFilter(None), _active_chat)
+def _not_command(message: Message) -> bool:
+    """Har qanday xabar (matn, rasm, ovoz, fayl...), faqat "/" buyrug'i emas."""
+    return not (message.text or "").startswith("/")
+
+
+@router.message(_not_command, StateFilter(None), _active_chat)
 async def on_support_message(message: Message, bot: Bot, chat: dict):
-    if message.from_user is None or message.text is None:
+    if message.from_user is None:
         return
-    text = message.text.strip()[:MAX_TEXT]
     async with _locks[message.from_user.id]:
-        if not await _accept(bot, chat, text, detect_lang(text), message.entities):
+        content = await _accept(bot, chat, message)
+        if content is None:
             return
-        await add_support_message(chat["id"], "user", text)
+        await add_support_message(chat["id"], "user", content)
         try:
             await run_turn(bot, chat)
         except AIError:
-            await message.answer(texts.AI_ERROR[detect_lang(message.text)])
+            await message.answer(texts.AI_ERROR[detect_lang(content)])
             raise
 
 
-@router.message(F.text, ~F.text.startswith("/"), StateFilter(None), _escalated_chat)
+@router.message(_not_command, StateFilter(None), _escalated_chat)
 async def on_after_escalation(message: Message, chat: dict):
     """Uzatilgan suhbatda bot AI'ga yubormaydi: admin o'zi gaplashadi; takroriy xabarlarga kamdan-kam eslatadi."""
-    if message.from_user is None or message.text is None:
+    if message.from_user is None:
         return
     if _throttled(_last_wait, message.from_user.id):
         return
-    await message.answer(texts.SUPPORT_WAIT[detect_lang(message.text)])
+    await message.answer(texts.SUPPORT_WAIT[detect_lang(message.text or message.caption or "")])
 
 
 async def _idle_user(message: Message) -> bool:
@@ -393,16 +434,45 @@ async def _idle_user(message: Message) -> bool:
     return user is not None and not is_admin(user.id) and await get_pending_reason(user.id) is None
 
 
-@router.message(F.text, ~F.text.startswith("/"), StateFilter(None), _idle_user)
+async def _member_group(bot: Bot, user_id: int) -> int | None:
+    """Foydalanuvchi hozir a'zo bo'lgan guruh (bot biladigan guruhlardan, Telegram'da tekshirib)."""
+    for group_id in await user_groups(user_id):
+        if await is_group_member(bot, group_id, user_id):
+            return group_id
+    return None
+
+
+@router.message(_not_command, StateFilter(None), _idle_user)
 async def on_idle_message(message: Message, bot: Bot):
-    """Suhbat yopilgan (rad etilgan, hal bo'lgan, muddati o'tgan) yoki hech qachon ochilmagan: bot jim turmasin."""
-    if message.from_user is None or message.text is None:
+    """Suhbati yo'q foydalanuvchi lichkaga yozdi. Guruh a'zosi bo'lsa, guruhda botni belgilamasa ham admin suhbati
+    shu yerda boshlanadi (AI avval nima masala ekanini so'raydi); a'zo bo'lmasa yoki yaqinda bloklangan bo'lsa, qisqa javob."""
+    user = message.from_user
+    if user is None:
         return
-    if _throttled(_last_idle, message.from_user.id, IDLE_NOTICE_INTERVAL):
+    lang = detect_lang(message.text or message.caption or "")
+    blocked = await get_support_chat(user.id, "declined", DECLINE_COOLDOWN_HOURS, BLOCKING_CATEGORIES)
+    if blocked is not None:
+        if not _throttled(_last_idle, user.id, IDLE_NOTICE_INTERVAL):
+            await message.answer(_blocked_notice(blocked, lang))
         return
-    lang = detect_lang(message.text)
-    if await get_support_chat(message.from_user.id, "declined", DECLINE_COOLDOWN_HOURS, BLOCKING_CATEGORIES) is not None:
-        await message.answer(texts.SUPPORT_DECLINED[lang])
+    group_id = await _member_group(bot, user.id)
+    if group_id is None:
+        if not _throttled(_last_idle, user.id, IDLE_NOTICE_INTERVAL):
+            await message.answer(texts.SUPPORT_IDLE[lang])
         return
-    me = await bot.me()
-    await message.answer(texts.SUPPORT_IDLE[lang].format(username=me.username))
+    async with _locks[user.id]:
+        chat = await get_support_chat(user.id, "active", SUPPORT_TTL_HOURS)
+        if chat is None:
+            await create_support_chat(user.id, group_id, None, user.full_name, user.username, "active")
+            chat = await get_support_chat(user.id, "active", SUPPORT_TTL_HOURS)
+            if chat is None:
+                return
+        content = await _accept(bot, chat, message)
+        if content is None:
+            return
+        await add_support_message(chat["id"], "user", content)
+        try:
+            await run_turn(bot, chat)
+        except AIError:
+            await message.answer(texts.AI_ERROR[lang])
+            raise

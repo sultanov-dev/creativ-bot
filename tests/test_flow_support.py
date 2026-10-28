@@ -1,12 +1,13 @@
 """handlers/support.py: guruhda contact_admin chaqirilganda lichkaga yozish va guruhdagi qisqa xabar."""
 import pytest
+from aiogram.types import Update
 from aiogram.methods import SendChatAction, SendMessage
 
 import handlers.ai as ai_handler
 import handlers.support as support
 import texts
 from config import ADMIN_IDS
-from database import create_support_chat, get_support_chat, set_support_status
+from database import add_member, create_support_chat, get_support_chat, set_support_status
 from tests import telegram_fakes as tf
 from tests.flow import feed
 from tests.test_flow_ai import BOT, USER, FakeAsk, bot_replies, say
@@ -134,12 +135,15 @@ def link_ai(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
 
     calls: list[list[str]] = []
 
-    async def fake(text: str, urls: list[str] | None = None) -> str | None:
+    async def fake(text: str, urls: list[str] | None = None, forwarded_from: str | None = None) -> str | None:
         calls.append(list(urls or []))
         return ads.DANGER if any("evil" in u for u in urls or []) else None
 
     monkeypatch.setattr(ads, "ai_verdict", fake)
     return calls
+
+
+CLOSED = texts.SUPPORT_CLOSED["uz"].format(hours=support_policy.DECLINE_COOLDOWN_HOURS)
 
 
 async def dm(dp, bot, text: str) -> None:
@@ -265,7 +269,7 @@ class TestGatekeeper:
         await dm(dp, bot, "BADWORD adminlar")
         assert session.texts_to(USER)[-1] == texts.SUPPORT_REPHRASE["uz"] and not dm_ai.calls
         await dm(dp, bot, "BADWORD yana")
-        assert session.texts_to(USER)[-1] == texts.SUPPORT_DECLINED["uz"] and not dm_ai.calls
+        assert session.texts_to(USER)[-1] == CLOSED and not dm_ai.calls  # yopilgani aytiladi
         assert (await get_support_chat(USER, "declined", 24))["category"] == "abuse" and not admin_notices(session)
 
     async def test_dangerous_link_gets_one_warning_then_decline(self, dp, bot, session, group_ai, dm_ai, link_ai):
@@ -274,8 +278,8 @@ class TestGatekeeper:
         assert session.texts_to(USER)[-1] == texts.SUPPORT_LINK_DANGER["uz"] and not dm_ai.calls
         assert link_ai == [["https://evil.example/login"]]
         await dm(dp, bot, "yana https://evil.example/x")
-        assert session.texts_to(USER)[-1] == texts.SUPPORT_DECLINED["uz"] and not dm_ai.calls
-        assert (await get_support_chat(USER, "declined", 24))["category"] == "scam" and not admin_notices(session)
+        assert session.texts_to(USER)[-1] == CLOSED and not dm_ai.calls
+        assert (await get_support_chat(USER, "declined", 24))["category"] == "violation" and not admin_notices(session)
 
     async def test_dangerous_link_never_enters_the_history(self, dp, bot, session, group_ai, dm_ai):
         await start_chat(dp, bot, group_ai, dm_ai)
@@ -331,7 +335,7 @@ class TestGatekeeper:
         session.clear()
         ai_handler._last_ask.clear()
         await say(dp, bot, f"{BOT} admin bilan gaplashmoqchiman")
-        assert not dm_ai.calls and session.texts_to(USER) == [texts.SUPPORT_DECLINED["uz"]]
+        assert not dm_ai.calls and session.texts_to(USER) == [CLOSED]
 
 
 class TestPolicyPrompt:
@@ -342,7 +346,7 @@ class TestPolicyPrompt:
         assert "ALWAYS start by finding out WHAT the matter is" in prompt
         assert "music and concert advertising IS allowed" in prompt
         assert "decline does NOT end the conversation" in prompt  # rad etilgach ham suhbat davom etadi
-        assert "refer to what the user wrote in the group" in prompt
+        assert "refer to what the user wrote" in prompt
 
     def test_prohibited_ads_include_the_agreed_list(self):
         joined = " ".join(support_policy.PROHIBITED_ADS)
@@ -379,7 +383,7 @@ class TestIdleReplies:
         await close_chat_by_abuse(dp, bot, dm_ai)
         session.clear()
         await dm(dp, bot, "shaxsiy ishim bor")
-        assert session.texts_to(USER) == [texts.SUPPORT_DECLINED["uz"]]
+        assert session.texts_to(USER) == [CLOSED]
         assert not admin_notices(session)
 
     async def test_replies_are_throttled_to_one_per_minute(self, dp, bot, session):
@@ -390,13 +394,15 @@ class TestIdleReplies:
         await dm(dp, bot, "aloo")
         assert len(session.texts_to(USER)) == 2
 
-    async def test_resolved_chat_user_gets_the_hint(self, dp, bot, session, group_ai, dm_ai):
+    async def test_resolved_chat_member_starts_a_new_one_right_here(self, dp, bot, session, group_ai, dm_ai):
         await start_chat(dp, bot, group_ai, dm_ai)
         dm_ai.answer, dm_ai.tool_calls = "Marhamat!", [("resolve", {})]
         await dm(dp, bot, "rahmat")
         session.clear()
+        dm_ai.answer, dm_ai.tool_calls = "Qanday masala?", []
         await dm(dp, bot, "yana savol bor")
-        assert session.texts_to(USER) == [texts.SUPPORT_IDLE["uz"].format(username=tf.BOT_USERNAME)]
+        assert session.texts_to(USER) == ["Qanday masala?"]
+        assert await get_support_chat(USER, "active", 24) is not None
 
     async def test_bot_admins_are_not_answered(self, dp, bot, session):
         await feed(dp, bot, tf.private_message(ADMIN_IDS[0], "salom"))
@@ -417,17 +423,18 @@ class TestStaleDeclined:
         assert dm_ai.calls and session.texts_to(USER) == ["Salom! Nima bo'ldi?"]  # tayyor rad matni emas, AI yozadi
         assert [m.text for m in bot_replies(session)] == [texts.SUPPORT_DM_SENT["uz"]]
 
-    async def test_old_decline_does_not_make_the_idle_reply_a_refusal(self, dp, bot, session):
+    async def test_old_decline_does_not_make_the_idle_reply_a_refusal(self, dp, bot, session, dm_ai):
         support._last_idle.clear()
         await self._old_declined("no_purpose")
-        await dm(dp, bot, "salom")
-        assert session.texts_to(USER) == [texts.SUPPORT_IDLE["uz"].format(username=tf.BOT_USERNAME)]
+        await dm(dp, bot, "salom")  # guruh a'zosi: rad emas, yangi suhbat
+        assert session.texts_to(USER) == ["Salom! Nima bo'ldi?"]
 
     @pytest.mark.parametrize("category", ["abuse", "limit"])
     async def test_abuse_and_limit_closures_still_block(self, dp, bot, session, group_ai, dm_ai, category):
         await self._old_declined(category)
         await say(dp, bot, f"{BOT} admin bilan gaplashmoqchiman")
-        assert not dm_ai.calls and session.texts_to(USER) == [texts.SUPPORT_DECLINED["uz"]]
+        expected = texts.SUPPORT_LIMIT["uz"] if category == "limit" else CLOSED
+        assert not dm_ai.calls and session.texts_to(USER) == [expected]
 
     async def test_idle_reply_interval_is_short(self):
         assert support.IDLE_NOTICE_INTERVAL <= 10
@@ -479,3 +486,113 @@ class TestLimit:
         dm_ai.error = AIError("xato")
         await dm(dp, bot, "ikki")
         assert not admin_notices(session) and await get_support_chat(USER, "declined", 24) is not None
+
+    async def test_ai_failure_at_the_limit_tells_the_user_the_chat_is_closed(self, dp, bot, session, group_ai, dm_ai, say_ai):
+        from utils.ai import AIError
+
+        await self._to_limit(dp, bot, group_ai, dm_ai)
+        dm_ai.error = AIError("xato")
+        say_ai.error = AIError("xato")
+        await dm(dp, bot, "ikki")
+        assert session.texts_to(USER)[-1] == texts.SUPPORT_TURNS_CLOSED["uz"]
+
+
+class TestTurnBudget:
+    async def test_every_turn_tells_the_ai_how_many_messages_are_left(self, dp, bot, session, group_ai, dm_ai):
+        await start_chat(dp, bot, group_ai, dm_ai)
+        await dm(dp, bot, "to'lov o'tmadi")
+        notes = [m["content"] for m in dm_ai.calls[-1] if m["role"] == "system"]
+        expected = texts.SUPPORT_TURN_BUDGET.format(n=1, limit=support.SUPPORT_MAX_TURNS)
+        assert expected in notes and "never drag the conversation on" in expected
+
+
+class TestStartInPrivate:
+    """Guruhda botni belgilash shart emas: guruh a'zosi lichkaga yozsa, suhbat shu yerda boshlanadi."""
+
+    @pytest.fixture(autouse=True)
+    def _reset(self):
+        support._last_idle.clear()
+        yield
+        support._last_idle.clear()
+
+    async def test_group_member_starts_the_chat_by_writing_privately(self, dp, bot, session, dm_ai):
+        await add_member(tf.GROUP_ID, USER)
+        dm_ai.answer = "Qanday masala?"
+        await dm(dp, bot, "admin bilan gaplashmoqchiman")
+        assert session.texts_to(USER) == ["Qanday masala?"]
+        chat = await get_support_chat(USER, "active", 24)
+        assert chat is not None and chat["group_id"] == tf.GROUP_ID
+        assert dm_ai.calls[0][1]["content"] == "admin bilan gaplashmoqchiman"  # guruh belgisisiz
+
+    async def test_user_who_left_the_group_gets_the_hint(self, dp, bot, session, dm_ai):
+        await add_member(tf.GROUP_ID, USER)
+        session.statuses[(tf.GROUP_ID, USER)] = "left"
+        await dm(dp, bot, "admin bilan gaplashmoqchiman")
+        assert session.texts_to(USER) == [texts.SUPPORT_IDLE["uz"]] and not dm_ai.calls
+
+
+class TestNonTextInPrivate:
+    """Lichkada matndan boshqa narsa ham tekshiriladi va AI suhbat tarixiga (demak xulosaga) tavsif bo'lib kiradi."""
+
+    async def _send(self, dp, bot, changes: dict) -> None:
+        msg = tf.private_message(USER, "x").message.model_copy(update={"text": None, **changes})
+        await feed(dp, bot, Update.model_validate({"update_id": 880000 + len(changes), "message": msg.model_dump(by_alias=True)}))
+
+    @pytest.fixture
+    def media(self, monkeypatch: pytest.MonkeyPatch):
+        """Yuklanadigan rasm, model natijasi va rasmdagi yozuv."""
+        import cv2
+        import numpy as np
+
+        from tests.test_nsfw import FakeDetector
+        from utils import media_text, nsfw
+
+        detector = FakeDetector()
+        monkeypatch.setattr(nsfw, "_detector", detector)
+        monkeypatch.setattr(nsfw, "_detector_failed", False)
+        png = cv2.imencode(".png", np.full((300, 300, 3), 255, np.uint8))[1].tobytes()
+
+        async def download(bot_, file_id):
+            return png
+
+        monkeypatch.setattr(nsfw, "_download", download)
+
+        class Media:
+            ocr = ""
+
+        m = Media()
+        m.detector = detector
+        monkeypatch.setattr(media_text, "read_text", lambda img: m.ocr)
+        return m
+
+    async def test_screenshot_is_described_with_its_text_for_the_ai_and_the_summary(
+        self, dp, bot, session, group_ai, dm_ai, media
+    ):
+        from tests.test_nsfw import PHOTO
+
+        await start_chat(dp, bot, group_ai, dm_ai)
+        media.ocr = "To'lov: 150 000 so'm, xato kodi 51"
+        await self._send(dp, bot, {"photo": PHOTO, "caption": "Chek shu"})
+        last = dm_ai.calls[-1][-2]["content"]  # oxirgi foydalanuvchi xabari (keyin limit eslatmasi)
+        assert last.startswith("[rasm]") and "Chek shu" in last and "[rasmdagi yozuv] To'lov: 150 000 so'm" in last
+
+    async def test_nsfw_picture_is_refused_and_never_stored(self, dp, bot, session, group_ai, dm_ai, media):
+        from tests.test_nsfw import PHOTO
+
+        await start_chat(dp, bot, group_ai, dm_ai)
+        media.detector.found = [{"class": "MALE_GENITALIA_EXPOSED", "score": 0.9, "box": [0, 0, 1, 1]}]
+        await self._send(dp, bot, {"photo": PHOTO})
+        assert session.texts_to(USER)[-1] == texts.SUPPORT_NSFW["uz"] and not dm_ai.calls
+
+    async def test_voice_message_is_described(self, dp, bot, session, group_ai, dm_ai):
+        from aiogram.types import Voice
+
+        await start_chat(dp, bot, group_ai, dm_ai)
+        await self._send(dp, bot, {"voice": Voice(file_id="v", file_unique_id="u-v", duration=7)})
+        assert dm_ai.calls[-1][-2]["content"] == "[ovozli xabar, 7 s, matni o'qilmagan]"
+
+    async def test_advertising_is_marked_for_the_support_ai_not_deleted(self, dp, bot, session, group_ai, dm_ai):
+        await start_chat(dp, bot, group_ai, dm_ai)
+        await dm(dp, bot, "Kanalimizga obuna bo'ling t.me/mening_kanalim")
+        last = dm_ai.calls[-1][-2]["content"]
+        assert last.endswith(support.AD_NOTE) and "t.me/mening_kanalim" in last

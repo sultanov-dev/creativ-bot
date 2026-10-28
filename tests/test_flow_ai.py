@@ -78,12 +78,10 @@ class TestTriggering:
         await say(dp, bot, "hammaga salom")
         await say(dp, bot, f"{BOT} salom", mention_in_text=False)  # mention entity'siz
         await say(dp, bot, f"/ask {BOT} nima")
-        await feed(dp, bot, tf.private_message(USER, f"{BOT} salom"))  # lichkada AI yo'q: faqat yo'l-yo'riq
         raw = tf.group_message(USER, "@someone_else salom").model_dump(mode="json", by_alias=True, exclude_none=True)
         raw["message"]["entities"] = [{"type": "mention", "offset": 0, "length": 13}]
         await dp.feed_raw_update(bot, raw)
-        assert not fake_ai.calls and not bot_replies(session)
-        assert session.texts_to(USER) == [texts.SUPPORT_IDLE["uz"].format(username=tf.BOT_USERNAME)]
+        assert not fake_ai.calls and not bot_replies(session) and not session.texts_to(USER)
 
     async def test_empty_question_gets_hint(self, dp, bot, session, fake_ai):
         await say(dp, bot, BOT)

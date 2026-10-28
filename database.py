@@ -416,6 +416,21 @@ async def remove_member(chat_id: int, user_id: int) -> None:
     await db.commit()
 
 
+async def user_groups(user_id: int) -> list[int]:
+    """Foydalanuvchi a'zo bo'lishi mumkin bo'lgan guruhlar (bot ko'rgan a'zolik, qabul qilingan ariza, oldingi
+    admin suhbati), avval eng yangilari. A'zolikning o'zini chaqiruvchi Telegram'dan tekshiradi."""
+    db = await get_db()
+    cur = await db.execute(
+        "SELECT group_id FROM ("
+        "  SELECT group_id, 3 AS src, id AS ord FROM support_chats WHERE user_id = ?"
+        "  UNION ALL SELECT group_id, 2, id FROM applications WHERE user_id = ? AND status = 'accepted'"
+        "  UNION ALL SELECT chat_id, 1, 0 FROM members WHERE user_id = ?"
+        ") ORDER BY src DESC, ord DESC",
+        (user_id, user_id, user_id),
+    )
+    return list(dict.fromkeys(r[0] for r in await cur.fetchall()))
+
+
 async def get_members(chat_id: int) -> list[int]:
     db = await get_db()
     cur = await db.execute("SELECT user_id FROM members WHERE chat_id = ?", (chat_id,))
