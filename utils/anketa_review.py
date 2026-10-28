@@ -19,10 +19,10 @@ logger = logging.getLogger(__name__)
 
 # AI tekshiradigan matnli maydonlar (telefon va yosh tekshirilmaydi: ular formatdan o'tgan)
 REVIEW_FIELDS = ("full_name", "job", "about", "join_group")
-# utils/ai: osilib qolgan so'rov ATTEMPT_TIMEOUT (25 s) dan keyin qayta yuboriladi; chegara shunga sig'ishi kerak,
+# utils/ai: osilib qolgan so'rov ATTEMPT_TIMEOUT (45 s) dan keyin qayta yuboriladi; chegara ikkalasiga sig'ishi kerak,
 # aks holda qayta yuborishgacha kutmay "tekshirib bo'lmadi" chiqadi
-WAIT_SECONDS = 55
-MAX_TOKENS = 700  # 4 ta maydon sababi bilan: JSON kesilib qolmasin
+WAIT_SECONDS = 100
+MAX_TOKENS = 1500  # 4 ta maydon sababi bilan: JSON kesilib qolmasin
 MAX_FIELD = 800
 MAX_REASON = 200
 

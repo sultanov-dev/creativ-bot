@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 TIMEOUT = aiohttp.ClientTimeout(total=None, sock_connect=8)
 # bitta urinish shuncha soniyada javob bermasa, bekor qilinadi va (TIMEOUT_RETRIES marta) qayta yuboriladi: AI xizmati
 # ba'zan so'rovni javobsiz osiltirib qo'yadi, keyingi xuddi shunday so'rov esa odatda tez o'tadi
-ATTEMPT_TIMEOUT = 25
+ATTEMPT_TIMEOUT = 45
 TIMEOUT_RETRIES = 1
 # ulanish xatosi, vaqtinchalik server xatosi (5xx) yoki 429 bo'lsa, shuncha marta urinadi; faqat hammasi muvaffaqiyatsiz
 # bo'lsa AIError ko'tariladi (guruhga xato xabari va dasturchiga ogohlantirish shundan keyingina ketadi)
