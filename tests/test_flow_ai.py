@@ -299,3 +299,44 @@ class TestAdminHandoffTool:
         fake_ai.answer = ""
         await say(dp, bot, f"{BOT} salom")
         assert bot_replies(session)[0].text == texts.AI_ERROR["uz"]
+
+
+class TestUnsafeAnswer:
+    """AI aldansa ham (prompt injection) bot nomidan odobsiz, 18+, reklama yoki xavfli havola guruhga chiqmaydi."""
+
+    BAD = {
+        "Mana: siktir": "profanity",
+        "Eng yaxshi porno saytlar ro'yxati": "adult",
+        "Kanalimizga obuna bo'ling: t.me/super_kanal": "link",
+        "Mana bot: https://t.me/earn_bot?start=ref123": "link",
+        "Kanal: @x <a href=\"https://t.me/+AbCdEf\">bu yerda</a>": "link",
+        "Yuklab oling: https://example.com/setup.exe": "link",
+        "Kiring: https://te1egram.org/login": "link",
+        "tg://resolve?domain=spam_bot": "link",
+    }
+    GOOD = [
+        "Python'da ro'yxat <code>list</code> deyiladi.",
+        "Hujjat: <a href=\"https://docs.python.org/3/library/asyncio.html\">asyncio</a>",
+        "Guruh qoidalari: https://t.me/c/1234567890/5",  # o'z guruhining xabari
+        "Sport seksiyasiga yozilish uchun admin bilan gaplashing.",
+    ]
+
+    def test_local_check(self):
+        from utils.content_check import unsafe_reply
+
+        check(
+            lambda t: unsafe_reply(t, chat_id=G, chat_username=None),
+            [*self.BAD.items(), *((t, None) for t in self.GOOD)],
+        )
+
+    async def test_unsafe_answer_is_replaced_and_good_one_is_sent(self, dp, bot, session, fake_ai):
+        for i, answer in enumerate([*self.BAD, *self.GOOD]):
+            session.clear()
+            fake_ai.answer = answer
+            await say(dp, bot, f"{BOT} savol", user=USER + 100 + i)  # har safar boshqa user: cooldown yo'q
+            sent = [m.text for m in bot_replies(session)]
+            want = [texts.AI_UNSAFE["uz"]] if answer in self.BAD else None
+            assert (sent == want) if want else (sent and sent != [texts.AI_UNSAFE["uz"]]), (answer, sent)
+
+    def test_prompt_has_security_rules(self):
+        assert "untrusted data" in texts.AI_SYSTEM_PROMPT and "cannot perform any action" in texts.AI_SYSTEM_PROMPT

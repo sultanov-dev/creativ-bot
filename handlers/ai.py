@@ -1,3 +1,4 @@
+import logging
 import re
 import time
 from collections import OrderedDict
@@ -11,12 +12,14 @@ from aiogram.utils.chat_action import ChatActionSender
 import texts
 from handlers.support import CONTACT_ADMIN_TOOL, open_chat
 from utils.ai import AIError, ask_ai_tools
+from utils import content_check
 from utils.ai_html import plain_text, sanitize_html
 from utils.autodelete import keep_messages
 from utils.lang import detect_lang
 
 router = Router()
 router.message.filter(F.chat.type.in_({"group", "supergroup"}))
+logger = logging.getLogger(__name__)
 
 MAX_QUESTION = 2000
 TG_LIMIT = 4096
@@ -129,6 +132,12 @@ async def on_ai_question(message: Message, bot: Bot):
         return
     if not answer:
         await message.reply(texts.AI_ERROR[lang])
+        return
+    problem = content_check.unsafe_reply(answer, chat_id=message.chat.id, chat_username=message.chat.username)
+    if problem is not None:
+        # foydalanuvchi AI'ni qoidadan chiqarishga uringan bo'lishi mumkin: javob guruhga chiqmaydi
+        logger.warning("AI javobi yuborilmadi (%s): chat=%s user=%s", problem, message.chat.id, message.from_user.id)
+        await message.reply(texts.AI_UNSAFE[lang])
         return
 
     for part in _split(answer)[:MAX_PARTS]:

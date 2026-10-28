@@ -18,6 +18,7 @@ from aiogram.types import Message
 
 from utils import ads, media_text, nsfw, tg_links
 from utils.ads import AD, DANGER, classify, find_urls
+from utils.profanity import has_adult_content, has_profanity
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +149,24 @@ async def inspect(bot: Bot, message: Message, *, group_id: int | None, exempt: E
         return Inspection(NSFW, message_text(message))
     text = await full_text(bot, message)
     return Inspection(await text_verdict(bot, message, text, group_id=group_id, exempt=exempt), text)
+
+
+# botning o'z matni uchun: oddiy havola (masalan hujjatga) mumkin, Telegram kanal/bot havolasi va xavflisi mumkin emas
+_UNSAFE_LINK_KINDS = ("danger", "definite", "telegram")
+
+
+def unsafe_reply(text: str, *, chat_id: int | None, chat_username: str | None) -> str | None:
+    """Bot guruhga o'zi yozadigan matn (AI javobi) uchun, AI'siz: "profanity", "adult", "link" yoki None.
+
+    AI'ni foydalanuvchi aldab (prompt injection) bot nomidan reklama, havola yoki odobsiz matn yozdirmasligi uchun.
+    """
+    if has_profanity(text):
+        return "profanity"
+    if has_adult_content(text):
+        return "adult"
+    if classify(text, None, chat_id=chat_id, chat_username=chat_username) in _UNSAFE_LINK_KINDS:
+        return "link"
+    return None
 
 
 def _size(n: int | None) -> str:
