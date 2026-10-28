@@ -363,7 +363,7 @@ class TestPolicyPrompt:
 
 
 class TestIdleReplies:
-    """Suhbat yopilgan yoki ochilmagan: bot jim turmaydi."""
+    """Suhbat yopilgan yoki ochilmagan: oddiy xabar e'tiborsiz, admin so'ralsa javob beriladi."""
 
     @pytest.fixture(autouse=True)
     def _reset(self):
@@ -371,24 +371,26 @@ class TestIdleReplies:
         yield
         support._last_idle.clear()
 
-    async def test_user_without_a_chat_gets_the_how_to_hint(self, dp, bot, session):
+    async def test_plain_message_without_a_chat_is_ignored(self, dp, bot, session):
         await dm(dp, bot, "salom")
-        assert session.texts_to(USER) == [texts.SUPPORT_HOWTO["uz"]]
+        assert session.texts_to(USER) == []
 
     async def test_declined_user_keeps_getting_the_refusal_not_silence(self, dp, bot, session, group_ai, dm_ai):
         await start_chat(dp, bot, group_ai, dm_ai)
         await close_chat_by_abuse(dp, bot, dm_ai)
         session.clear()
-        await dm(dp, bot, "shaxsiy ishim bor")
+        await dm(dp, bot, "shaxsiy ishim bor")  # admin so'ralmagan: e'tiborsiz
+        assert session.texts_to(USER) == []
+        await dm(dp, bot, "admin bilan gaplashmoqchiman")  # admin so'raldi: nega yopilgani aytiladi
         assert session.texts_to(USER) == [CLOSED]
         assert not admin_notices(session)
 
-    async def test_replies_are_throttled_to_one_per_minute(self, dp, bot, session):
-        await dm(dp, bot, "salom")
-        await dm(dp, bot, "aloo")
-        assert len(session.texts_to(USER)) == 1
-        support._last_idle[USER] -= support.WAIT_NOTICE_INTERVAL + 1
-        await dm(dp, bot, "aloo")
+    async def test_replies_are_throttled(self, dp, bot, session):
+        await dm(dp, bot, "admin kerak")  # a'zo emas: "avval guruhga qo'shiling"
+        await dm(dp, bot, "admin kerak")
+        assert session.texts_to(USER) == [texts.SUPPORT_IDLE["uz"]]
+        support._last_idle[USER] -= support.IDLE_NOTICE_INTERVAL + 1
+        await dm(dp, bot, "admin kerak")
         assert len(session.texts_to(USER)) == 2
 
     async def test_resolved_chat_member_starts_a_new_one_right_here(self, dp, bot, session, group_ai, dm_ai):
@@ -605,10 +607,10 @@ class TestPrivateIntent:
         support._last_idle.clear()
 
     @pytest.mark.parametrize("text", ["salom", "python'da list qanday ishlaydi?", "rahmat", "bananas"])
-    async def test_other_messages_get_the_howto_without_ai(self, dp, bot, session, dm_ai, text):
+    async def test_other_messages_are_ignored_without_ai(self, dp, bot, session, dm_ai, text):
         await add_member(tf.GROUP_ID, USER)
         await dm(dp, bot, text)
-        assert session.texts_to(USER) == [texts.SUPPORT_HOWTO["uz"]] and not dm_ai.calls
+        assert session.texts_to(USER) == [] and not dm_ai.calls
         assert await get_support_chat(USER, "active", 24) is None
 
     @pytest.mark.parametrize("text", [

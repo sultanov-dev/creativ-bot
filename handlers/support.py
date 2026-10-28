@@ -445,21 +445,21 @@ async def _member_group(bot: Bot, user_id: int) -> int | None:
 
 @router.message(_not_command, StateFilter(None), _idle_user)
 async def on_idle_message(message: Message, bot: Bot):
-    """Suhbati yo'q foydalanuvchi lichkaga yozdi. Admin bilan gaplashmoqchi ekani aniq bo'lsa (`wants_admin`, AI'siz)
-    va guruh a'zosi bo'lsa, guruhda botni belgilamasa ham admin suhbati shu yerda boshlanadi. Boshqa har qanday xabarga
-    AI chaqirilmaydi: qisqa yo'l-yo'riq (yoki bloklangan bo'lsa, nega)."""
+    """Suhbati yo'q foydalanuvchi lichkaga yozdi. Faqat admin bilan gaplashmoqchi ekani aniq bo'lsa (`wants_admin`,
+    AI'siz) javob beriladi: guruh a'zosiga admin suhbati shu yerda boshlanadi (guruhda botni belgilash shart emas),
+    bloklanganga nega va qachongacha, a'zo bo'lmaganga "avval guruhga qo'shiling". Boshqa har qanday xabar e'tiborsiz
+    qoladi: javob ham, AI so'rovi ham yo'q."""
     user = message.from_user
     if user is None:
         return
-    lang = detect_lang(message.text or message.caption or "")
+    text = message.text or message.caption or ""
+    if not wants_admin(text):
+        return
+    lang = detect_lang(text)
     blocked = await get_support_chat(user.id, "declined", DECLINE_COOLDOWN_HOURS, BLOCKING_CATEGORIES)
     if blocked is not None:
         if not _throttled(_last_idle, user.id, IDLE_NOTICE_INTERVAL):
             await message.answer(_blocked_notice(blocked, lang))
-        return
-    if not wants_admin(message.text or message.caption or ""):
-        if not _throttled(_last_idle, user.id, IDLE_NOTICE_INTERVAL):
-            await message.answer(texts.SUPPORT_HOWTO[lang])
         return
     group_id = await _member_group(bot, user.id)
     if group_id is None:

@@ -164,7 +164,7 @@ class TestReasonCapture:
         app_id = await self._no_vote(dp, bot)
         await feed(dp, bot, tf.private_message(M[1], "salom"))  # kutilayotgan ovozi yo'q: sabab sifatida e'tiborsiz
         assert await only_reason(app_id) is None
-        assert session.texts_to(M[1]) == [texts.SUPPORT_HOWTO["uz"]]  # oddiy yo'l-yo'riq
+        assert session.texts_to(M[1]) == []  # oddiy xabar: e'tiborsiz
         await feed(dp, bot, tf.private_message(M[0], "/help"))
         assert await only_reason(app_id) is None
         await feed(dp, bot, tf.private_message(M[0], "/start"))  # sabab hali kutilmoqda: qayta so'raladi
@@ -176,8 +176,8 @@ class TestReasonCapture:
         session.clear()
         for text in ("ikkinchi", "/start"):  # sabab berilgach: ikkinchi sabab ham, qayta so'rash ham yo'q
             await feed(dp, bot, tf.private_message(M[0], text))
-        sent = session.texts_to(M[0])  # ikkinchi sabab saqlanmaydi: faqat yo'l-yo'riq, va /start salomi
-        assert len(sent) == 2 and sent[0] == texts.SUPPORT_HOWTO["uz"]
+        sent = session.texts_to(M[0])  # ikkinchi sabab saqlanmaydi (e'tiborsiz), faqat /start salomi
+        assert len(sent) == 1 and "Salom" in sent[0]
         assert await only_reason(app_id) == texts.SKIP_BUTTON
 
     @pytest.mark.parametrize("reply, stored, moderated", [(texts.SKIP_BUTTON, "", []), ("admin fikri", "admin fikri", ["admin fikri"])])
