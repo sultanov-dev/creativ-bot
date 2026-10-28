@@ -1,5 +1,6 @@
 import json
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from aiogram.fsm.state import State
 from aiogram.fsm.storage.base import (
