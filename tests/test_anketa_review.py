@@ -64,26 +64,25 @@ class TestConfirmView:
             assert last.text == texts.ANKETA_REVIEW_UNAVAILABLE and buttons(last)[0] == CONFIRM, answer
             assert (await state_of(dp, bot, U))[0] == "Form:confirm"
             assert await dbm.get_active_application(U, G) is None and not session.sent_to(tf.ADMIN_ID)
-        review_ai.answer = '{"problems": []}'  # AI qaytdi: qayta bosilgan tugma arizani yuboradi
+        review_ai.answer = "OK"  # AI qaytdi: qayta bosilgan tugma arizani yuboradi
         await say(dp, bot, CONFIRM)
         assert await dbm.get_active_application(U, G) is not None
 
 
 class TestAiFindsProblems:
     async def test_bad_fields_are_explained_and_refilled_one_by_one_then_rechecked(self, dp, bot, session, review_ai):
-        review_ai.answer = (
-            '{"problems": [{"field": "job", "reason": "Kasb <b>tushunarsiz</b>"}, {"field": "about", "reason": ""}]}'
-        )
+        review_ai.answer = "job=nonsense; about=hazil"  # noma'lum kod: umumiy sabab
         await at_confirm(dp, bot, session)
         await say(dp, bot, CONFIRM)
         notice, question = session.texts_to(U)
-        assert FIELD_LABELS["job"] in notice and "Kasb &lt;b&gt;tushunarsiz&lt;/b&gt;" in notice  # AI matni xavfsiz
+        assert FIELD_LABELS["job"] in notice and texts.ANKETA_REVIEW_REASONS["nonsense"] in notice  # sababni bot yozadi
+        assert texts.ANKETA_REVIEW_REASON_DEFAULT in notice
         assert FIELD_LABELS["about"] in notice and question == texts.ASK_JOB
         assert await dbm.get_active_application(U, G) is None and not session.sent_to(tf.ADMIN_ID)
 
         await say(dp, bot, "Backend dasturchi")
         assert session.texts_to(U)[-1] == texts.ASK_ABOUT  # navbatdagi muammoli maydon
-        review_ai.answer = '{"problems": []}'
+        review_ai.answer = "OK"
         await say(dp, bot, "Python bilan ishlayman")
         last = session.sent_to(U)[-1]
         assert "Backend dasturchi" in last.text and buttons(last) == [CONFIRM, texts.PROFILE_EDIT_BUTTON]
@@ -94,20 +93,17 @@ class TestAiFindsProblems:
         app = await dbm.get_active_application(U, G)
         assert app is not None and "Backend dasturchi" in app["anketa"]
 
-    async def test_unknown_fields_and_duplicates_are_ignored(self):
-        answer = 'Mana: {"problems": [{"field": "age"}, {"field": "job", "reason": "a"}, {"field": "job", "reason": "b"}]}'
-        assert _parse(answer) == {"job": "a"}
-
-    def test_parse_tolerates_common_answer_shapes(self):
-        job = {"job": "yomon"}
+    def test_parse_codes(self):
+        r = texts.ANKETA_REVIEW_REASONS
         check(_parse, [
-            ('{"problems": []}', {}),
-            ('```json\n{"problems": [{"field": "job", "reason": "yomon"}]}\n```', job),  # kod bloki
-            ('{"problems": [{"field": "job", "reason": "yomon"}]}\nIzoh: {boshqa}', job),  # ortida matn
-            ('{"problems": null}', {}),
-            ("OK", {}), ("[]", {}), ("No problems.", {}),
+            ("OK", {}), ("ok.", {}), ("[]", {}), ("No problems", {}),
+            ("job=sexual", {"job": r["sexual"]}),
+            ("job=sexual; join_group=profanity", {"job": r["sexual"], "join_group": r["profanity"]}),
+            ("Job: Sexual\nabout - nonsense", {"job": r["sexual"], "about": r["nonsense"]}),  # boshqa shakl ham
+            ("age=nonsense; job=ad; job=joke", {"job": r["ad"]}),  # noma'lum maydon va dublikat e'tiborsiz
+            ("full_name=xyz", {"full_name": texts.ANKETA_REVIEW_REASON_DEFAULT}),
         ])
-        for bad in ("bilmayman", '{"problems": [{"field": "job", "reason": "kesil', '{"problems": "job"}'):
+        for bad in ("bilmayman", "", "age=sexual"):
             with pytest.raises(ValueError):
                 _parse(bad)
 
@@ -163,11 +159,11 @@ class TestSavedProfile:
         first = await start_application(dp, bot)
         await dbm.change_status(first, "pending", "accepted")  # chiqib ketib, qayta qo'shilmoqda
         await feed(dp, bot, tf.join_request(U))
-        review_ai.answer = '{"problems": [{"field": "about", "reason": "Juda qisqa emas, lekin nomaqbul"}]}'
+        review_ai.answer = "about=nonsense"
         session.clear()
         await say(dp, bot, texts.PROFILE_KEEP_BUTTON)
         assert session.texts_to(U)[-1] == texts.ASK_ABOUT and not session.sent_to(G)  # ovozga qo'yilmadi
-        review_ai.answer = '{"problems": []}'
+        review_ai.answer = "OK"
         await say(dp, bot, "Toza matn")
         assert (await state_of(dp, bot, U))[0] == "Form:review"
         assert (await dbm.get_profile(U))["about"] == "Toza matn"

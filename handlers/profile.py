@@ -72,7 +72,7 @@ async def ai_check_passed(bot: Bot, chat_id: int, state: FSMContext) -> bool:
         return False
     if not problems:
         return True
-    lines = "\n".join(f"• <b>{FIELD_LABELS[f]}</b>: {escape(reason)}" if reason else f"• <b>{FIELD_LABELS[f]}</b>"
+    lines = "\n".join(f"• <b>{FIELD_LABELS[f]}</b>: {escape(reason, quote=False)}" if reason else f"• <b>{FIELD_LABELS[f]}</b>"
                       for f, reason in problems.items())
     await bot.send_message(chat_id=chat_id, text=ANKETA_NEEDS_FIX.format(problems=lines), reply_markup=ReplyKeyboardRemove())
     first, *rest = problems

@@ -106,7 +106,7 @@ def review_ai(monkeypatch):
     import utils.anketa_review as anketa_review
 
     class Fake:
-        answer: str | Exception = '{"problems": []}'
+        answer: str | Exception = "OK"
         calls: list = []
 
         async def __call__(self, messages, **kw):

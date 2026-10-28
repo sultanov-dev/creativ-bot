@@ -86,6 +86,18 @@ ANKETA_REVIEW_UNAVAILABLE = (
 ANKETA_INDECENT_REASON = (
     "nomaqbul (so'kinish yoki 18+) so'zlar bor, iltimos, odob doirasida yozing"
 )
+# AI anketada topgan muammo turi (utils/anketa_review kodi) -> foydalanuvchiga sabab
+ANKETA_REVIEW_REASONS = {
+    "profanity": "so'kinish yoki qo'pol so'zlar bor, iltimos, odob doirasida yozing",
+    "insult": "haqoratli gap bor, iltimos, hurmat bilan yozing",
+    "sexual": "18+ yoki axloqsiz mazmun bor, iltimos, boshqacha yozing",
+    "hate": "nafrat yoki tahdid mazmuni bor, iltimos, boshqacha yozing",
+    "ad": "reklama yoki havola bor, iltimos, faqat o'zingiz haqingizda yozing",
+    "nonsense": "javob tushunarsiz yoki ma'nosiz, iltimos, aniqroq yozing",
+    "joke": "jiddiy javob emasga o'xshaydi, iltimos, haqiqiy javob yozing",
+    "fake_name": "haqiqiy ism va familiyangizni yozing",
+}
+ANKETA_REVIEW_REASON_DEFAULT = "javob nomaqbul, iltimos, qayta yozing"
 PROFILE_PICK_FIELD = "Qaysi ma'lumotni o'zgartirmoqchisiz?"
 PROFILE_SAVED = "✅ Saqlandi"
 PROFILE_USE_BUTTONS = "Iltimos, pastdagi tugmalardan birini tanlang 👇"
