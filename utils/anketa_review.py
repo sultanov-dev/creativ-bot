@@ -1,14 +1,18 @@
-"""Tasdiqlashdan keyin AI butun anketani bir marta tekshiradi: nomaqbul maydonlar va sababi (foydalanuvchi uchun).
+"""Tasdiqlashdan keyin anketa bir marta tekshiriladi: nomaqbul maydonlar va sababi (foydalanuvchi uchun).
 
-Savol-javob paytida har bir javob faqat mahalliy filtrdan o'tadi (utils/profanity): AI'ga har javobda murojaat qilinmaydi.
+Savol-javob paytida har bir javob faqat mahalliy so'kinish filtridan o'tadi (utils/profanity): AI'ga har javobda
+murojaat qilinmaydi. Tasdiqlanganda avval bot o'zi (so'kinish va 18+ so'zlar, AI'siz, AI ishlamasa ham ishlaydi),
+shular topilmasa AI butun anketani tekshiradi.
 """
 import asyncio
 import json
 import logging
 import re
 
+from texts import ANKETA_INDECENT_REASON
 from utils.ai import AIError, ask_ai
 from utils.form_anketa import full_name_of
+from utils.profanity import has_adult_content, has_profanity
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +54,19 @@ def _parse(answer: str) -> dict[str, str]:
 async def review_anketa(data: dict) -> dict[str, str]:
     """{maydon: sabab} — nomaqbul maydonlar (bo'sh = hammasi joyida).
 
-    AI ishlamasa, kech javob bersa yoki tushunarsiz javob qaytarsa bo'sh (anketa o'tadi, fail-open).
+    Avval mahalliy filtr (so'kinish, 18+): topsa AI chaqirilmaydi. AI ishlamasa, kech javob bersa yoki tushunarsiz
+    javob qaytarsa bo'sh (anketa o'tadi, fail-open).
     """
     values = {"full_name": full_name_of(data), **{f: data.get(f) for f in REVIEW_FIELDS[1:]}}
+    local = {
+        f: ANKETA_INDECENT_REASON
+        for f in REVIEW_FIELDS
+        if has_profanity(str(values[f] or "")) or has_adult_content(str(values[f] or ""))
+    }
+    if local:
+        # aniq nomaqbul so'z: AI'siz qayta so'raladi (tuzatilgach "Tasdiqlash"da AI qolganini tekshiradi)
+        logger.info("Anketa mahalliy tekshiruvi: muammoli maydonlar %s (AI chaqirilmadi)", sorted(local))
+        return local
     body = "\n".join(f"{f}: {str(values[f] or '')[:MAX_FIELD]}" for f in REVIEW_FIELDS)
     try:
         answer = await asyncio.wait_for(

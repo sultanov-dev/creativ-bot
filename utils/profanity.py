@@ -67,8 +67,22 @@ def _join_spelled(words: list[str]) -> list[str]:
     return out
 
 
+# 18+ mazmun (anketa uchun): ehtiyotkor ro'yxat, "seksiya" (sport seksiyasi), "Essex" kabi so'zlar tegmaydi
+_ADULT_PREFIX = _norm_list("porn erotik erotic hentai intim prostitut fohisha minet xvideo xnxx xhamster onlyfans brazzers")
+_ADULT_EXACT = frozenset(_norm_list("seks sex sexy seksi seksual seksualniy nude nudes nsfw eskort escort milf"))
+
+
+def _words(text: str) -> list[str]:
+    return _join_spelled(normalize(text or "").split())
+
+
 def has_profanity(text: str) -> bool:
-    for word in _join_spelled(normalize(text or "").split()):
+    for word in _words(text):
         if word in _EXACT or word.startswith(_PREFIX) or any(c in word for c in _CONTAINS):
             return True
     return False
+
+
+def has_adult_content(text: str) -> bool:
+    """18+ (jinsiy, porno) so'zlar: porno, seks, erotika... (kirill, maska va takroriy harflar bilan ham)."""
+    return any(word in _ADULT_EXACT or word.startswith(_ADULT_PREFIX) for word in _words(text))

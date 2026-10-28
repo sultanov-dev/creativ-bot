@@ -96,6 +96,26 @@ class TestAiFindsProblems:
         assert "untrusted" in system and user.startswith("<<<\n") and user.endswith("\n>>>")
 
 
+class TestLocalCheck:
+    async def test_profanity_and_adult_words_are_refilled_without_ai_even_when_ai_is_down(
+        self, dp, bot, session, review_ai
+    ):
+        review_ai.answer = AIError("503")
+        answers = [*ANSWERS[:3], "porno aktyorman", ANSWERS[4], "seks videolarni tashamoqchiman"]
+        await fill_form(dp, bot, U, answers, confirm=False)
+        session.clear()
+        await say(dp, bot, CONFIRM)
+        notice, question = session.texts_to(U)
+        assert FIELD_LABELS["job"] in notice and FIELD_LABELS["join_group"] in notice
+        assert FIELD_LABELS["about"] not in notice and question == texts.ASK_JOB
+        assert not review_ai.calls and await dbm.get_active_application(U, G) is None  # AI chaqirilmadi
+        await say(dp, bot, "Backend dasturchi")
+        assert session.texts_to(U)[-1] == texts.ASK_REASON
+        await say(dp, bot, "Bilim almashish uchun")
+        await say(dp, bot, CONFIRM)  # endi AI tekshiradi (ishlamasa fail-open)
+        assert len(review_ai.calls) == 1 and await dbm.get_active_application(U, G) is not None
+
+
 class TestEditBeforeConfirm:
     async def test_edit_uses_the_field_menu_and_returns_to_confirm_view(self, dp, bot, session):
         await at_confirm(dp, bot, session)

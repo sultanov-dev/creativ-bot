@@ -11,7 +11,7 @@ from tests import telegram_fakes as tf
 from tests.flow import ANSWERS, feed, start_application, state_of
 from utils import moderation
 from utils.ai import AIError
-from utils.profanity import has_profanity, normalize
+from utils.profanity import has_adult_content, has_profanity, normalize
 from tests.table import acheck, same
 
 U = 1
@@ -161,6 +161,16 @@ class TestLocalProfanityFilter:
             "guruhga qo'shilmoqchiman, chunki o'rganishni xohlayman",
             # "om" faqat butun so'z sifatida belgilanadi: uning ichida/boshida kelgan oddiy so'zlar toza
             *"omad|omon|omborxona|Omar|Omonov|tom|dom|Rom|kompyuter|komil|somsa|omma".split("|"),
+        ], False)
+
+    def test_adult_words(self):
+        same(has_adult_content, [
+            "porno aktyorman", "seks videolarni tashamoqchiman", "PORNO", "порно", "секс", "s e x",
+            "pornografiya", "erotik video", "xentai", "hentai", "onlyfans", "Intim xizmat", "sexy", "eskort",
+        ], True)
+        same(has_adult_content, [
+            "Aziz Karimov", "dasturchi", "sport seksiyasi", "seksiya", "Essex", "Sussex", "sekretar", "sexta",
+            "Python va Django", "intellekt", "minimal", "", None,
         ], False)
 
     def test_normalize_handles_cyrillic_leet_and_repeats(self):

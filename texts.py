@@ -78,6 +78,8 @@ ANKETA_NEEDS_FIX = (
     "{problems}\n\n"
     "Iltimos, shu joylarni qayta to'ldiring 👇"
 )
+# AI'siz (bot o'zi) topilgan nomaqbul maydon sababi
+ANKETA_INDECENT_REASON = "nomaqbul (so'kinish yoki 18+) so'zlar bor, iltimos, odob doirasida yozing"
 PROFILE_PICK_FIELD = "Qaysi ma'lumotni o'zgartirmoqchisiz?"
 PROFILE_SAVED = "✅ Saqlandi"
 PROFILE_USE_BUTTONS = "Iltimos, pastdagi tugmalardan birini tanlang 👇"
