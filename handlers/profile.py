@@ -13,6 +13,7 @@ from states import Form
 from texts import (
     ANKETA_CONFIRM,
     ANKETA_NEEDS_FIX,
+    ANKETA_REVIEW_UNAVAILABLE,
     PROFILE_BACK_BUTTON,
     PROFILE_EDIT_BUTTON,
     PROFILE_KEEP_BUTTON,
@@ -60,10 +61,15 @@ async def _ask_field(bot: Bot, chat_id: int, state: FSMContext, field: str) -> N
 
 async def ai_check_passed(bot: Bot, chat_id: int, state: FSMContext) -> bool:
     """Tasdiqlangan anketani AI tekshiradi. Muammo bo'lsa: foydalanuvchiga sababi aytiladi va muammoli maydonlar
-    birin-ketin qayta so'raladi (oxirida anketa yana ko'rsatiladi, tasdiqlansa yana tekshiriladi); False qaytadi."""
+    birin-ketin qayta so'raladi (oxirida anketa yana ko'rsatiladi, tasdiqlansa yana tekshiriladi); False qaytadi.
+    AI tekshira olmasa ham False: anketa tekshiruvsiz adminga o'tmaydi, holat o'zgarmaydi (tugmani keyinroq qayta bosadi)."""
     data = await state.get_data()
     async with ChatActionSender.typing(bot=bot, chat_id=chat_id):
         problems = await review_anketa(data)
+    if problems is None:
+        keyboard = confirm_keyboard() if data.get("fresh") else review_keyboard()
+        await bot.send_message(chat_id=chat_id, text=ANKETA_REVIEW_UNAVAILABLE, reply_markup=keyboard)
+        return False
     if not problems:
         return True
     lines = "\n".join(f"• <b>{FIELD_LABELS[f]}</b>: {escape(reason)}" if reason else f"• <b>{FIELD_LABELS[f]}</b>"

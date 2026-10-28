@@ -51,11 +51,11 @@ def _parse(answer: str) -> dict[str, str]:
     return result
 
 
-async def review_anketa(data: dict) -> dict[str, str]:
+async def review_anketa(data: dict) -> dict[str, str] | None:
     """{maydon: sabab} — nomaqbul maydonlar (bo'sh = hammasi joyida).
 
     Avval mahalliy filtr (so'kinish, 18+): topsa AI chaqirilmaydi. AI ishlamasa, kech javob bersa yoki tushunarsiz
-    javob qaytarsa bo'sh (anketa o'tadi, fail-open).
+    javob qaytarsa None: anketa tekshirilmagan, adminga YUBORILMAYDI (foydalanuvchi keyinroq qayta tasdiqlaydi).
     """
     values = {"full_name": full_name_of(data), **{f: data.get(f) for f in REVIEW_FIELDS[1:]}}
     local = {
@@ -82,10 +82,10 @@ async def review_anketa(data: dict) -> dict[str, str]:
         )
         problems = _parse(answer)
     except (AIError, asyncio.TimeoutError) as e:
-        logger.warning("Anketa AI tekshiruvi ishlamadi, anketa o'tkazildi: %r", e)
-        return {}
+        logger.warning("Anketa AI tekshiruvi ishlamadi, anketa yuborilmadi: %r", e)
+        return None
     except (ValueError, AttributeError) as e:  # JSON emas yoki kutilmagan shakl
-        logger.warning("Anketa AI tekshiruvi: tushunarsiz javob, anketa o'tkazildi: %r", e)
-        return {}
+        logger.warning("Anketa AI tekshiruvi: tushunarsiz javob, anketa yuborilmadi: %r", e)
+        return None
     logger.info("Anketa AI tekshiruvi: muammoli maydonlar %s", sorted(problems))
     return problems

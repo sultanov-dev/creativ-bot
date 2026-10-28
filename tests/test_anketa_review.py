@@ -52,10 +52,18 @@ class TestConfirmView:
         assert session.texts_to(U) == [texts.PROFILE_USE_BUTTONS]
         assert (await state_of(dp, bot, U))[0] == "Form:confirm"
 
-    @pytest.mark.parametrize("answer", [AIError("503"), "bu JSON emas"])
-    async def test_ai_down_or_garbled_lets_the_anketa_through(self, dp, bot, session, review_ai, answer):
-        review_ai.answer = answer
+    async def test_ai_down_or_garbled_keeps_the_anketa_until_it_is_checked(self, dp, bot, session, review_ai):
+        """AI tekshira olmasa anketa adminga o'tmaydi: saqlanib turadi, keyinroq qayta tasdiqlanadi."""
         await at_confirm(dp, bot, session)
+        for answer in (AIError("503"), "bu JSON emas"):
+            session.clear()
+            review_ai.answer = answer
+            await say(dp, bot, CONFIRM)
+            last = session.sent_to(U)[-1]
+            assert last.text == texts.ANKETA_REVIEW_UNAVAILABLE and buttons(last)[0] == CONFIRM, answer
+            assert (await state_of(dp, bot, U))[0] == "Form:confirm"
+            assert await dbm.get_active_application(U, G) is None and not session.sent_to(tf.ADMIN_ID)
+        review_ai.answer = '{"problems": []}'  # AI qaytdi: qayta bosilgan tugma arizani yuboradi
         await say(dp, bot, CONFIRM)
         assert await dbm.get_active_application(U, G) is not None
 
@@ -112,8 +120,9 @@ class TestLocalCheck:
         await say(dp, bot, "Backend dasturchi")
         assert session.texts_to(U)[-1] == texts.ASK_REASON
         await say(dp, bot, "Bilim almashish uchun")
-        await say(dp, bot, CONFIRM)  # endi AI tekshiradi (ishlamasa fail-open)
-        assert len(review_ai.calls) == 1 and await dbm.get_active_application(U, G) is not None
+        await say(dp, bot, CONFIRM)  # mahalliy tekshiruv toza: endi AI tekshiradi, u ishlamasa anketa kutadi
+        assert len(review_ai.calls) == 1 and session.texts_to(U)[-1] == texts.ANKETA_REVIEW_UNAVAILABLE
+        assert await dbm.get_active_application(U, G) is None
 
 
 class TestEditBeforeConfirm:
@@ -148,6 +157,12 @@ class TestSavedProfile:
         await say(dp, bot, "Toza matn")
         assert (await state_of(dp, bot, U))[0] == "Form:review"
         assert (await dbm.get_profile(U))["about"] == "Toza matn"
+        review_ai.answer = AIError("503")  # AI ishlamasa saqlangan anketa ham ovozga qo'yilmaydi
+        session.clear()
+        await say(dp, bot, texts.PROFILE_KEEP_BUTTON)
+        last = session.sent_to(U)[-1]
+        assert last.text == texts.ANKETA_REVIEW_UNAVAILABLE and texts.PROFILE_KEEP_BUTTON in buttons(last)
+        assert not session.sent_to(G) and (await state_of(dp, bot, U))[0] == "Form:review"
 
 
 class TestExpiry:

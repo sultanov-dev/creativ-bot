@@ -78,6 +78,10 @@ ANKETA_NEEDS_FIX = (
     "{problems}\n\n"
     "Iltimos, shu joylarni qayta to'ldiring 👇"
 )
+ANKETA_REVIEW_UNAVAILABLE = (
+    "⏳ Hozir anketangizni tekshirib bo'lmadi. Anketangiz saqlanib turibdi: "
+    "iltimos, birozdan keyin pastdagi tugmani qayta bosing 👇"
+)
 # AI'siz (bot o'zi) topilgan nomaqbul maydon sababi
 ANKETA_INDECENT_REASON = (
     "nomaqbul (so'kinish yoki 18+) so'zlar bor, iltimos, odob doirasida yozing"
