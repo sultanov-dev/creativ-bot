@@ -153,7 +153,6 @@ async def ai_verdict(text: str, urls: list[str] | None = None, forwarded_from: s
                     {"role": "user", "content": f"<<<\n{content}\n>>>"},
                 ],
                 max_tokens=10,
-                attempts=2,  # vaqtinchalik xatoda bir marta qayta urinadi
             ),
             WAIT_SECONDS,
         )

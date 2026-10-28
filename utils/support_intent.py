@@ -36,7 +36,6 @@ async def asks_for_admin(text: str) -> bool:
             ask_ai(
                 [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": f"<<<\n{text[:MAX_TEXT]}\n>>>"}],
                 max_tokens=5,
-                attempts=2,
             ),
             WAIT_SECONDS,
         )

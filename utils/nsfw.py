@@ -188,7 +188,7 @@ async def _ai_verdict(images: list) -> str | None:
     content = [{"type": "text", "text": "Is this image NSFW?"}, *({"type": "image_url", "image_url": {"url": u}} for u in urls)]
     try:
         answer = await asyncio.wait_for(
-            ask_ai([{"role": "system", "content": AI_PROMPT}, {"role": "user", "content": content}], max_tokens=10, attempts=2),
+            ask_ai([{"role": "system", "content": AI_PROMPT}, {"role": "user", "content": content}], max_tokens=10),
             AI_WAIT_SECONDS,
         )
     except (AIError, asyncio.TimeoutError) as e:

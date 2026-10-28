@@ -85,7 +85,6 @@ async def review_anketa(data: dict) -> dict[str, str] | None:
                     {"role": "user", "content": f"<<<\n{body}\n>>>"},
                 ],
                 max_tokens=MAX_TOKENS,
-                attempts=3,
             ),
             WAIT_SECONDS,
         )
