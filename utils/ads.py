@@ -3,6 +3,7 @@ darhol, havolali va shubhali matn AI orqali."""
 import asyncio
 import logging
 import re
+import time
 
 from utils.ai import AIError, ask_ai
 from utils import tg_links
@@ -36,7 +37,9 @@ PROMO_RE = re.compile(
     re.IGNORECASE,
 )
 
-WAIT_SECONDS = 6
+# AI ba'zan sekin (javob 6 s dan oshadi): xabar tekshiruv paytida guruhda turadi, uzoq kutish faqat reklamaning
+# o'chishini kechiktiradi, boshqa xabarlarni to'xtatmaydi; qisqa chegarada esa reklama tekshiruvsiz qolib ketardi
+WAIT_SECONDS = 30
 MAX_TEXT = 1500
 
 SYSTEM_PROMPT = (
@@ -141,6 +144,7 @@ async def ai_verdict(text: str, urls: list[str] | None = None, forwarded_from: s
         content = f"[Forwarded from channel: {forwarded_from[:200]}]\n{content}"
     if urls:
         content += "\n\nLinks:\n" + "\n".join(f"- {u[:300]} [{analyze(u).describe()[:400]}]" for u in urls[:10])
+    started = time.monotonic()
     try:
         answer = await asyncio.wait_for(
             ask_ai(
@@ -149,15 +153,20 @@ async def ai_verdict(text: str, urls: list[str] | None = None, forwarded_from: s
                     {"role": "user", "content": f"<<<\n{content}\n>>>"},
                 ],
                 max_tokens=10,
-                attempts=2,  # 6 soniyalik chegarada: AI ishlamasa, foydalanuvchi uzoq kutmasin (fail-open)
+                attempts=2,  # vaqtinchalik xatoda bir marta qayta urinadi
             ),
             WAIT_SECONDS,
         )
     except (AIError, asyncio.TimeoutError) as e:
-        logger.warning("Reklama/havola tekshiruvi: AI ishlamadi, xabar qoldirildi: %r", e)
+        logger.warning(
+            "Reklama/havola tekshiruvi: AI ishlamadi (%.1f s), xabar qoldirildi: %r", time.monotonic() - started, e
+        )
         return None
     head = answer.upper()[:40]
-    logger.info("Reklama/havola AI: %r (matn uzunligi %s, havolalar %s)", answer.strip()[:20], len(text), len(urls or []))
+    logger.info(
+        "Reklama/havola AI (%.1f s): %r (matn uzunligi %s, havolalar %s)",
+        time.monotonic() - started, answer.strip()[:20], len(text), len(urls or []),
+    )
     if re.search(r"\bDANGER\b", head):
         return DANGER
     if re.search(r"\bAD\b", head):
