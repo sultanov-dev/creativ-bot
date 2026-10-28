@@ -656,3 +656,17 @@ class TestPrivateIntent:
         monkeypatch.setattr(support_intent, "ask_ai", failing)
         await dm(dp, bot, "mas'ul odam kerak")
         assert not dm_ai.calls and session.texts_to(USER) == [] and not session.sent_to(tf.DEVELOPER_ID)
+
+    async def test_ai_down_gives_one_error_message(self, dp, bot, session, group_ai, dm_ai):
+        """AI ishlamasa foydalanuvchi bitta xabar oladi (AI_ERROR), ustidan umumiy ERROR_GENERIC kelmaydi."""
+        from utils.ai import AIError
+
+        dm_ai.error = AIError("503")
+        await add_member(tf.GROUP_ID, USER)
+        await dm(dp, bot, "admin bilan gaplashmoqchiman")  # lichkada ochilgan suhbat
+        assert session.texts_to(USER) == [texts.AI_ERROR["uz"]]
+        session.clear()
+        await set_support_status((await get_support_chat(USER, "active", 24))["id"], "active", "awaiting_start")
+        await dm(dp, bot, "/start")  # /start bosilib, kutib turgan suhbat davom etadi
+        assert session.texts_to(USER)[-1] == texts.AI_ERROR["uz"]
+        assert texts.ERROR_GENERIC not in session.texts_to(USER)

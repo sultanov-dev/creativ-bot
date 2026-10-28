@@ -12,6 +12,7 @@ from aiogram.types import ErrorEvent, Update
 
 from config import DEVELOPER_IDS
 from texts import ERROR_GENERIC
+from utils.ai import AIError
 from utils.admin import safe_send
 
 router = Router()
@@ -64,7 +65,9 @@ async def on_error(event: ErrorEvent, bot: Bot) -> bool:
     logger.error("Ushlanmagan xatolik: %r", exc, exc_info=exc)
 
     try:
-        if update.callback_query:
+        if isinstance(exc, AIError):
+            pass  # handler foydalanuvchiga o'z tilida AI_ERROR yozib bo'lgan: ikkinchi xato xabari kerak emas
+        elif update.callback_query:
             await update.callback_query.answer(ERROR_GENERIC, show_alert=True)
         elif update.message and update.message.chat.type == "private":
             await update.message.answer(ERROR_GENERIC)

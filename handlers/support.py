@@ -243,6 +243,11 @@ async def _accept(bot: Bot, chat: dict, message: Message) -> str | None:
     return content or None
 
 
+def _user_lang(messages: list[dict]) -> str:
+    """Suhbat tili: foydalanuvchining oxirgi xabari bo'yicha."""
+    return detect_lang(next((m["content"] for m in reversed(messages) if m["role"] == "user"), ""))
+
+
 async def run_turn(bot: Bot, chat: dict) -> None:
     """Saqlangan suhbat bo'yicha AI javobi: matnni foydalanuvchiga yuboradi, tool chaqirsa bajaradi."""
     messages = await get_support_messages(chat["id"])
@@ -269,7 +274,7 @@ async def run_turn(bot: Bot, chat: dict) -> None:
             raise
         text, calls = "", []  # limitga yetgan suhbat AI xatosi tufayli osilib qolmasin: yopiladi
 
-    lang = detect_lang(next((m["content"] for m in reversed(messages) if m["role"] == "user"), ""))
+    lang = _user_lang(messages)
     decline = next((a for n, a in calls if n == "decline"), None)
     escalate = next((a for n, a in calls if n == "escalate_to_admin"), None)
     resolved = any(n == "resolve" for n, _ in calls)
@@ -380,7 +385,11 @@ async def resume_support(bot: Bot, user_id: int) -> None:
     if chat is None or not await set_support_status(chat["id"], "awaiting_start", "active"):
         return
     async with _locks[user_id]:
-        await run_turn(bot, chat)
+        try:
+            await run_turn(bot, chat)
+        except AIError:
+            await safe_send(bot, user_id, texts.AI_ERROR[_user_lang(await get_support_messages(chat["id"]))])
+            raise
 
 
 async def _chat_in(status: str, message: Message) -> dict | bool:
