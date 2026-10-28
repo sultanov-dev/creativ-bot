@@ -23,7 +23,7 @@ from texts import (
     PROFILE_USE_BUTTONS,
 )
 from utils.anketa_review import review_anketa
-from utils.applications import apply_from_profile
+from utils.applications import submit_application
 from utils.form_anketa import PROFILE_FIELDS, format_anketa
 from utils.questions import ask
 
@@ -81,6 +81,23 @@ async def ai_check_passed(bot: Bot, chat_id: int, state: FSMContext) -> bool:
     return False
 
 
+_finishing: set[int] = set()  # anketasi hozir tekshirilib yuborilayotgan foydalanuvchilar
+
+
+async def confirm_and_submit(message: Message, bot: Bot, state: FSMContext) -> None:
+    """"Tasdiqlash" (yangi anketa) va "Shunday qoldirish" (saqlangan anketa) uchun bitta yo'l: har doim avval
+    tekshiruv (bot + AI), keyin ariza ADMINLARGA; guruh ovoziga faqat admin qo'yadi."""
+    user_id = message.chat.id
+    if user_id in _finishing:
+        return  # ikki marta bosilgan tugma dublikat ariza va admin xabarlarini yaratmasin
+    _finishing.add(user_id)
+    try:
+        if await ai_check_passed(bot, user_id, state):
+            await submit_application(message, bot, state)
+    finally:
+        _finishing.discard(user_id)
+
+
 async def finish_edit(bot: Bot, chat_id: int, state: FSMContext) -> None:
     """Bitta maydon o'zgartirilgach: AI ko'rsatgan navbatdagi maydon bo'lsa o'sha so'raladi, aks holda anketa qayta
     ko'rsatiladi. Avval saqlangan anketa (fresh emas) har o'zgarishda saqlanadi; yangisi ariza yaratilganda saqlanadi."""
@@ -116,18 +133,7 @@ async def on_field(message: Message, bot: Bot, state: FSMContext):
 
 @router.message(F.text == PROFILE_KEEP_BUTTON, StateFilter(Form.review))
 async def on_keep(message: Message, bot: Bot, state: FSMContext):
-    if not await ai_check_passed(bot, message.chat.id, state):
-        return
-    data = await state.get_data()
-    group_id = data.get("group_id")
-    await state.clear()
-    if group_id is None:
-        logger.warning("group_id topilmadi, user_id=%s", message.chat.id)
-        await message.answer(PROFILE_SAVED, reply_markup=ReplyKeyboardRemove())
-        return
-    # eski profillarda ism first_name/last_name'da: full_name_of shularga tayanadi
-    profile = {k: data.get(k) for k in (*PROFILE_FIELDS, "first_name", "last_name")}
-    await apply_from_profile(bot, message.chat.id, group_id, message.chat.id, profile)
+    await confirm_and_submit(message, bot, state)
 
 
 @router.message(StateFilter(Form.review, Form.pick_field))

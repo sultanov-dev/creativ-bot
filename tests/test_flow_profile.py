@@ -9,7 +9,7 @@ import texts
 from keyboards.profile import FIELD_LABELS
 from states import Form
 from tests import telegram_fakes as tf
-from tests.flow import assert_no_errors, feed, start_application, state_of, status_of
+from tests.flow import admin_accept, assert_no_errors, feed, start_application, state_of, status_of
 from tests.telegram_fakes import FakeSession
 
 U = 1
@@ -71,18 +71,37 @@ class TestReview:
 
 
 class TestKeep:
-    async def test_keep_goes_straight_to_group_vote_without_admin_review(self, dp, bot, session):
+    async def test_keep_goes_to_admin_review_first_never_straight_to_the_group(self, dp, bot, session):
         first = await rejoin(dp, bot, session, answers=PHONE_ANSWERS)
         await say(dp, bot, texts.PROFILE_KEEP_BUTTON)
         app = await active()
-        assert app["status"] == "voting" and app["vote_message_id"] and app["id"] != first
-        assert await status_of(first) == "accepted"
-        assert not session.sent_to(tf.ADMIN_ID) and len(session.sent_to(tf.GROUP_ID)) == 1
-        assert "+998901234567" not in (session.sent_to(tf.GROUP_ID)[0].text or "")  # guruhda telefon yo'q
-        assert app["phone"] == "+998901234567"
-        assert session.texts_to(U)[-1] == texts.REPEAT_APPLICATION_SENT
-        assert (await state_of(dp, bot)) == (None, {})
+        assert app["status"] == "pending" and app["id"] != first and await status_of(first) == "accepted"
+        assert not session.sent_to(tf.GROUP_ID)  # guruhga hech narsa ketmadi
+        admin_msg = session.sent_to(tf.ADMIN_ID)[-1]
+        assert "+998901234567" in (admin_msg.text or "") and admin_msg.reply_markup is not None  # Ovozga qo'yish / Rad
+        assert session.texts_to(U)[-1] == texts.THANKS and (await state_of(dp, bot)) == (None, {})
+        # admin tasdiqlagandan keyingina guruhga ovozga qo'yiladi (telefonsiz)
+        session.clear()
+        await admin_accept(dp, bot, app["id"])
+        assert await status_of(app["id"]) == "voting"
+        assert "+998901234567" not in (session.sent_to(tf.GROUP_ID)[0].text or "")
         assert_no_errors(session)
+
+    async def test_edited_saved_profile_is_checked_and_goes_to_admins(self, dp, bot, session, review_ai):
+        """Saqlangan anketa o'zgartirilsa ham: bot + AI tekshiruvi, keyin adminga (guruhga emas)."""
+        await rejoin(dp, bot, session)
+        await say(dp, bot, texts.PROFILE_EDIT_BUTTON)
+        await say(dp, bot, FIELD_LABELS["job"])
+        await say(dp, bot, "porno aktyorman")  # javobda so'kinish yo'q: o'tadi, Tasdiqlashda ushlanadi
+        review_ai.calls.clear()
+        session.clear()
+        await say(dp, bot, texts.PROFILE_KEEP_BUTTON)
+        assert session.texts_to(U)[-1] == texts.ASK_JOB and not review_ai.calls  # bot o'zi ushladi
+        await say(dp, bot, "Backend dasturchi")
+        await say(dp, bot, texts.PROFILE_KEEP_BUTTON)
+        assert len(review_ai.calls) == 1  # endi AI tekshirdi
+        assert (await active())["status"] == "pending" and session.sent_to(tf.ADMIN_ID)
+        assert not session.sent_to(tf.GROUP_ID)
 
     async def test_username_is_refreshed_from_telegram_and_never_shown(self, dp, bot, session):
         await dbm.save_profile(U, {"full_name": "Aziz Karimov", "username": "old_name", "phone": None, "age": 25,
@@ -93,13 +112,13 @@ class TestKeep:
         await say(dp, bot, texts.PROFILE_KEEP_BUTTON)
         assert (await active())["tg_username"] == f"user{U}"
 
-    async def test_group_send_failure_marks_failed_and_allows_retry(self, dp, bot, session):
+    async def test_unreachable_admins_mark_failed_and_allow_retry(self, dp, bot, session):
         await rejoin(dp, bot, session)
-        session.errors[SendMessage] = lambda m: tf.bad_request("Bad Request: no rights", m) if m.chat_id == tf.GROUP_ID else None
+        session.errors[SendMessage] = lambda m: tf.bad_request("Bad Request: chat not found", m) if m.chat_id != U else None
         session.clear()
         await say(dp, bot, texts.PROFILE_KEEP_BUTTON)
         assert session.texts_to(U) == [texts.ERROR_GENERIC]
-        assert await dbm.get_active_application(U, tf.GROUP_ID) is None
+        assert await dbm.get_active_application(U, tf.GROUP_ID) is None and not session.sent_to(tf.GROUP_ID)
         # ariza "failed" bo'ldi: qayta qo'shilganda eski ma'lumot ko'rsatilmaydi, anketa boshidan
         session.errors.clear()
         session.clear()
@@ -118,7 +137,7 @@ class TestKeep:
         await ctx.set_state(Form.review)
         await ctx.set_data({"full_name": "Aziz Karimov"})
         await say(dp, bot, texts.PROFILE_KEEP_BUTTON)
-        assert session.texts_to(U) == [texts.PROFILE_SAVED]
+        assert session.texts_to(U) == [texts.ERROR_GENERIC]
         assert (await state_of(dp, bot))[0] is None
 
     async def test_legacy_profile_with_first_and_last_name_works(self, dp, bot, session):
@@ -138,8 +157,8 @@ class TestKeep:
         await feed(dp, bot, tf.join_request(U, other))
         await say(dp, bot, texts.PROFILE_KEEP_BUTTON)
         app = await dbm.get_active_application(U, other)
-        assert app is not None and app["group_id"] == other
-        assert len(session.sent_to(other)) == 1
+        assert app is not None and app["group_id"] == other and app["status"] == "pending"
+        assert not session.sent_to(other)  # avval adminga, guruhga emas
 
 
 class TestEdit:
@@ -219,7 +238,7 @@ class TestEdit:
         await say(dp, bot, "Yangi matn")
         await say(dp, bot, texts.PROFILE_KEEP_BUTTON)
         app = await active()
-        assert "Yangi matn" in app["anketa"] and app["status"] == "voting"
+        assert "Yangi matn" in app["anketa"] and app["status"] == "pending"
 
     async def test_new_join_request_cancels_unfinished_edit(self, dp, bot, session):
         await self._into_edit(dp, bot, session)

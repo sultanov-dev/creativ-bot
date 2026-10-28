@@ -93,10 +93,6 @@ PROFILE_EDIT_BUTTON = "✏️ O'zgartirish"
 PROFILE_KEEP_BUTTON = "✅ Shunday qoldirish"
 PROFILE_BACK_BUTTON = "⬅️ Orqaga"
 
-REPEAT_APPLICATION_SENT = (
-    "Arizangiz guruhda ovozga qo'yildi 🗳\nNatijani shu yerda xabar qilamiz ⏳"
-)
-
 APPLICATION_ACCEPTED = "Tabriklaymiz, arizangiz qabul qilindi! Guruhga xush kelibsiz 🎉"
 FEEDBACK_INTRO = "Guruh a'zolarining umumiy fikri haqida qisqacha:"
 APPLICATION_REJECTED = (

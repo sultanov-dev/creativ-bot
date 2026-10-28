@@ -42,7 +42,7 @@ async def crash_last_answer(
     dp: Dispatcher, bot: Bot, monkeypatch: pytest.MonkeyPatch, answers: list[str] | None = None
 ) -> Callable[[], None]:
     """"Tasdiqlash"da bot "yiqiladi" (adminlarga yuborish o'rniga xato). Qaytaradi: yiqilishni bekor qiluvchi funksiya."""
-    import handlers.anketa as anketa
+    import utils.applications as anketa  # arizani adminlarga yuboradigan joy
 
     await fill_form(dp, bot, U, [*(answers or BEFORE_LAST), ANSWERS[-1]], confirm=False)
     real = anketa.safe_send

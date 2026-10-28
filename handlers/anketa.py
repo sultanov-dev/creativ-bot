@@ -1,39 +1,25 @@
-import asyncio
 import logging
 import re
 
 from aiogram import Bot, F, Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, ReplyKeyboardRemove
+from aiogram.types import Message
 
-from database import (
-    change_status,
-    create_application,
-    get_active_application,
-    mark_admins_notified,
-    save_profile,
-)
-from handlers.profile import ai_check_passed, finish_edit, show_review
-from keyboards.action import action_inline
+from handlers.profile import confirm_and_submit, finish_edit, show_review
 from states import Form
 from texts import (
-    ALREADY_APPLIED,
     ANKETA_CONFIRM_BUTTON,
-    ERROR_GENERIC,
     MODERATION_WARNING,
     ONLY_TEXT,
     PROFILE_USE_BUTTONS,
     SKIP_BUTTON,
-    THANKS,
     TOO_LONG,
     WRONG_AGE,
     WRONG_CONTACT,
     WRONG_NAME,
     WRONG_PHONE,
 )
-from utils.admin import reviewer_ids, safe_send
-from utils.form_anketa import PROFILE_FIELDS, format_anketa, full_name_of
 from utils.profanity import has_profanity
 from utils.num_matcher import extract_number
 from utils.questions import ask
@@ -44,8 +30,6 @@ logger = logging.getLogger(__name__)
 
 # 3 ta javob + ism Telegram'ning 4096 belgilik xabar chegarasiga sig'ishi uchun
 MAX_ANSWER_LEN = 800
-
-_finishing: set[int] = set()  # oxirgi javobi hozir ishlanayotgan foydalanuvchilar
 
 PHONE_RE = re.compile(r"^\+?[\d\s\-()]{7,25}$", re.ASCII)  # arab-hind kabi Unicode raqamlar o'tmasin
 
@@ -177,104 +161,12 @@ async def capture_join_group(message: Message, bot: Bot, state: FSMContext):
 
 @router.message(F.text == ANKETA_CONFIRM_BUTTON, Form.confirm)
 async def on_confirm(message: Message, bot: Bot, state: FSMContext):
-    user_id = message.chat.id
-    if user_id in _finishing:
-        return  # ikki marta bosilgan tugma dublikat ariza va admin xabarlarini yaratmasin
-    _finishing.add(user_id)
-    try:
-        # tasdiqlangandan keyin AI butun anketani tekshiradi; muammo bo'lsa, o'sha joylar qayta so'raladi
-        if not await ai_check_passed(bot, user_id, state):
-            return
-        await _finish_application(message, bot, state)
-    finally:
-        _finishing.discard(user_id)
+    await confirm_and_submit(message, bot, state)
 
 
 @router.message(StateFilter(Form.confirm))
 async def confirm_use_buttons(message: Message):
     await message.answer(PROFILE_USE_BUTTONS)
-
-
-async def _finish_application(message: Message, bot: Bot, state: FSMContext) -> None:
-    """Tasdiqlangan va AI tekshiruvidan o'tgan anketa: ariza yaratiladi va adminlarga yuboriladi, holat ENG OXIRIDA tozalanadi.
-
-    Bot shu oraliqda to'xtasa, holat va javoblar saqlanib qoladi: "Tasdiqlash" qayta bosilganda shu ariza
-    qayta ishlatiladi va adminlarga yetkaziladi (javoblar yo'qolmaydi, ariza adminlarsiz qolib ketmaydi).
-    """
-    if message.from_user is not None:
-        # username so'ralmaydi: avtomatik olinadi va anketada ko'rsatilmaydi
-        await state.update_data(username=message.from_user.username)
-    data = await state.get_data()
-    group_id = data.get("group_id")
-    user_id = message.chat.id
-
-    # birinchi anketa saqlanadi: shu foydalanuvchi qayta qo'shilsa, savollar takrorlanmaydi
-    await save_profile(user_id, {k: data.get(k) for k in PROFILE_FIELDS})
-
-    if group_id is None:
-        logger.warning("group_id topilmadi, user_id=%s", user_id)
-        await state.clear()
-        await message.answer(ERROR_GENERIC, reply_markup=ReplyKeyboardRemove())
-        return
-
-    admins = await reviewer_ids(bot, group_id)
-    if not admins:
-        logger.error("Guruh %s uchun anketani ko'rib chiqadigan admin topilmadi", group_id)
-        await state.clear()
-        await message.answer(ERROR_GENERIC, reply_markup=ReplyKeyboardRemove())
-        return
-
-    full_name = full_name_of(data)
-    # guruhga (ovoz berish xabari) ketadigan variant telefonsiz; adminlar va arizachi telefonni ko'radi
-    anketa = format_anketa(data)
-    private_anketa = format_anketa(data, with_phone=True)
-
-    existing = await get_active_application(user_id, group_id)
-    # faqat aynan shu anketadan yaratilgan pending ariza qayta ishlatiladi (oldingi urinish yiqilgan); boshqasi dublikat
-    if existing and not (existing["status"] == "pending" and existing["anketa"] == anketa):
-        await state.clear()
-        await message.answer(ALREADY_APPLIED, reply_markup=ReplyKeyboardRemove())
-        return
-    # holat hali tozalanmagan bo'lsa, oldingi urinish tugamagan: o'sha ariza qayta ishlatiladi
-    app_id = existing["id"] if existing else await create_application(
-        user_id,
-        group_id,
-        full_name,
-        anketa,
-        tg_username=data.get("username"),
-        phone=data.get("phone"),
-        admins_notified=False,  # adminlarga yetgach belgilanadi; yetmay qolsa, startda qayta yuboriladi
-    )
-    if app_id is None:
-        await state.clear()
-        await message.answer(ALREADY_APPLIED, reply_markup=ReplyKeyboardRemove())
-        return
-
-    results = await asyncio.gather(
-        *(
-            safe_send(
-                bot=bot,
-                chat_id=admin_id,
-                text=private_anketa,
-                reply_markup=action_inline(app_id),
-            )
-            for admin_id in admins
-        )
-    )
-
-    if not any(results):
-        # hech kim ko'ra olmasa, ariza osilib qolmasligi uchun yopamiz: foydalanuvchi qayta urinishi mumkin
-        logger.warning(
-            "Hech bir admin anketani olmadi (botni start qilmagan bo'lishi mumkin)"
-        )
-        await change_status(app_id, old="pending", new="failed")
-        await state.clear()
-        await message.answer(ERROR_GENERIC, reply_markup=ReplyKeyboardRemove())
-        return
-
-    await mark_admins_notified(app_id)
-    await state.clear()  # eng oxirida: yuqoridagi qadamlar yiqilsa, javoblar yo'qolmaydi
-    await message.answer(THANKS, reply_markup=ReplyKeyboardRemove())
 
 
 @router.message(StateFilter(Form))

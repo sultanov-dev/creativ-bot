@@ -3,15 +3,17 @@ import logging
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
-from aiogram.types import ReplyKeyboardRemove
+from aiogram.fsm.context import FSMContext
+from aiogram.types import Message, ReplyKeyboardRemove
 
 from config import VOTING_MINUTES
 from database import (
     change_status,
     create_application,
-    get_application,
+    get_active_application,
     get_undelivered_applications,
     mark_admins_notified,
+    save_profile,
     set_vote_message,
     start_voting,
 )
@@ -20,9 +22,9 @@ from aiogram.fsm.storage.base import BaseStorage
 from keyboards.action import action_inline
 from keyboards.vote import vote_inline
 from states import Form
-from texts import ALREADY_APPLIED, ERROR_GENERIC, REPEAT_APPLICATION_SENT, THANKS, VOTE_DEADLINE
+from texts import ALREADY_APPLIED, ERROR_GENERIC, THANKS, VOTE_DEADLINE
 from utils.admin import reviewer_ids, safe_send
-from utils.form_anketa import anketa_for_admins, format_anketa, full_name_of
+from utils.form_anketa import PROFILE_FIELDS, anketa_for_admins, format_anketa, full_name_of
 from utils.fsm import get_private_state
 from utils.timefmt import format_deadline
 
@@ -65,33 +67,89 @@ async def open_voting(bot: Bot, app: dict) -> bool:
     return True
 
 
-async def apply_from_profile(
-    bot: Bot, user_id: int, group_id: int, chat_id: int, profile: dict
-) -> None:
-    """Saqlangan (yoki tahrirlangan) anketa bilan to'g'ridan-to'g'ri guruh ovoziga qo'yadi."""
-    app_id = await create_application(
+async def submit_application(message: Message, bot: Bot, state: FSMContext) -> None:
+    """Tekshiruvdan o'tgan anketa (yangi yoki saqlangan): ariza yaratiladi va adminlarga yuboriladi (guruh ovoziga
+    faqat admin "Ovozga qo'yish"ni bossa chiqadi), holat ENG OXIRIDA tozalanadi.
+
+    Bot shu oraliqda to'xtasa, holat va javoblar saqlanib qoladi: "Tasdiqlash" qayta bosilganda shu ariza
+    qayta ishlatiladi va adminlarga yetkaziladi (javoblar yo'qolmaydi, ariza adminlarsiz qolib ketmaydi).
+    """
+    if message.from_user is not None:
+        # username so'ralmaydi: avtomatik olinadi va anketada ko'rsatilmaydi
+        await state.update_data(username=message.from_user.username)
+    data = await state.get_data()
+    group_id = data.get("group_id")
+    user_id = message.chat.id
+
+    # anketa saqlanadi: shu foydalanuvchi qayta qo'shilsa, savollar takrorlanmaydi (eski first/last_name -> full_name)
+    await save_profile(user_id, {**{k: data.get(k) for k in PROFILE_FIELDS}, "full_name": full_name_of(data)})
+
+    if group_id is None:
+        logger.warning("group_id topilmadi, user_id=%s", user_id)
+        await state.clear()
+        await message.answer(ERROR_GENERIC, reply_markup=ReplyKeyboardRemove())
+        return
+
+    admins = await reviewer_ids(bot, group_id)
+    if not admins:
+        logger.error("Guruh %s uchun anketani ko'rib chiqadigan admin topilmadi", group_id)
+        await state.clear()
+        await message.answer(ERROR_GENERIC, reply_markup=ReplyKeyboardRemove())
+        return
+
+    full_name = full_name_of(data)
+    # guruhga (ovoz berish xabari) ketadigan variant telefonsiz; adminlar va arizachi telefonni ko'radi
+    anketa = format_anketa(data)
+    private_anketa = format_anketa(data, with_phone=True)
+
+    existing = await get_active_application(user_id, group_id)
+    # faqat aynan shu anketadan yaratilgan pending ariza qayta ishlatiladi (oldingi urinish yiqilgan); boshqasi dublikat
+    if existing and not (existing["status"] == "pending" and existing["anketa"] == anketa):
+        await state.clear()
+        await message.answer(ALREADY_APPLIED, reply_markup=ReplyKeyboardRemove())
+        return
+    # holat hali tozalanmagan bo'lsa, oldingi urinish tugamagan: o'sha ariza qayta ishlatiladi
+    app_id = existing["id"] if existing else await create_application(
         user_id,
         group_id,
-        full_name_of(profile),
-        format_anketa(profile),
-        first_name=profile.get("first_name"),
-        last_name=profile.get("last_name"),
-        tg_username=profile.get("username"),
-        phone=profile.get("phone"),
+        full_name,
+        anketa,
+        first_name=data.get("first_name"),  # eski saqlangan profillarda
+        last_name=data.get("last_name"),
+        tg_username=data.get("username"),
+        phone=data.get("phone"),
+        admins_notified=False,  # adminlarga yetgach belgilanadi; yetmay qolsa, startda qayta yuboriladi
     )
     if app_id is None:
-        await safe_send(bot=bot, chat_id=chat_id, text=ALREADY_APPLIED, reply_markup=ReplyKeyboardRemove())
+        await state.clear()
+        await message.answer(ALREADY_APPLIED, reply_markup=ReplyKeyboardRemove())
         return
 
-    app = await get_application(app_id)
-    if app is None or not await open_voting(bot, app):
-        # ovoz xabari guruhga ketmadi: ariza osilib qolmasin, foydalanuvchi qayta urinishi mumkin
-        logger.warning("Saqlangan anketa bilan ovoz berishni boshlab bo'lmadi, ariza %s", app_id)
+    results = await asyncio.gather(
+        *(
+            safe_send(
+                bot=bot,
+                chat_id=admin_id,
+                text=private_anketa,
+                reply_markup=action_inline(app_id),
+            )
+            for admin_id in admins
+        )
+    )
+
+    if not any(results):
+        # hech kim ko'ra olmasa, ariza osilib qolmasligi uchun yopamiz: foydalanuvchi qayta urinishi mumkin
+        logger.warning(
+            "Hech bir admin anketani olmadi (botni start qilmagan bo'lishi mumkin)"
+        )
         await change_status(app_id, old="pending", new="failed")
-        await safe_send(bot=bot, chat_id=chat_id, text=ERROR_GENERIC, reply_markup=ReplyKeyboardRemove())
+        await state.clear()
+        await message.answer(ERROR_GENERIC, reply_markup=ReplyKeyboardRemove())
         return
 
-    await safe_send(bot=bot, chat_id=chat_id, text=REPEAT_APPLICATION_SENT, reply_markup=ReplyKeyboardRemove())
+    await mark_admins_notified(app_id)
+    await state.clear()  # eng oxirida: yuqoridagi qadamlar yiqilsa, javoblar yo'qolmaydi
+    await message.answer(THANKS, reply_markup=ReplyKeyboardRemove())
 
 
 async def redeliver_undelivered(bot: Bot, storage: BaseStorage) -> int:
