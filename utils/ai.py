@@ -16,6 +16,9 @@ TIMEOUT = aiohttp.ClientTimeout(total=None, sock_connect=8)
 # ba'zan so'rovni javobsiz osiltirib qo'yadi, keyingi xuddi shunday so'rov esa odatda tez o'tadi
 ATTEMPT_TIMEOUT = 45
 TIMEOUT_RETRIES = 1
+# qisqa tekshiruvlar (reklama/havola, moderatsiya, "admin kerakmi", xulosalar, 18+ rasm) AI'ni shuncha kutadi; AI ko'pincha
+# 6-10 s dan sekin, qisqa chegarada tekshiruvlar o'tkazib yuborilardi (fail-open)
+CHECK_WAIT_SECONDS = 30
 # ulanish xatosi, vaqtinchalik server xatosi (5xx) yoki 429 bo'lsa, shuncha marta urinadi; faqat hammasi muvaffaqiyatsiz
 # bo'lsa AIError ko'tariladi (guruhga xato xabari va dasturchiga ogohlantirish shundan keyingina ketadi)
 ATTEMPTS = 5

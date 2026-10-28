@@ -2,13 +2,13 @@ import asyncio
 import logging
 import re
 
-from utils.ai import AIError, ask_ai
+from utils.ai import CHECK_WAIT_SECONDS, AIError, ask_ai
 from utils.profanity import has_profanity
 
 logger = logging.getLogger(__name__)
 
-# moderatsiya anketa savollarini sekinlashtirmasligi uchun qisqa kutish; AI javob bermasa matn o'tkaziladi
-WAIT_SECONDS = 6
+# AI javob bermasa matn o'tkaziladi (mahalliy filtr baribir ishlaydi)
+WAIT_SECONDS = CHECK_WAIT_SECONDS
 MAX_TEXT = 1500
 
 SYSTEM_PROMPT = (

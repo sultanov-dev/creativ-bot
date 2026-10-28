@@ -2,7 +2,7 @@ import asyncio
 import logging
 from html import escape
 
-from utils.ai import AIError, ask_ai
+from utils.ai import CHECK_WAIT_SECONDS, AIError, ask_ai
 
 logger = logging.getLogger(__name__)
 
@@ -10,7 +10,7 @@ MAX_REASONS = 50
 REASON_LIMIT = 300
 FEEDBACK_LIMIT = 700
 # AI sekin/ishlamasa, arizachi va admin uzoq kutib qolmasin: shundan keyin zaxira matn ishlatiladi
-AI_WAIT_SECONDS = 10
+AI_WAIT_SECONDS = CHECK_WAIT_SECONDS
 SUMMARY_LIMIT = 1500
 
 SYSTEM_PROMPT = (

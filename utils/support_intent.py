@@ -4,12 +4,12 @@ import asyncio
 import logging
 import re
 
-from utils.ai import AIError, ask_ai
+from utils.ai import CHECK_WAIT_SECONDS, AIError, ask_ai
 from utils.support_policy import maybe_wants_admin, wants_admin
 
 logger = logging.getLogger(__name__)
 
-WAIT_SECONDS = 6
+WAIT_SECONDS = CHECK_WAIT_SECONDS
 MAX_TEXT = 600
 
 SYSTEM_PROMPT = (

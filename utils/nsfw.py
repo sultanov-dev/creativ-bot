@@ -26,7 +26,7 @@ from aiogram.types import Message
 
 from config import AI_VISION
 from database import get_media_verdict, save_media_verdict
-from utils.ai import AIError, ask_ai
+from utils.ai import CHECK_WAIT_SECONDS, AIError, ask_ai
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ UNSURE_FROM = 0.25  # shundan yuqori, lekin chegaradan past: ikkilangan (AI_VISI
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_VIDEO_BYTES = 10 * 1024 * 1024  # bundan katta videoda faqat muqova rasmi tekshiriladi
 VIDEO_FRAMES = 4
-AI_WAIT_SECONDS = 12
+AI_WAIT_SECONDS = CHECK_WAIT_SECONDS
 AI_IMAGE_SIDE = 512
 STICKER_SET_RE = re.compile(r"porn|xxx|nsfw|hentai|18\s*\+|18plus|nude|erotic|sexy|seks|(?<![a-z])sex", re.IGNORECASE)
 

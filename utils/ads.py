@@ -5,7 +5,7 @@ import logging
 import re
 import time
 
-from utils.ai import AIError, ask_ai
+from utils.ai import CHECK_WAIT_SECONDS, AIError, ask_ai
 from utils import tg_links
 from utils.url_check import analyze
 
@@ -37,9 +37,9 @@ PROMO_RE = re.compile(
     re.IGNORECASE,
 )
 
-# AI ba'zan sekin (javob 6 s dan oshadi): xabar tekshiruv paytida guruhda turadi, uzoq kutish faqat reklamaning
-# o'chishini kechiktiradi, boshqa xabarlarni to'xtatmaydi; qisqa chegarada esa reklama tekshiruvsiz qolib ketardi
-WAIT_SECONDS = 30
+# xabar tekshiruv paytida guruhda turadi: uzoq kutish faqat reklamaning o'chishini kechiktiradi, boshqa xabarlarni
+# to'xtatmaydi; qisqa chegarada esa sekin AI paytida reklama tekshiruvsiz qolib ketardi
+WAIT_SECONDS = CHECK_WAIT_SECONDS
 MAX_TEXT = 1500
 
 SYSTEM_PROMPT = (
