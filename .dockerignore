@@ -1,14 +1,64 @@
-.git
-.pytest_cache
-.claude
-venv
-__pycache__
-*.pyc
+# Image'ga faqat botni ishga tushirish uchun kerakli kod tushadi (main.py, handlers/, utils/, ...).
+# Patternlar faqat ildizga taalluqli: ichki papkalar uchun **/ kerak.
+
+# sirlar va muhit fayllari (.env.example ham kerak emas: sozlamalar docker-compose orqali beriladi)
 .env
+.env.*
+*.pem
+*.key
+
+# ma'lumotlar: baza, Telethon sessiyalari, loglar (konteynerda /data volume'ida yaratiladi)
 *.db
-*.session
-*.session-journal
-CLAUDE.md
 *.db-wal
 *.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+*.session
+*.session-journal
 logs/
+**/*.log
+data/
+backups/
+
+# git, Docker va CI fayllari
+.git
+.gitignore
+.gitattributes
+.github/
+.dockerignore
+Dockerfile
+docker-compose*.yml
+compose*.yml
+
+# testlar va dasturchi vositalari
+tests/
+pytest.ini
+requirements-dev.txt
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.coverage
+.coverage.*
+htmlcov/
+check_tools.py
+
+# Python keshlari va virtual muhitlar
+**/__pycache__/
+**/*.py[cod]
+venv/
+.venv/
+env/
+*.egg-info/
+build/
+dist/
+
+# hujjatlar, muharrir va tizim fayllari
+*.md
+.claude/
+.vscode/
+.idea/
+**/*.swp
+**/*~
+**/.DS_Store
