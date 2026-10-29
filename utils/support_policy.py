@@ -52,11 +52,12 @@ BLOCKING_CATEGORIES = (
     "limit",
 )  # violation: xavfli havola yoki 18+ kontent takrorlandi
 
-# Lichkada AI suhbat faqat "admin kerak" mazmunidagi xabar bilan ochiladi. Ikki bosqich, AI imkon qadar kam:
-# 1) aniq so'zlar (admin, moderator, guruh egasi, shikoyat, ban...) — darhol, AI'siz;
-# 2) yaqin mazmun belgilari (mas'ul, rahbar, odam/inson bilan, bog'lanish, operator, связаться, человек...) —
-#    faqat shunda bitta qisqa AI so'rovi (utils/support_intent.py) mazmunni tasdiqlaydi;
-# bularning hech biri bo'lmasa — xabar e'tiborsiz, AI chaqirilmaydi.
+# Lichkada AI suhbat faqat "admin kerak" mazmunidagi xabar bilan ochiladi. Faqat kod (AI'siz, darhol):
+# 1) aniq so'zlar (admin, moderator, guruh egasi, shikoyat, ban...);
+# 2) mas'ul shaxs so'ralgan (mas'ul, rahbar, operator, tirik odam, человек, someone in charge...);
+# 3) guruhdan chiqarilgani / xabari o'chirilgani haqida shikoyat ("guruhdan chiqarib yuborishdi", "меня удалили");
+# 4) bog'lanish istagi + guruh mavzusi ("guruh bo'yicha kim bilan bog'lansam", "меня удалили из группы, с кем связаться").
+# "yordam", "muammo", "guruh" kabi umumiy so'zlarning o'zi yetmaydi: oddiy savol suhbat ochmasin.
 ADMIN_INTENT_RE = re.compile(
     r"\b(?:adm[iy]?n|адм[иі]н|амдин|administrator|администратор|moder|модер|owner|владел|создател|egas[iy]|эгас[и]|"
     r"yaratuvchi|яратувчи|shikoyat|шикоят|жалоб|complain|report|репорт|murojaat|мурожаат|обращени|support|"
@@ -64,12 +65,24 @@ ADMIN_INTENT_RE = re.compile(
     r"blok(?:\b|la\w*|dan\b|ga\b)|блок(?:\b|ир\w*|ла\w*|дан\b))",
     re.IGNORECASE,
 )
-MAYBE_ADMIN_RE = re.compile(
+PERSON_RE = re.compile(
     r"\b(?:mas.?ul|масъул|масул|rahbar|раҳбар|рахбар|boshliq|бошлиқ|javobgar|жавобгар|operator|оператор|"
-    r"odam|одам|inson|инсон|kimdir|кимдир|tirik|jonli|bog.?lan|боғлан|боглан|aloqa|алоқа|gaplash|гаплаш|"
-    r"muammo|муаммо|yordam|ёрдам|qoida|қоида|guruh|гуруҳ|гурух|chiqarib|chetlat|o.?chirib|"
-    r"связ|поговор|человек|руковод|ответствен|главн|оператор|помощ|проблем|правил|групп|удалил|выгнал|кикнул|"
-    r"contact|talk|speak|human|person|someone|manager|in charge|help|problem|rules|group|kicked|removed)",
+    r"(?:tirik|jonli|haqiqiy)\s+(?:odam|inson)|(?:odam|inson|kimdir)\s+bilan|(?:одам|инсон)\s+билан|"
+    r"человек|руковод|ответствен|главн\w*\s+(?:в|по|групп)|"
+    r"human|real person|someone in charge|person in charge|manager)",
+    re.IGNORECASE,
+)
+REMOVED_RE = re.compile(
+    r"\b(?:chiqarib\s+yubor|chetlat|o.?chirib\s+(?:yubor|tashla)(?:ishdi|ishgan|i?bdi(?:lar)?)|ўчириб\s+(?:юбор|ташла)(?:ишди|ишган|и?бди)|удалил|выгнал|кикнул|"
+    r"исключил|kicked|removed me|banned me)",
+    re.IGNORECASE,
+)
+CONTACT_RE = re.compile(
+    r"\b(?:bog.?lan|боғлан|боглан|aloqa|алоқа|gaplash|гаплаш|связ|поговор|contact|talk|speak)", re.IGNORECASE
+)
+TOPIC_RE = re.compile(
+    r"\b(?:guruh|гуруҳ|гурух|chiqarib|chetlat|o.?chirib|ўчириб|qoida|қоида|групп|удалил|выгнал|кикнул|правил|"
+    r"group|kicked|removed|rules)",
     re.IGNORECASE,
 )
 
@@ -79,6 +92,9 @@ def wants_admin(text: str) -> bool:
     return bool(ADMIN_INTENT_RE.search(text or ""))
 
 
-def maybe_wants_admin(text: str) -> bool:
-    """Admin so'ralgan bo'lishi mumkin: aniq so'z yo'q, lekin yaqin mazmun belgisi bor (AI tasdiqlaydi)."""
-    return bool(MAYBE_ADMIN_RE.search(text or ""))
+def wants_person(text: str) -> bool:
+    """Admin so'zisiz, lekin mas'ul shaxs yoki guruh bo'yicha bog'lanish so'ralgan (AI'siz)."""
+    text = text or ""
+    return bool(
+        PERSON_RE.search(text) or REMOVED_RE.search(text) or (CONTACT_RE.search(text) and TOPIC_RE.search(text))
+    )

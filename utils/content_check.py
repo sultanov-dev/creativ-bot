@@ -7,6 +7,7 @@ Tartib (avval bot o'zi, AI faqat kerak bo'lganda):
 
 Natijada nima qilish (o'chirish, ogohlantirish, AI suhbatga eslatma) chaqiruvchining ishi; tekshiruvning o'zi shu yerda.
 """
+import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -95,6 +96,39 @@ async def full_text(bot: Bot, message: Message, *, read_media: bool = True) -> s
     return text
 
 
+LateVerdict = Callable[[str], Awaitable[object]]
+_background: set[asyncio.Task] = set()  # fondagi AI tekshiruvlari (GC yig'ib olmasin; testlar drain() bilan kutadi)
+
+
+async def drain() -> None:
+    """Fondagi AI tekshiruvlari tugashini kutadi (testlar va to'xtash uchun)."""
+    while _background:
+        await asyncio.gather(*list(_background), return_exceptions=True)
+
+
+async def _ai_decision(text: str, urls: list[str], forwarded, kind: str, group_id, username, linked) -> str | None:
+    verdict = await ads.ai_verdict(text, urls, forwarded.url if forwarded else None)
+    if verdict in (AD, DANGER):
+        own = [*map(tg_links.parse, urls), forwarded]
+        tg_links.remember_ad(
+            [link for link in own if link is not None and not tg_links.is_own(link, group_id, username, linked)]
+        )  # shu manzil yana kelsa, AI chaqirilmaydi
+        return verdict
+    if verdict is None and kind == "telegram":
+        # AI ishlamadi: begona Telegram havolasi o'chiriladi (uzilish reklamaga yo'l ochmasin)
+        return AD
+    return None
+
+
+async def _late(on_late: LateVerdict, *args) -> None:
+    try:
+        verdict = await _ai_decision(*args)
+        if verdict is not None:
+            await on_late(verdict)
+    except Exception:
+        logger.exception("Fondagi AI tekshiruvi yiqildi")
+
+
 async def text_verdict(
     bot: Bot,
     message: Message,
@@ -102,9 +136,15 @@ async def text_verdict(
     *,
     group_id: int | None,
     exempt: Exempt = _never_exempt,
+    on_late: LateVerdict | None = None,
 ) -> str | None:
     """Matn, havolalar va kanal forwardi bo'yicha: DANGER, AD yoki None. `group_id` — o'z guruhi (uning havolalari
-    va bog'langan kanali shubha emas). `exempt` faqat shubha topilganda chaqiriladi (ortiqcha API so'rovisiz)."""
+    va bog'langan kanali shubha emas). `exempt` faqat shubha topilganda chaqiriladi (ortiqcha API so'rovisiz).
+
+    Avval kod qaror qiladi (darhol). AI kerak bo'lsa: `on_late` berilgan bo'lsa AI fonda ishlaydi, bu funksiya
+    darhol None qaytaradi va hukm AD/DANGER bo'lsa keyinroq `on_late(hukm)` chaqiriladi (guruh: hech kim AI'ni
+    kutmaydi); berilmasa AI javobi kutiladi (lichkadagi suhbat).
+    """
     entities = message.entities or message.caption_entities
     forwarded = forwarded_channel(message)
     username, linked = (None, None)
@@ -129,17 +169,12 @@ async def text_verdict(
         return DANGER
     if kind == "definite":
         return AD
-    urls = find_urls(text, entities, message.reply_markup)
-    verdict = await ads.ai_verdict(text, urls, forwarded.url if forwarded else None)
-    if verdict in (AD, DANGER):
-        own = [*map(tg_links.parse, urls), forwarded]
-        tg_links.remember_ad(
-            [link for link in own if link is not None and not tg_links.is_own(link, group_id, username, linked)]
-        )  # shu manzil yana kelsa, AI chaqirilmaydi
-        return verdict
-    if verdict is None and kind == "telegram":
-        # AI ishlamadi: begona Telegram havolasi o'chiriladi (uzilish reklamaga yo'l ochmasin)
-        return AD
+    args = (text, find_urls(text, entities, message.reply_markup), forwarded, kind, group_id, username, linked)
+    if on_late is None:
+        return await _ai_decision(*args)
+    task = asyncio.create_task(_late(on_late, *args))
+    _background.add(task)
+    task.add_done_callback(_background.discard)
     return None
 
 

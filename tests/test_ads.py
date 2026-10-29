@@ -74,7 +74,7 @@ class TestClassify:
 
 
 class FakeAI:
-    def __init__(self, answer: str | Exception = "OK") -> None:
+    def __init__(self, answer: Any = "OK") -> None:
         self.answer = answer
         self.calls: list[list[dict[str, str]]] = []
 
@@ -82,6 +82,8 @@ class FakeAI:
         self.calls.append(messages)
         if isinstance(self.answer, Exception):
             raise self.answer
+        if callable(self.answer):
+            return await self.answer()
         return self.answer
 
 
@@ -166,6 +168,24 @@ class TestRemoval:
         ai.answer = answer
         await post(dp, bot, "Docs: https://docs.python.org/3/ ga qarang")
         assert deleted(session) == [] and session.of(SendMessage) == []  # boshqa handlerlar ham ko'radi
+
+    async def test_handler_does_not_wait_for_the_ai(self, dp, bot, session, ai):
+        """Kod qaror qila olmasa AI fonda ishlaydi: update darhol ishlanadi, reklama keyinroq o'chadi."""
+        from utils import content_check
+
+        release = asyncio.Event()
+
+        async def slow():
+            await release.wait()
+            return "AD"
+
+        ai.answer = slow
+        raw = tf.group_message(USER, "Arzon kurslar! Aksiya! +998901234567", message_id=800)
+        await asyncio.wait_for(dp.feed_raw_update(bot, raw.model_dump(mode="json", by_alias=True, exclude_none=True)), 1)
+        assert deleted(session) == [] and len(ai.calls) == 1  # AI hali javob bermadi, handler kutmadi
+        release.set()
+        await content_check.drain()
+        assert deleted(session) == [800] and texts.AD_NOTICE.format(name=f"U{USER}") in session.texts_to(G)
 
     async def test_ai_flagged_dangerous_link_is_deleted_with_its_own_notice(self, dp, bot, session, ai):
         ai.answer = "DANGER"

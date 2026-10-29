@@ -12,13 +12,16 @@ from tests import telegram_fakes as tf
 from tests.conftest import expire_voting
 from tests.telegram_fakes import FakeSession
 from states import Form
+from utils import content_check
 from utils.fsm import get_private_state
 
 
 async def feed(dp: Dispatcher, bot: Bot, update: Update):
     """Update'ni bot kontekstida (message.reply va h.k. ishlashi uchun) haqiqiy yo'l bilan beradi."""
     raw = update.model_dump(mode="json", by_alias=True, exclude_none=True)
-    return await dp.feed_raw_update(bot, raw)
+    result = await dp.feed_raw_update(bot, raw)
+    await content_check.drain()  # fondagi AI tekshiruvi (reklama) ham tugasin: natija aniq bo'lsin
+    return result
 
 
 def last_alert(session: FakeSession) -> AnswerCallbackQuery:

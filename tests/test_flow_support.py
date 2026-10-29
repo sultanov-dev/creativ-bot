@@ -1,4 +1,6 @@
 """handlers/support.py: guruhda contact_admin chaqirilganda lichkaga yozish va guruhdagi qisqa xabar."""
+import asyncio
+
 import pytest
 from aiogram.types import Update
 from aiogram.methods import SendChatAction, SendMessage
@@ -11,7 +13,6 @@ from database import add_member, create_support_chat, get_support_chat, set_supp
 from tests import telegram_fakes as tf
 from tests.flow import feed
 from tests.test_flow_ai import BOT, USER, FakeAsk, bot_replies, say
-from tests.table import same
 from utils import support_policy
 
 
@@ -605,57 +606,41 @@ class TestPrivateIntent:
         support._last_idle.clear()
 
     def test_local_intent_table(self):
-        from utils.support_policy import maybe_wants_admin, wants_admin
+        from utils.support_intent import asks_for_admin
 
-        # aniq so'zlar (xato yozilgani ham)
-        same(wants_admin, ["admin bilan gaplashmoqchiman", "Adminga yozmoqchiman", "admn kerak", "мне нужен модератор",
-                           "guruh egasi bilan bog'lanmoqchiman", "meni ban qilishdi", "banlashdi", "meni bloklashdi",
-                           "меня заблокировали", "забанили", "разблокируйте", "shikoyatim bor",
-                           "I want to report a member", "complain"], True)
-        same(wants_admin, ["salom", "python nima", "bananas", "рабочий блокнот", "бананы", "Banco",
-                           "guruhdagi mas'ul odam bilan gaplashsam bo'ladimi?"], False)
-        # yaqin mazmun belgisi: AI tasdiqlaydi
-        same(maybe_wants_admin, ["guruhdagi mas'ul odam bilan gaplashsam bo'ladimi?", "rahbariyat bilan bog'lanmoqchiman",
-                                 "мне нужен живой человек", "меня удалили из группы, почему?",
-                                 "Can I talk to someone in charge?", "python'da yordam kerak"], True)
-        same(maybe_wants_admin, ["salom", "rahmat", "bugun havo yaxshi", "😊"], False)
+        async def asks(text):
+            return await asks_for_admin(text)
 
-    async def test_plain_messages_are_ignored_without_ai(self, dp, bot, session, dm_ai, intent_ai):
+        opens = [
+            # aniq so'zlar (xato yozilgani ham)
+            "admin bilan gaplashmoqchiman", "Adminga yozmoqchiman", "admn kerak", "мне нужен модератор",
+            "guruh egasi bilan bog'lanmoqchiman", "meni ban qilishdi", "banlashdi", "meni bloklashdi",
+            "меня заблокировали", "забанили", "разблокируйте", "shikoyatim bor", "I want to report a member", "complain",
+            # mas'ul shaxs, chiqarilganlik shikoyati, guruh bo'yicha bog'lanish (AI'siz)
+            "guruhdagi mas'ul odam bilan gaplashsam bo'ladimi?", "rahbariyat bilan bog'lanmoqchiman",
+            "мне нужен живой человек", "меня удалили из группы, почему?", "Can I talk to someone in charge?",
+            "tirik odam bilan gaplashmoqchiman", "meni guruhdan chiqarib yuborishdi", "xabarimni o'chirib yuborishdi",
+            "guruh qoidalari bo'yicha kim bilan bog'lansam bo'ladi?",
+        ]
+        ignored = [
+            "salom", "rahmat", "bugun havo yaxshi", "😊", "", "python nima", "bananas", "рабочий блокнот", "бананы",
+            "Banco", "python'da yordam kerak, list qanday ishlaydi?", "muammo bor", "guruh zo'r ekan",
+            "faylni o'chirib tashlash kerak", "help me with this code",
+        ]
+        wrong = [t for t in opens if not asyncio.run(asks(t))] + [t for t in ignored if asyncio.run(asks(t))]
+        assert not wrong, wrong
+
+    async def test_plain_messages_are_ignored(self, dp, bot, session, dm_ai):
         await add_member(tf.GROUP_ID, USER)
-        for text in ["salom", "rahmat", "😊"]:
+        for text in ["salom", "rahmat", "😊", "python'da yordam kerak, list qanday ishlaydi?"]:
             await dm(dp, bot, text)
-        assert session.texts_to(USER) == [] and not dm_ai.calls and not intent_ai.calls
+        assert session.texts_to(USER) == [] and not dm_ai.calls
         assert await get_support_chat(USER, "active", 24) is None
 
-    async def test_clear_words_open_the_chat_without_confirmation(self, dp, bot, session, dm_ai, intent_ai):
+    async def test_near_meaning_opens_the_chat_without_any_extra_ai_call(self, dp, bot, session, dm_ai):
         await add_member(tf.GROUP_ID, USER)
-        await dm(dp, bot, "meni ban qilishdi")
-        assert not intent_ai.calls and len(dm_ai.calls) == 1
-
-    async def test_near_meaning_is_confirmed_by_one_short_ai_call(self, dp, bot, session, dm_ai, intent_ai):
-        await add_member(tf.GROUP_ID, USER)
-        intent_ai.answer = "YES"
-        text = "guruhdagi mas'ul odam bilan gaplashsam bo'ladimi?"
-        await dm(dp, bot, text)
-        assert len(intent_ai.calls) == 1 and len(dm_ai.calls) == 1  # tasdiq + suhbatning birinchi javobi
-        assert intent_ai.calls[0][1]["content"] == f"<<<\n{text}\n>>>"
-
-    async def test_ai_says_no_and_the_message_is_ignored(self, dp, bot, session, dm_ai, intent_ai):
-        await add_member(tf.GROUP_ID, USER)
-        await dm(dp, bot, "python'da yordam kerak, list qanday ishlaydi?")
-        assert len(intent_ai.calls) == 1 and not dm_ai.calls and session.texts_to(USER) == []
-
-    async def test_intent_ai_failure_ignores_quietly(self, dp, bot, session, dm_ai, monkeypatch):
-        import utils.support_intent as support_intent
-        from utils.ai import AIError
-
-        async def failing(messages, **kw):
-            raise AIError("503")
-
-        await add_member(tf.GROUP_ID, USER)
-        monkeypatch.setattr(support_intent, "ask_ai", failing)
-        await dm(dp, bot, "mas'ul odam kerak")
-        assert not dm_ai.calls and session.texts_to(USER) == [] and not session.sent_to(tf.DEVELOPER_ID)
+        await dm(dp, bot, "guruhdagi mas'ul odam bilan gaplashsam bo'ladimi?")
+        assert len(dm_ai.calls) == 1  # faqat suhbatning birinchi javobi
 
     async def test_ai_down_gives_one_error_message(self, dp, bot, session, group_ai, dm_ai):
         """AI ishlamasa foydalanuvchi bitta xabar oladi (AI_ERROR), ustidan umumiy ERROR_GENERIC kelmaydi."""

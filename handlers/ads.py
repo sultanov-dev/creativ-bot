@@ -51,8 +51,14 @@ async def is_advertisement(message: Message, bot: Bot) -> dict | bool:
     """Filtr: reklama yoki xavfli havola bo'lsa {"verdict": ...}, aks holda False (boshqa routerlar, masalan AI, xabarni ko'radi)."""
     user = message.from_user
     text = await content_check.full_text(bot, message, read_media=not (user is not None and is_admin(user.id)))
+    # kod aniq topganini darhol qaytaradi; AI kerak bo'lsa u fonda ishlaydi, reklama chiqsa xabar keyinroq o'chadi
     verdict = await content_check.text_verdict(
-        bot, message, text, group_id=message.chat.id, exempt=lambda: _exempt(bot, message)
+        bot,
+        message,
+        text,
+        group_id=message.chat.id,
+        exempt=lambda: _exempt(bot, message),
+        on_late=lambda late: remove_advertisement(message, bot, late),
     )
     return {"verdict": verdict} if verdict else False
 
